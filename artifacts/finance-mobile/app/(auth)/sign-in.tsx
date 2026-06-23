@@ -5,6 +5,7 @@ import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -208,9 +209,11 @@ export default function SignInPage() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>ح</Text>
-          </View>
+          <Image
+            source={require("../../assets/images/icon.png")}
+            style={styles.logoImg}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>تسجيل الدخول</Text>
           <Text style={styles.subtitle}>نظام إدارة الحسابات المالية</Text>
         </View>
@@ -345,20 +348,11 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     gap: 8,
   },
-  logoBox: {
-    width: 72,
-    height: 72,
+  logoImg: {
+    width: 88,
+    height: 88,
     borderRadius: 20,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
     marginBottom: 8,
-  },
-  logoText: {
-    fontSize: 36,
-    fontWeight: "700" as const,
-    color: "#fff",
-    fontFamily: "Inter_700Bold",
   },
   title: {
     fontSize: 26,

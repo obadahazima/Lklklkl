@@ -8,7 +8,7 @@ export default function Landing() {
     <div className="min-h-screen bg-background flex flex-col" dir="rtl">
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-2">
-          <img src={`${basePath}/logo.svg`} alt="Qayd AI" className="w-8 h-8 rounded-lg" />
+          <img src={`${basePath}/logo.jpg`} alt="Qayd AI" className="w-8 h-8 rounded-lg" />
           <span className="font-bold text-foreground text-lg">Qayd AI</span>
         </div>
         <div className="flex gap-3">
@@ -26,7 +26,7 @@ export default function Landing() {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-16 text-center">
-        <img src={`${basePath}/logo.svg`} alt="Qayd AI" className="w-20 h-20 rounded-3xl mb-6 shadow-lg" />
+        <img src={`${basePath}/logo.jpg`} alt="Qayd AI" className="w-20 h-20 rounded-3xl mb-6 shadow-lg" />
         <h1 className="text-4xl font-bold text-foreground mb-4">
           Qayd AI
         </h1>
