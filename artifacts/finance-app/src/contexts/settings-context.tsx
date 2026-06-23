@@ -13,6 +13,7 @@ export interface AppSettings {
   showTrips: boolean;
   showStudios: boolean;
   theme: AppTheme;
+  autoBackup: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   showTrips: true,
   showStudios: true,
   theme: "light",
+  autoBackup: false,
 };
 
 const STORAGE_KEY = "hisabat_settings";
@@ -61,6 +63,7 @@ function loadSettings(): AppSettings {
       showTrips: parsed.showTrips ?? DEFAULT_SETTINGS.showTrips,
       showStudios: parsed.showStudios ?? DEFAULT_SETTINGS.showStudios,
       theme: parsed.theme ?? DEFAULT_SETTINGS.theme,
+      autoBackup: parsed.autoBackup ?? DEFAULT_SETTINGS.autoBackup,
     };
   } catch {
     return DEFAULT_SETTINGS;

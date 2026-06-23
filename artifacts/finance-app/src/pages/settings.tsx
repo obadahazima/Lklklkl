@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSettings } from "@/contexts/settings-context";
 import { tr, AVAILABLE_CURRENCIES, getCurrencyName } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { Check, Globe, Coins, Star, RefreshCw, ChevronDown, X, Plus, LayoutList, Sun, Moon, Download } from "lucide-react";
+import { Check, Globe, Coins, Star, RefreshCw, ChevronDown, X, Plus, LayoutList, Sun, Moon, Download, Upload, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const AUTO_BACKUP_KEY = "hisabat_last_auto_backup";
+const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const MAX_CURRENCIES = 5;
 
@@ -16,9 +19,14 @@ export default function Settings() {
   const [localRates, setLocalRates] = useState<Record<string, number>>({ ...manualRates });
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [lastAutoBackup, setLastAutoBackup] = useState<string | null>(() => localStorage.getItem(AUTO_BACKUP_KEY));
+  const restoreInputRef = useRef<HTMLInputElement>(null);
+  const autoBackupRunningRef = useRef(false);
 
-  async function handleBackup() {
-    setBackupLoading(true);
+  const triggerBackupDownload = async (silent = false) => {
+    if (autoBackupRunningRef.current) return;
+    autoBackupRunningRef.current = true;
     try {
       const res = await fetch("/api/backup", { credentials: "include" });
       if (!res.ok) throw new Error("failed");
@@ -29,11 +37,57 @@ export default function Settings() {
       a.download = `backup-${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: language === "ar" ? "تم تحميل النسخة الاحتياطية ✓" : "Backup downloaded ✓" });
+      const now = new Date().toISOString();
+      localStorage.setItem(AUTO_BACKUP_KEY, now);
+      setLastAutoBackup(now);
+      if (!silent) toast({ title: language === "ar" ? "تم تحميل النسخة الاحتياطية ✓" : "Backup downloaded ✓" });
     } catch {
-      toast({ title: language === "ar" ? "فشل تحميل النسخة الاحتياطية" : "Backup failed", variant: "destructive" });
+      if (!silent) toast({ title: language === "ar" ? "فشل تحميل النسخة الاحتياطية" : "Backup failed", variant: "destructive" });
+    } finally {
+      autoBackupRunningRef.current = false;
+    }
+  };
+
+  async function handleBackup() {
+    setBackupLoading(true);
+    try {
+      await triggerBackupDownload(false);
     } finally {
       setBackupLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!settings.autoBackup) return;
+    const check = () => {
+      const last = lastAutoBackup ? new Date(lastAutoBackup).getTime() : 0;
+      if (Date.now() - last >= BACKUP_INTERVAL_MS) {
+        triggerBackupDownload(true);
+      }
+    };
+    check();
+    const interval = setInterval(check, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [settings.autoBackup, lastAutoBackup]);
+
+  async function handleRestore(file: File) {
+    setRestoreLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/restore", { method: "POST", credentials: "include", body: formData });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json() as { restored: Record<string, number> };
+      const r = data.restored;
+      const msg = language === "ar"
+        ? `تمت الاستعادة ✓ — ${r.clients} زبون، ${r.trips} رحلة، ${r.studios} استديو، ${r.transactions} معاملة`
+        : `Restored ✓ — ${r.clients} clients, ${r.trips} trips, ${r.studios} studios, ${r.transactions} transactions`;
+      toast({ title: msg });
+      setTimeout(() => window.location.reload(), 1500);
+    } catch {
+      toast({ title: language === "ar" ? "فشل استعادة النسخة الاحتياطية" : "Restore failed", variant: "destructive" });
+    } finally {
+      setRestoreLoading(false);
     }
   }
 
@@ -361,13 +415,46 @@ export default function Settings() {
               {language === "ar" ? "النسخة الاحتياطية" : "Backup"}
             </span>
             <p className="text-xs text-muted-foreground">
-              {language === "ar"
-                ? "تحميل كل بياناتك كملف Excel"
-                : "Download all your data as Excel file"}
+              {language === "ar" ? "تحميل كل بياناتك كملف Excel" : "Download all your data as Excel file"}
             </p>
           </div>
         </div>
-        <div className="p-3">
+        <div className="p-3 space-y-3">
+          {/* Auto backup toggle */}
+          <div className="flex items-center justify-between bg-background border border-border rounded-xl px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {language === "ar" ? "نسخ تلقائي كل 24 ساعة" : "Auto backup every 24h"}
+                </p>
+                {settings.autoBackup && lastAutoBackup && (
+                  <p className="text-xs text-muted-foreground">
+                    {language === "ar" ? "آخر نسخة: " : "Last: "}
+                    {new Date(lastAutoBackup).toLocaleString(language === "ar" ? "ar-AE" : "en-AE")}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => updateSettings({ autoBackup: !settings.autoBackup })}
+              className={cn(
+                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0",
+                settings.autoBackup ? "bg-primary" : "bg-muted"
+              )}
+              role="switch"
+              aria-checked={settings.autoBackup}
+            >
+              <span className={cn(
+                "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                settings.autoBackup
+                  ? (language === "ar" ? "-translate-x-6" : "translate-x-6")
+                  : (language === "ar" ? "-translate-x-1" : "translate-x-1")
+              )} />
+            </button>
+          </div>
+
+          {/* Manual backup button */}
           <button
             onClick={handleBackup}
             disabled={backupLoading}
@@ -381,12 +468,62 @@ export default function Settings() {
             <Download className="w-4 h-4" />
             {backupLoading
               ? (language === "ar" ? "جارٍ التحضير..." : "Preparing...")
-              : (language === "ar" ? "تحميل نسخة احتياطية (.xlsx)" : "Download Backup (.xlsx)")}
+              : (language === "ar" ? "تحميل نسخة احتياطية الآن (.xlsx)" : "Download Backup Now (.xlsx)")}
           </button>
-          <p className="text-xs text-muted-foreground text-center mt-2">
+          <p className="text-xs text-muted-foreground text-center">
             {language === "ar"
               ? "يشمل: المعاملات، الزبائن، الرحلات، الاستديوهات"
               : "Includes: Transactions, Clients, Trips, Studios"}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Restore ── */}
+      <section className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <Upload className="w-4 h-4 text-primary shrink-0" />
+          <div className="flex-1">
+            <span className="font-semibold text-foreground text-sm">
+              {language === "ar" ? "استعادة البيانات" : "Restore Data"}
+            </span>
+            <p className="text-xs text-muted-foreground">
+              {language === "ar"
+                ? "ارفع ملف نسخة احتياطية سابقة لاستعادة بياناتك"
+                : "Upload a previous backup file to restore your data"}
+            </p>
+          </div>
+        </div>
+        <div className="p-3 space-y-2">
+          <input
+            ref={restoreInputRef}
+            type="file"
+            accept=".xlsx"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleRestore(file);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => restoreInputRef.current?.click()}
+            disabled={restoreLoading}
+            className={cn(
+              "w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold border transition-all",
+              restoreLoading
+                ? "opacity-50 cursor-not-allowed bg-muted border-border text-muted-foreground"
+                : "bg-background text-foreground border-border hover:border-primary/50 hover:text-primary"
+            )}
+          >
+            <Upload className="w-4 h-4" />
+            {restoreLoading
+              ? (language === "ar" ? "جارٍ الاستعادة..." : "Restoring...")
+              : (language === "ar" ? "رفع ملف الاستعادة (.xlsx)" : "Upload Backup File (.xlsx)")}
+          </button>
+          <p className="text-xs text-amber-600 text-center">
+            {language === "ar"
+              ? "⚠️ ستُضاف البيانات إلى حسابك الحالي"
+              : "⚠️ Data will be added to your current account"}
           </p>
         </div>
       </section>

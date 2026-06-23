@@ -7,6 +7,7 @@ import transactionsRouter from "./transactions";
 import dashboardRouter from "./dashboard";
 import aiRouter from "./ai";
 import backupRouter from "./backup";
+import restoreRouter from "./restore";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(transactionsRouter);
 router.use(dashboardRouter);
 router.use(aiRouter);
 router.use(backupRouter);
+router.use(restoreRouter);
 
 export default router;
