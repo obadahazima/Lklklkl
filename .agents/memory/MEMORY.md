@@ -1,0 +1,4 @@
+- [Clerk Auth Setup](clerk-auth.md) — Clerk Auth مفعّل مع Google OAuth، كل routes محمية بـ requireAuth، userId مضاف لكل الجداول
+- [Audio transcription payload limits](audio-transcription.md) — base64 audio needs raised express.json body limit (else HTTP 413); derive MIME from file ext
+- [Voice entity matching](voice-entity-matching.md) — spoken client/trip/studio names matched cross-language (Ar↔En) inside Gemini via parse-voice; trust server-validated AI ids on frontend
+- [Currency rate convention](currency-rates.md) — rates stored as "1 CODE = X AED"; CURRENCY_UNITS handles weak currencies (SYP×10k, LBP×100k, IQD×1k); correctRates() auto-fixes wrong stored values on load

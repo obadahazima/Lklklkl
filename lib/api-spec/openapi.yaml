@@ -1,0 +1,1010 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Financial management API for cross-border trader
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: transactions
+    description: Financial transactions
+  - name: clients
+    description: Client management
+  - name: trips
+    description: Trip management
+  - name: studios
+    description: Real estate studio management
+  - name: ai
+    description: AI voice and chat features
+  - name: dashboard
+    description: Dashboard summaries
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # ─── TRANSACTIONS ───────────────────────────────────────────────
+  /transactions:
+    get:
+      operationId: listTransactions
+      tags: [transactions]
+      summary: List all transactions
+      parameters:
+        - name: clientId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: tripId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: currency
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+    post:
+      operationId: createTransaction
+      tags: [transactions]
+      summary: Create a transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /transactions/{id}:
+    get:
+      operationId: getTransaction
+      tags: [transactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+    patch:
+      operationId: updateTransaction
+      tags: [transactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+    delete:
+      operationId: deleteTransaction
+      tags: [transactions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── CLIENTS ────────────────────────────────────────────────────
+  /clients:
+    get:
+      operationId: listClients
+      tags: [clients]
+      summary: List all clients
+      responses:
+        "200":
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      operationId: createClient
+      tags: [clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+
+  /clients/{id}:
+    get:
+      operationId: getClient
+      tags: [clients]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+    patch:
+      operationId: updateClient
+      tags: [clients]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+    delete:
+      operationId: deleteClient
+      tags: [clients]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /clients/{id}/statement:
+    get:
+      operationId: getClientStatement
+      tags: [clients]
+      summary: Get client account statement with open balances per currency
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Client statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientStatement"
+
+  # ─── TRIPS ──────────────────────────────────────────────────────
+  /trips:
+    get:
+      operationId: listTrips
+      tags: [trips]
+      summary: List all trips
+      responses:
+        "200":
+          description: List of trips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trip"
+    post:
+      operationId: createTrip
+      tags: [trips]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TripInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+
+  /trips/{id}:
+    get:
+      operationId: getTrip
+      tags: [trips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+    patch:
+      operationId: updateTrip
+      tags: [trips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TripUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+    delete:
+      operationId: deleteTrip
+      tags: [trips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /trips/{id}/pnl:
+    get:
+      operationId: getTripPnl
+      tags: [trips]
+      summary: Get trip profit & loss per currency
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trip P&L
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripPnl"
+
+  # ─── STUDIOS ────────────────────────────────────────────────────
+  /studios:
+    get:
+      operationId: listStudios
+      tags: [studios]
+      summary: List all studios
+      responses:
+        "200":
+          description: List of studios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Studio"
+    post:
+      operationId: createStudio
+      tags: [studios]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudioInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Studio"
+
+  /studios/{id}:
+    get:
+      operationId: getStudio
+      tags: [studios]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Studio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Studio"
+    patch:
+      operationId: updateStudio
+      tags: [studios]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudioUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Studio"
+
+  /studios/{id}/expenses:
+    get:
+      operationId: listStudioExpenses
+      tags: [studios]
+      summary: List expenses for a specific studio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Studio expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudioExpense"
+    post:
+      operationId: createStudioExpense
+      tags: [studios]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudioExpenseInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudioExpense"
+
+  /studios/expenses/{expenseId}:
+    delete:
+      operationId: deleteStudioExpense
+      tags: [studios]
+      parameters:
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── AI ─────────────────────────────────────────────────────────
+  /ai/parse-voice:
+    post:
+      operationId: parseVoiceInput
+      tags: [ai]
+      summary: Parse voice/text input and extract structured transaction data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceParseInput"
+      responses:
+        "200":
+          description: Parsed transaction data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceParseResult"
+
+  /ai/transcribe-voice:
+    post:
+      operationId: transcribeVoice
+      tags: [ai]
+      summary: Transcribe recorded audio to text using AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceTranscribeInput"
+      responses:
+        "200":
+          description: Transcribed text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceTranscribeResult"
+
+  /ai/query:
+    post:
+      operationId: aiQuery
+      tags: [ai]
+      summary: Natural language query against the financial data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiQueryInput"
+      responses:
+        "200":
+          description: AI answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiQueryResult"
+
+  # ─── DASHBOARD ──────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get overall financial summary per currency
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/recent-transactions:
+    get:
+      operationId: getRecentTransactions
+      tags: [dashboard]
+      summary: Get recent transactions (last 10)
+      responses:
+        "200":
+          description: Recent transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    # ─── TRANSACTION ──────────────────────────────────────────────
+    Transaction:
+      type: object
+      required: [id, date, type, amount, currency, status, createdAt]
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+        type:
+          type: string
+          description: "income | expense | payment | receipt"
+        amount:
+          type: number
+        currency:
+          type: string
+          description: "AED | USD | SYP"
+        clientId:
+          type: ["integer", "null"]
+        clientName:
+          type: ["string", "null"]
+        tripId:
+          type: ["integer", "null"]
+        tripName:
+          type: ["string", "null"]
+        studioId:
+          type: ["integer", "null"]
+        studioName:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          description: "pending | settled"
+        createdAt:
+          type: string
+
+    TransactionInput:
+      type: object
+      required: [date, type, amount, currency, status]
+      properties:
+        date:
+          type: string
+        type:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        clientId:
+          type: ["integer", "null"]
+        tripId:
+          type: ["integer", "null"]
+        studioId:
+          type: ["integer", "null"]
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+
+    TransactionUpdate:
+      type: object
+      properties:
+        date:
+          type: string
+        type:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        clientId:
+          type: ["integer", "null"]
+        tripId:
+          type: ["integer", "null"]
+        studioId:
+          type: ["integer", "null"]
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+
+    # ─── CLIENT ───────────────────────────────────────────────────
+    Client:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ClientInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        phone:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    ClientUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    CurrencyBalance:
+      type: object
+      required: [currency, paid, received, openBalance]
+      properties:
+        currency:
+          type: string
+        paid:
+          type: number
+        received:
+          type: number
+        openBalance:
+          type: number
+
+    ClientStatement:
+      type: object
+      required: [client, transactions, balances, totalBalanceAED, exchangeRates]
+      properties:
+        client:
+          $ref: "#/components/schemas/Client"
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        balances:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrencyBalance"
+        totalBalanceAED:
+          type: number
+          description: Sum of all open balances converted to AED
+        exchangeRates:
+          $ref: "#/components/schemas/ExchangeRates"
+
+    # ─── TRIP ─────────────────────────────────────────────────────
+    Trip:
+      type: object
+      required: [id, name, isShared, status, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        isShared:
+          type: boolean
+        status:
+          type: string
+          description: "active | closed"
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    TripInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        isShared:
+          type: boolean
+        status:
+          type: string
+        notes:
+          type: ["string", "null"]
+
+    TripUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        isShared:
+          type: boolean
+        status:
+          type: string
+        notes:
+          type: ["string", "null"]
+
+    TripCurrencyPnl:
+      type: object
+      required: [currency, revenue, expenses, netProfit, myShare]
+      properties:
+        currency:
+          type: string
+        revenue:
+          type: number
+        expenses:
+          type: number
+        netProfit:
+          type: number
+        myShare:
+          type: number
+
+    TripPnl:
+      type: object
+      required: [trip, breakdown]
+      properties:
+        trip:
+          $ref: "#/components/schemas/Trip"
+        breakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/TripCurrencyPnl"
+
+    # ─── STUDIO ───────────────────────────────────────────────────
+    Studio:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        address:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    StudioInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        address:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    StudioUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    StudioExpense:
+      type: object
+      required: [id, studioId, category, amount, currency, date, createdAt]
+      properties:
+        id:
+          type: integer
+        studioId:
+          type: integer
+        category:
+          type: string
+          description: "rent | electricity | internet | maintenance | other"
+        amount:
+          type: number
+        currency:
+          type: string
+        date:
+          type: string
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    StudioExpenseInput:
+      type: object
+      required: [category, amount, currency, date]
+      properties:
+        category:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        date:
+          type: string
+        notes:
+          type: ["string", "null"]
+
+    # ─── AI ───────────────────────────────────────────────────────
+    VoiceParseInput:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+
+    VoiceParseResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        type:
+          type: ["string", "null"]
+        amount:
+          type: ["number", "null"]
+        currency:
+          type: ["string", "null"]
+        clientName:
+          type: ["string", "null"]
+        clientId:
+          type: ["integer", "null"]
+          description: "Matched existing client id (cross-language), null if new/none"
+        tripName:
+          type: ["string", "null"]
+        tripId:
+          type: ["integer", "null"]
+          description: "Matched existing trip id (cross-language), null if new/none"
+        studioName:
+          type: ["string", "null"]
+        studioId:
+          type: ["integer", "null"]
+          description: "Matched existing studio id (cross-language), null if new/none"
+        detectedLanguage:
+          type: ["string", "null"]
+          description: "Language detected in the input (ar | en | mixed)"
+        description:
+          type: ["string", "null"]
+        rawText:
+          type: ["string", "null"]
+        error:
+          type: ["string", "null"]
+
+    VoiceTranscribeInput:
+      type: object
+      required: [audioBase64, mimeType]
+      properties:
+        audioBase64:
+          type: string
+          description: "Base64-encoded audio data"
+        mimeType:
+          type: string
+          description: "Audio mime type (e.g. audio/m4a, audio/mp4, audio/wav)"
+
+    VoiceTranscribeResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        text:
+          type: ["string", "null"]
+        error:
+          type: ["string", "null"]
+
+    AiHistoryItem:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
+    AiQueryInput:
+      type: object
+      required: [question]
+      properties:
+        question:
+          type: string
+        history:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/AiHistoryItem"
+
+    AiQueryResult:
+      type: object
+      required: [answer]
+      properties:
+        answer:
+          type: string
+        data:
+          type: ["object", "null"]
+
+    # ─── DASHBOARD ────────────────────────────────────────────────
+    CurrencySummary:
+      type: object
+      required: [currency, totalIncome, totalExpenses, balance]
+      properties:
+        currency:
+          type: string
+        totalIncome:
+          type: number
+        totalExpenses:
+          type: number
+        balance:
+          type: number
+
+    ExchangeRates:
+      type: object
+      description: Map of currency code to its AED rate (e.g. "USD" -> 3.67 means 1 USD = 3.67 AED)
+      additionalProperties:
+        type: number
+
+    DashboardSummary:
+      type: object
+      required: [currencies, totalClients, totalTrips, activeTrips, pendingTransactions, totalBalanceAED, exchangeRates]
+      properties:
+        currencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrencySummary"
+        totalClients:
+          type: integer
+        totalTrips:
+          type: integer
+        activeTrips:
+          type: integer
+        pendingTransactions:
+          type: integer
+        totalBalanceAED:
+          type: number
+          description: Overall wallet balance in AED (all currencies converted)
+        exchangeRates:
+          $ref: "#/components/schemas/ExchangeRates"
