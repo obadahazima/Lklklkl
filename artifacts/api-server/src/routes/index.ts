@@ -6,6 +6,7 @@ import studiosRouter from "./studios";
 import transactionsRouter from "./transactions";
 import dashboardRouter from "./dashboard";
 import aiRouter from "./ai";
+import backupRouter from "./backup";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(studiosRouter);
 router.use(transactionsRouter);
 router.use(dashboardRouter);
 router.use(aiRouter);
+router.use(backupRouter);
 
 export default router;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSettings } from "@/contexts/settings-context";
 import { tr, AVAILABLE_CURRENCIES, getCurrencyName } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { Check, Globe, Coins, Star, RefreshCw, ChevronDown, X, Plus, LayoutList, Sun, Moon } from "lucide-react";
+import { Check, Globe, Coins, Star, RefreshCw, ChevronDown, X, Plus, LayoutList, Sun, Moon, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const MAX_CURRENCIES = 5;
@@ -15,6 +15,27 @@ export default function Settings() {
 
   const [localRates, setLocalRates] = useState<Record<string, number>>({ ...manualRates });
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+
+  async function handleBackup() {
+    setBackupLoading(true);
+    try {
+      const res = await fetch("/api/backup", { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `backup-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: language === "ar" ? "تم تحميل النسخة الاحتياطية ✓" : "Backup downloaded ✓" });
+    } catch {
+      toast({ title: language === "ar" ? "فشل تحميل النسخة الاحتياطية" : "Backup failed", variant: "destructive" });
+    } finally {
+      setBackupLoading(false);
+    }
+  }
 
   const availableToAdd = AVAILABLE_CURRENCIES.filter((c) => !currencies.includes(c.code));
 
@@ -328,6 +349,45 @@ export default function Settings() {
               )}
             </div>
           )}
+        </div>
+      </section>
+
+      {/* ── Backup ── */}
+      <section className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <Download className="w-4 h-4 text-primary shrink-0" />
+          <div className="flex-1">
+            <span className="font-semibold text-foreground text-sm">
+              {language === "ar" ? "النسخة الاحتياطية" : "Backup"}
+            </span>
+            <p className="text-xs text-muted-foreground">
+              {language === "ar"
+                ? "تحميل كل بياناتك كملف Excel"
+                : "Download all your data as Excel file"}
+            </p>
+          </div>
+        </div>
+        <div className="p-3">
+          <button
+            onClick={handleBackup}
+            disabled={backupLoading}
+            className={cn(
+              "w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold border transition-all",
+              backupLoading
+                ? "opacity-50 cursor-not-allowed bg-muted border-border text-muted-foreground"
+                : "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
+            )}
+          >
+            <Download className="w-4 h-4" />
+            {backupLoading
+              ? (language === "ar" ? "جارٍ التحضير..." : "Preparing...")
+              : (language === "ar" ? "تحميل نسخة احتياطية (.xlsx)" : "Download Backup (.xlsx)")}
+          </button>
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            {language === "ar"
+              ? "يشمل: المعاملات، الزبائن، الرحلات، الاستديوهات"
+              : "Includes: Transactions, Clients, Trips, Studios"}
+          </p>
         </div>
       </section>
     </div>
