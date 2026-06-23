@@ -238,28 +238,6 @@ export default function SignInPage() {
             )}
           </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.ssoBtn,
-              styles.appleBtn,
-              pressed && styles.buttonPressed,
-              ssoLoading === "apple" && styles.buttonDisabled,
-            ]}
-            onPress={() => handleSSOSignIn("oauth_apple")}
-            disabled={ssoLoading !== null}
-          >
-            {ssoLoading === "apple" ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <AppleIcon />
-                <Text style={[styles.ssoBtnText, { color: "#fff" }]}>
-                  المتابعة بـ Apple
-                </Text>
-              </>
-            )}
-          </Pressable>
-
           <View style={styles.dividerRow}>
             <View style={[styles.dividerLine, { backgroundColor: BORDER }]} />
             <Text style={[styles.dividerText, { color: MUTED }]}>أو</Text>

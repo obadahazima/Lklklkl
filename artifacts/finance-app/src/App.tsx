@@ -123,6 +123,13 @@ function SignInPage() {
         path={`${basePath}/sign-in`}
         signUpUrl={`${basePath}/sign-up`}
         fallbackRedirectUrl={basePath || "/"}
+        appearance={{
+          elements: {
+            form: "!hidden",
+            dividerRow: "!hidden",
+            footer: "!hidden",
+          },
+        }}
       />
     </div>
   );
@@ -136,6 +143,12 @@ function SignUpPage() {
         path={`${basePath}/sign-up`}
         signInUrl={`${basePath}/sign-in`}
         fallbackRedirectUrl={basePath || "/"}
+        appearance={{
+          elements: {
+            socialButtonsRoot: "!hidden",
+            dividerRow: "!hidden",
+          },
+        }}
       />
     </div>
   );

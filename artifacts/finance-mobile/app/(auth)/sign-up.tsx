@@ -235,28 +235,6 @@ export default function SignUpPage() {
             )}
           </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.ssoBtn,
-              styles.appleBtn,
-              pressed && styles.buttonPressed,
-              ssoLoading === "apple" && styles.buttonDisabled,
-            ]}
-            onPress={() => handleSSOSignUp("oauth_apple")}
-            disabled={ssoLoading !== null}
-          >
-            {ssoLoading === "apple" ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <AppleIcon />
-                <Text style={[styles.ssoBtnText, { color: "#fff" }]}>
-                  التسجيل بـ Apple
-                </Text>
-              </>
-            )}
-          </Pressable>
-
           <View style={styles.dividerRow}>
             <View style={[styles.dividerLine, { backgroundColor: BORDER }]} />
             <Text style={[styles.dividerText, { color: MUTED }]}>أو</Text>
