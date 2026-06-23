@@ -125,7 +125,10 @@ function SignInPage() {
         fallbackRedirectUrl={basePath || "/"}
         appearance={{
           elements: {
-            form: "!hidden",
+            formField__emailAddress: "!hidden",
+            formField__identifier: "!hidden",
+            formField__phoneNumber: "!hidden",
+            formButtonPrimary: "!hidden",
             dividerRow: "!hidden",
             footer: "!hidden",
           },

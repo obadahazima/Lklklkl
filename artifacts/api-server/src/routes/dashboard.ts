@@ -56,16 +56,6 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/exchange-rates", async (req, res): Promise<void> => {
-  try {
-    const rates = await getExchangeRates();
-    res.json(rates);
-  } catch (err) {
-    req.log.error({ err }, "Failed to get exchange rates");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 router.get("/dashboard/recent-transactions", async (req, res): Promise<void> => {
   try {
     const txs = await db
