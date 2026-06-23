@@ -22,11 +22,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   primaryCurrency: "AED",
   exchangeRateMode: "auto",
   manualRates: { AED: 1, USD: 3.67, SYP: 0.000282, EUR: 4.02, GBP: 4.69, SAR: 0.978, TRY: 0.108, LBP: 0.000041, JOD: 5.17, IQD: 0.00281, EGP: 0.073, KWD: 12.0, QAR: 1.007 },
-  showClients: true,
-  showTrips: true,
-  showStudios: true,
+  showClients: false,
+  showTrips: false,
+  showStudios: false,
   theme: "light",
-  autoBackup: false,
+  autoBackup: true,
 };
 
 const STORAGE_KEY = "hisabat_settings";
