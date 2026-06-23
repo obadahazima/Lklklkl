@@ -223,14 +223,14 @@ function ClerkProviderWithRoutes() {
       localization={{
         signIn: {
           start: {
-            title: "أهلاً بك مجدداً",
+            title: "أهلاً بك في Voice Accounting AI",
             subtitle: "سجّل دخولك للوصول إلى حساباتك",
           },
         },
         signUp: {
           start: {
-            title: "إنشاء حساب جديد",
-            subtitle: "ابدأ بإدارة حساباتك الآن",
+            title: "انضم إلى Voice Accounting AI",
+            subtitle: "ابدأ بإدارة حساباتك بالذكاء الاصطناعي",
           },
         },
       }}

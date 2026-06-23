@@ -215,7 +215,7 @@ export default function SignInPage() {
             resizeMode="contain"
           />
           <Text style={styles.title}>تسجيل الدخول</Text>
-          <Text style={styles.subtitle}>نظام إدارة الحسابات المالية</Text>
+          <Text style={styles.subtitle}>Voice Accounting AI</Text>
         </View>
 
         <View style={styles.card}>

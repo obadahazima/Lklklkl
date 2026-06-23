@@ -66,7 +66,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <img src={`${basePath}/logo.jpg`} alt="Logo" className="w-10 h-10 rounded-xl shrink-0" />
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">
-                {language === "ar" ? "Qayd AI" : "Qayd AI"}
+                Voice Accounting AI
               </h1>
               <p className="text-sidebar-foreground/60 text-xs mt-0.5">
                 {language === "ar" ? "محاسبك الذكي" : "Smart Finance"}
