@@ -144,8 +144,6 @@ function SignUpPage() {
         appearance={{
           elements: {
             formField__phoneNumber: "!hidden",
-            socialButtonsRoot: "!hidden",
-            dividerRow: "!hidden",
           },
         }}
       />
