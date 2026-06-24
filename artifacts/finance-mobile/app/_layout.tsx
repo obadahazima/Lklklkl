@@ -5,7 +5,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { ClerkLoaded, ClerkProvider } from "@clerk/expo";
+import { ClerkLoaded, ClerkProvider, useAuth } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
@@ -17,7 +17,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { setBaseUrl } from "@workspace/api-client-react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { SettingsProvider } from "@/contexts/SettingsContext";
+import { SettingsProvider, useSettings } from "@/contexts/SettingsContext";
 
 setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
 
@@ -27,6 +27,20 @@ const queryClient = new QueryClient();
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
+
+function ClerkTokenBridge() {
+  const { getToken, isSignedIn } = useAuth();
+  const { setAuthToken } = useSettings();
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    getToken().then((token) => {
+      if (token) setAuthToken(token);
+    });
+  }, [isSignedIn, getToken, setAuthToken]);
+
+  return null;
+}
 
 function RootLayoutNav() {
   return (
@@ -67,6 +81,7 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <ErrorBoundary>
             <SettingsProvider>
+              <ClerkTokenBridge />
               <QueryClientProvider client={queryClient}>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>

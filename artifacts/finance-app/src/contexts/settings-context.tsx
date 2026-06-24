@@ -46,33 +46,57 @@ function correctRates(rates: Record<string, number>): Record<string, number> {
   return fixed;
 }
 
-function loadSettings(): AppSettings {
+function parseSettings(raw: Partial<AppSettings>): AppSettings {
+  return {
+    language: raw.language ?? DEFAULT_SETTINGS.language,
+    currencies: Array.isArray(raw.currencies) && raw.currencies.length > 0
+      ? raw.currencies.slice(0, 5)
+      : DEFAULT_SETTINGS.currencies,
+    primaryCurrency: raw.primaryCurrency ?? DEFAULT_SETTINGS.primaryCurrency,
+    exchangeRateMode: raw.exchangeRateMode ?? DEFAULT_SETTINGS.exchangeRateMode,
+    manualRates: correctRates(raw.manualRates ?? DEFAULT_SETTINGS.manualRates),
+    showClients: raw.showClients ?? DEFAULT_SETTINGS.showClients,
+    showTrips: raw.showTrips ?? DEFAULT_SETTINGS.showTrips,
+    showStudios: raw.showStudios ?? DEFAULT_SETTINGS.showStudios,
+    theme: raw.theme ?? DEFAULT_SETTINGS.theme,
+    autoBackup: raw.autoBackup ?? DEFAULT_SETTINGS.autoBackup,
+  };
+}
+
+function loadLocalSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return {
-      language: parsed.language ?? DEFAULT_SETTINGS.language,
-      currencies: Array.isArray(parsed.currencies) && parsed.currencies.length > 0
-        ? parsed.currencies.slice(0, 5)
-        : DEFAULT_SETTINGS.currencies,
-      primaryCurrency: parsed.primaryCurrency ?? DEFAULT_SETTINGS.primaryCurrency,
-      exchangeRateMode: parsed.exchangeRateMode ?? DEFAULT_SETTINGS.exchangeRateMode,
-      manualRates: correctRates(parsed.manualRates ?? DEFAULT_SETTINGS.manualRates),
-      showClients: parsed.showClients ?? DEFAULT_SETTINGS.showClients,
-      showTrips: parsed.showTrips ?? DEFAULT_SETTINGS.showTrips,
-      showStudios: parsed.showStudios ?? DEFAULT_SETTINGS.showStudios,
-      theme: parsed.theme ?? DEFAULT_SETTINGS.theme,
-      autoBackup: parsed.autoBackup ?? DEFAULT_SETTINGS.autoBackup,
-    };
+    return parseSettings(JSON.parse(raw) as Partial<AppSettings>);
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
-function saveSettings(s: AppSettings) {
+function saveLocal(s: AppSettings) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+}
+
+async function fetchRemoteSettings(): Promise<AppSettings | null> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    const res = await fetch("/api/settings", { credentials: "include" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data) return null;
+    return parseSettings(data as Partial<AppSettings>);
+  } catch {
+    return null;
+  }
+}
+
+async function pushRemoteSettings(s: AppSettings) {
+  try {
+    await fetch("/api/settings", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(s),
+    });
   } catch {}
 }
 
@@ -91,10 +115,11 @@ const SettingsContext = createContext<SettingsContextValue>({
 });
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(loadSettings);
+  const [settings, setSettings] = useState<AppSettings>(loadLocalSettings);
   const [liveRates, setLiveRates] = useState<Record<string, number> | null>(null);
   const [liveRatesLoading, setLiveRatesLoading] = useState(false);
   const fetchingRef = useRef(false);
+  const syncedRef = useRef(false);
 
   const fetchRates = useCallback(async () => {
     if (fetchingRef.current) return;
@@ -119,7 +144,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     fetchRates();
-
     function onVisible() {
       if (document.visibilityState === "visible") fetchRates();
     }
@@ -137,10 +161,33 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
   }, [settings.theme]);
 
+  useEffect(() => {
+    if (syncedRef.current) return;
+    fetchRemoteSettings().then((remote) => {
+      if (!remote) return;
+      syncedRef.current = true;
+      setSettings((local) => {
+        const merged = remote;
+        saveLocal(merged);
+        return merged;
+      });
+    });
+  }, []);
+
   function updateSettings(patch: Partial<AppSettings>) {
     setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      saveSettings(next);
+      let next = { ...prev, ...patch };
+
+      if (
+        patch.exchangeRateMode === "manual" &&
+        prev.exchangeRateMode === "auto" &&
+        liveRates
+      ) {
+        next = { ...next, manualRates: { ...liveRates } };
+      }
+
+      saveLocal(next);
+      pushRemoteSettings(next);
       return next;
     });
   }

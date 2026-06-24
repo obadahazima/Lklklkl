@@ -8,10 +8,12 @@ import dashboardRouter from "./dashboard";
 import aiRouter from "./ai";
 import backupRouter from "./backup";
 import restoreRouter from "./restore";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(settingsRouter);
 router.use(clientsRouter);
 router.use(tripsRouter);
 router.use(studiosRouter);
