@@ -125,12 +125,7 @@ function SignInPage() {
         fallbackRedirectUrl={basePath || "/"}
         appearance={{
           elements: {
-            formField__emailAddress: "!hidden",
-            formField__identifier: "!hidden",
             formField__phoneNumber: "!hidden",
-            formButtonPrimary: "!hidden",
-            dividerRow: "!hidden",
-            footer: "!hidden",
           },
         }}
       />
@@ -148,8 +143,7 @@ function SignUpPage() {
         fallbackRedirectUrl={basePath || "/"}
         appearance={{
           elements: {
-            socialButtonsRoot: "!hidden",
-            dividerRow: "!hidden",
+            formField__phoneNumber: "!hidden",
           },
         }}
       />
