@@ -126,7 +126,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     fetchingRef.current = true;
     setLiveRatesLoading(true);
     try {
-      const res = await fetch("/api/exchange-rates", { credentials: "include" });
+     const res = await fetch(`/api/exchange-rates?base=${settings.primaryCurrency}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json() as Record<string, number>;
         setLiveRates({ ...data, AED: 1 });
