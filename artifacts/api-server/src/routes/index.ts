@@ -9,7 +9,7 @@ import aiRouter from "./ai";
 import backupRouter from "./backup";
 import restoreRouter from "./restore";
 import settingsRouter from "./settings";
-
+import exchangeRatesRouter from "./exchange-rates.js";
 const router: IRouter = Router();
 
 router.use(healthRouter);
@@ -22,5 +22,6 @@ router.use(dashboardRouter);
 router.use(aiRouter);
 router.use(backupRouter);
 router.use(restoreRouter);
+router.use(exchangeRatesRouter);
 
 export default router;
