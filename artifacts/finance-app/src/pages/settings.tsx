@@ -1,3 +1,4 @@
+import { customFetch } from "@workspace/api-client-react";
 import { useState, useEffect, useRef } from "react";
 import { useSettings } from "@/contexts/settings-context";
 import { tr, AVAILABLE_CURRENCIES, getCurrencyName } from "@/lib/i18n";
@@ -28,7 +29,7 @@ export default function Settings() {
     if (autoBackupRunningRef.current) return;
     autoBackupRunningRef.current = true;
     try {
-      const res = await fetch("/api/backup", { credentials: "include" });
+     const res = await customFetch("/api/backup", { credentials: "include" });
       if (!res.ok) throw new Error("failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -75,7 +76,7 @@ export default function Settings() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/restore", { method: "POST", credentials: "include", body: formData });
+     const res = await customFetch("/api/restore", { method: "POST", credentials: "include", body: formData });
       if (!res.ok) throw new Error("failed");
       const data = await res.json() as { restored: Record<string, number> };
       const r = data.restored;
