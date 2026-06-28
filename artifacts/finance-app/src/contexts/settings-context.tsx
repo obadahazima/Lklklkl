@@ -74,6 +74,9 @@ function loadLocalSettings(): AppSettings {
   }
 }
 
+function saveLocal(s: AppSettings) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+}
 async function fetchRemoteSettings(): Promise<AppSettings | null> {
   try {
     const data = await customFetch<AppSettings | null>("/api/settings", { credentials: "include" });
