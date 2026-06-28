@@ -21,6 +21,9 @@ import StudioDetail from "@/pages/studio-detail";
 import Chat from "@/pages/chat";
 import Settings from "@/pages/settings";
 import Landing from "@/pages/landing";
+import { setBaseUrl } from "@workspace/api-client-react";
+
+setBaseUrl(import.meta.env.VITE_API_URL ?? "");
 
 const queryClient = new QueryClient({
   defaultOptions: {
