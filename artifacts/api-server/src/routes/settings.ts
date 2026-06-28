@@ -8,7 +8,7 @@ const router = Router();
 
 router.get("/settings", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).auth.userId as string;
+    const userId = (req as any).auth?.userId ?? (req as any).userId as string;
     const rows = await db
       .select()
       .from(userSettingsTable)
