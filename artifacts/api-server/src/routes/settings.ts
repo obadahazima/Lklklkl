@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/api/settings", requireAuth, async (req, res) => {
+router.get("/settings", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).auth.userId as string;
     const rows = await db
@@ -23,7 +23,7 @@ router.get("/api/settings", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/api/settings", requireAuth, async (req, res) => {
+router.put("/settings", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).auth.userId as string;
     const settings = req.body;
