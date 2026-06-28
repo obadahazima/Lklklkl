@@ -23,7 +23,7 @@ import Settings from "@/pages/settings";
 import Landing from "@/pages/landing";
 import { setBaseUrl } from "@workspace/api-client-react";
 
-setBaseUrl(import.meta.env.VITE_API_URL ?? "");
+setBaseUrl("https://workspaceapi-server-production-85e3.up.railway.app");
 
 const queryClient = new QueryClient({
   defaultOptions: {
