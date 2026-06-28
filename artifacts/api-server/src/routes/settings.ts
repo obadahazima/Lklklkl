@@ -35,8 +35,9 @@ router.put("/settings", requireAuth, async (req, res) => {
         set: { settings },
       });
     return res.json({ ok: true });
-  } catch (err) {
-    return res.status(500).json({ error: "Failed to save settings" });
+ } catch (err) {
+    console.error("Settings save error:", err);
+    return res.status(500).json({ error: "Failed to save settings", details: String(err) });
   }
 });
 
