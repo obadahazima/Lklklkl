@@ -115,14 +115,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const fetchingRef = useRef(false);
   const syncedRef = useRef(false);
 
-  const fetchRates = useCallback(async () => {
+ const fetchRates = useCallback(async () => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     setLiveRatesLoading(true);
     try {
-    const data = await customFetch<Record<string, number>>(`/api/exchange-rates?base=${settings.primaryCurrency}`, { credentials: "include" });
-setLiveRates({ ...data, AED: 1 });
-      }
+      const data = await customFetch<Record<string, number>>(`/api/exchange-rates?base=${settings.primaryCurrency}`, { credentials: "include" });
+      setLiveRates({ ...data, AED: 1 });
     } catch {
     } finally {
       setLiveRatesLoading(false);
