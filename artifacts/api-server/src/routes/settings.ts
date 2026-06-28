@@ -32,7 +32,7 @@ router.put("/settings", requireAuth, async (req, res) => {
       .values({ userId, settings })
       .onConflictDoUpdate({
         target: userSettingsTable.userId,
-        set: { settings, updatedAt: new Date() },
+        set: { settings },
       });
     return res.json({ ok: true });
   } catch (err) {
