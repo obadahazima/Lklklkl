@@ -74,15 +74,9 @@ function loadLocalSettings(): AppSettings {
   }
 }
 
-function saveLocal(s: AppSettings) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
-}
-
 async function fetchRemoteSettings(): Promise<AppSettings | null> {
   try {
-    const res = await customFetch("/api/settings", { credentials: "include" });
-    if (!res.ok) return null;
-    const data = await res.json();
+    const data = await customFetch<AppSettings | null>("/api/settings", { credentials: "include" });
     if (!data) return null;
     return parseSettings(data as Partial<AppSettings>);
   } catch {
@@ -92,7 +86,7 @@ async function fetchRemoteSettings(): Promise<AppSettings | null> {
 
 async function pushRemoteSettings(s: AppSettings) {
   try {
-    await customFetch("/api/settings", {
+    await customFetch<{ ok: boolean }>("/api/settings", {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -100,7 +94,6 @@ async function pushRemoteSettings(s: AppSettings) {
     });
   } catch {}
 }
-
 interface SettingsContextValue {
   settings: AppSettings;
   updateSettings: (patch: Partial<AppSettings>) => void;
@@ -127,10 +120,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     fetchingRef.current = true;
     setLiveRatesLoading(true);
     try {
-     const res = await customFetch(`/api/exchange-rates?base=${settings.primaryCurrency}`, { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json() as Record<string, number>;
-        setLiveRates({ ...data, AED: 1 });
+    const data = await customFetch<Record<string, number>>(`/api/exchange-rates?base=${settings.primaryCurrency}`, { credentials: "include" });
+setLiveRates({ ...data, AED: 1 });
       }
     } catch {
     } finally {
