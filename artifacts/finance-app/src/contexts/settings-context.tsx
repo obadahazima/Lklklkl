@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { Lang } from "@/lib/i18n";
+import { customFetch } from "@workspace/api-client-react";
 
 export type AppTheme = "light" | "dark";
 
@@ -79,7 +80,7 @@ function saveLocal(s: AppSettings) {
 
 async function fetchRemoteSettings(): Promise<AppSettings | null> {
   try {
-    const res = await fetch("/api/settings", { credentials: "include" });
+    const res = await customFetch("/api/settings", { credentials: "include" });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data) return null;
@@ -91,7 +92,7 @@ async function fetchRemoteSettings(): Promise<AppSettings | null> {
 
 async function pushRemoteSettings(s: AppSettings) {
   try {
-    await fetch("/api/settings", {
+    await customFetch("/api/settings", {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -126,7 +127,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     fetchingRef.current = true;
     setLiveRatesLoading(true);
     try {
-     const res = await fetch(`/api/exchange-rates?base=${settings.primaryCurrency}`, { credentials: "include" });
+     const res = await customFetch(`/api/exchange-rates?base=${settings.primaryCurrency}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json() as Record<string, number>;
         setLiveRates({ ...data, AED: 1 });
