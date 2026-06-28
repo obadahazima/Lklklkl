@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
+import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useAuth } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Toaster } from "@/components/ui/toaster";
@@ -21,7 +22,6 @@ import StudioDetail from "@/pages/studio-detail";
 import Chat from "@/pages/chat";
 import Settings from "@/pages/settings";
 import Landing from "@/pages/landing";
-import { setBaseUrl } from "@workspace/api-client-react";
 
 setBaseUrl("https://workspaceapi-server-production-85e3.up.railway.app");
 
@@ -98,6 +98,17 @@ const clerkAppearance = {
     main: "gap-4",
   },
 };
+
+function AuthTokenSetter() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+
+  return null;
+}
 
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
@@ -252,6 +263,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <SettingsProvider>
+          <AuthTokenSetter />
           <ClerkQueryClientCacheInvalidator />
           <TooltipProvider>
             <AppRoutes />
