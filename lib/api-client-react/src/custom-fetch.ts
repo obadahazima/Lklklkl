@@ -15,7 +15,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 // Module-level configuration
 // ---------------------------------------------------------------------------
 
-let _baseUrl: string | null = null;
+let _baseUrl: string | null = "https://workspaceapi-server-production-85e3.up.railway.app";
 let _authTokenGetter: AuthTokenGetter | null = null;
 
 /**
