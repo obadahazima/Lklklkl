@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireAuth } from "../middlewares/requireAuth.js";
 import { db } from "@workspace/db";
-import { userSettingsTable } from "@workspace/db/schema";
+import { userSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const router = Router();
 
 router.get("/settings", requireAuth, async (req, res) => {
   try {
-     const userId = (req as any).auth.userId as string;
+    const userId = req.userId;
     const rows = await db
       .select()
       .from(userSettingsTable)
@@ -25,7 +25,7 @@ router.get("/settings", requireAuth, async (req, res) => {
 
 router.put("/settings", requireAuth, async (req, res) => {
   try {
-   const userId = (req as any).auth?.userId ?? (req as any).userId as string;
+    const userId = req.userId;
     const settings = req.body;
     await db
       .insert(userSettingsTable)
@@ -35,9 +35,8 @@ router.put("/settings", requireAuth, async (req, res) => {
         set: { settings },
       });
     return res.json({ ok: true });
- } catch (err) {
-    console.error("Settings save error:", err);
-    return res.status(500).json({ error: "Failed to save settings", details: String(err) });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to save settings" });
   }
 });
 
