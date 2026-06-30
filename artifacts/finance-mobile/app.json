@@ -21,12 +21,27 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
+  [
+    "expo-router",
+    {
+      "origin": "https://replit.com/"
+    }
+  ],
+  "expo-font",
+  "expo-web-browser",
+  [
+    "expo-build-properties",
+    {
+      "android": {
+        "packagingOptions": {
+          "exclude": [
+            "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+          ]
         }
-      ],
+      }
+    }
+  ]
+]
       "expo-font",
       "expo-web-browser"
     ],
