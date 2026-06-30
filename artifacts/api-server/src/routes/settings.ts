@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireAuth } from "../middlewares/requireAuth.js";
 import { db } from "@workspace/db";
-import { userSettingsTable } from "@workspace/db/schema";
+import { userSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/api/settings", requireAuth, async (req, res) => {
+router.get("/settings", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).auth.userId as string;
+    const userId = req.userId;
     const rows = await db
       .select()
       .from(userSettingsTable)
@@ -23,16 +23,16 @@ router.get("/api/settings", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/api/settings", requireAuth, async (req, res) => {
+router.put("/settings", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).auth.userId as string;
+    const userId = req.userId;
     const settings = req.body;
     await db
       .insert(userSettingsTable)
       .values({ userId, settings })
       .onConflictDoUpdate({
         target: userSettingsTable.userId,
-        set: { settings, updatedAt: new Date() },
+        set: { settings },
       });
     return res.json({ ok: true });
   } catch (err) {

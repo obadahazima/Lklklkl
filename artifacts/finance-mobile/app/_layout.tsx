@@ -19,7 +19,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SettingsProvider, useSettings } from "@/contexts/SettingsContext";
 
-setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
+setBaseUrl("https://workspaceapi-server-production-85e3.up.railway.app");
 
 SplashScreen.preventAutoHideAsync();
 

@@ -1,3 +1,5 @@
+import { useAuth } from "@clerk/react";
+import { customFetch } from "@workspace/api-client-react";
 import { useState, useEffect, useRef } from "react";
 import { useSettings } from "@/contexts/settings-context";
 import { tr, AVAILABLE_CURRENCIES, getCurrencyName } from "@/lib/i18n";
@@ -14,6 +16,7 @@ export default function Settings() {
   const { settings, updateSettings } = useSettings();
   const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, showStudios, theme } = settings;
   const { toast } = useToast();
+  const { getToken } = useAuth();
   const t = (k: Parameters<typeof tr>[1], vars?: Record<string, string>) => tr(language, k, vars);
 
   const [localRates, setLocalRates] = useState<Record<string, number>>({ ...manualRates });
@@ -28,7 +31,10 @@ export default function Settings() {
     if (autoBackupRunningRef.current) return;
     autoBackupRunningRef.current = true;
     try {
-      const res = await fetch("/api/backup", { credentials: "include" });
+     const token = await getToken();
+const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.app/api/backup", {
+  headers: { Authorization: `Bearer ${token}` },
+});
       if (!res.ok) throw new Error("failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -75,7 +81,12 @@ export default function Settings() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/restore", { method: "POST", credentials: "include", body: formData });
+    const token = await getToken();
+const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.app/api/restore", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` },
+  body: formData,
+});
       if (!res.ok) throw new Error("failed");
       const data = await res.json() as { restored: Record<string, number> };
       const r = data.restored;
