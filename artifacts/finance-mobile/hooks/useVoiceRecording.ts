@@ -1,5 +1,11 @@
 import { useRef, useState, useCallback } from "react";
 import { Platform } from "react-native";
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from "expo-audio";
 import { transcribeVoice } from "@workspace/api-client-react";
 
 export type VoiceRecordingState = "idle" | "recording" | "transcribing";
@@ -39,7 +45,7 @@ export function useVoiceRecording(lang?: string) {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const nativeRecordingRef = useRef<any>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const webMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const webStreamRef = useRef<MediaStream | null>(null);
   const webChunksRef = useRef<Blob[]>([]);
@@ -121,12 +127,11 @@ export function useVoiceRecording(lang?: string) {
       }
     } else {
       try {
-        const { Audio } = await import("expo-av");
-        const perm = await Audio.requestPermissionsAsync();
+        const perm = await AudioModule.requestRecordingPermissionsAsync();
         if (!perm.granted) { setError("permission_denied"); return false; }
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-        nativeRecordingRef.current = recording;
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await audioRecorder.prepareToRecordAsync();
+        audioRecorder.record();
         setState("recording");
         startTimer();
         return true;
@@ -185,16 +190,16 @@ export function useVoiceRecording(lang?: string) {
         return null;
       }
     } else {
-      const recording = nativeRecordingRef.current;
-      nativeRecordingRef.current = null;
-      if (!recording) { setState("idle"); return null; }
       try {
-        const { Audio } = await import("expo-av");
-        const { FileSystem } = await import("expo-file-system") as any;
+        // Note: expo-file-system v19 (SDK 54+) moved the old function-based
+        // API (readAsStringAsync, EncodingType, etc.) to "expo-file-system/legacy".
+        // The default "expo-file-system" import now returns the new
+        // class-based API (File/Directory/Paths) instead.
+        const FileSystem: any = await import("expo-file-system/legacy");
         setState("transcribing");
-        await recording.stopAndUnloadAsync();
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-        const uri = recording.getURI();
+        await audioRecorder.stop();
+        await setAudioModeAsync({ allowsRecording: false });
+        const uri = audioRecorder.uri;
         if (!uri) { setState("idle"); setError("record_failed"); return null; }
         const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
         if (audioBase64.length > 18_000_000) { setState("idle"); setError("recording_too_long"); return null; }
@@ -226,15 +231,10 @@ export function useVoiceRecording(lang?: string) {
       webStreamRef.current = null;
       webChunksRef.current = [];
     } else {
-      const recording = nativeRecordingRef.current;
-      nativeRecordingRef.current = null;
-      if (recording) {
-        try {
-          const { Audio } = await import("expo-av");
-          await recording.stopAndUnloadAsync();
-          await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-        } catch {}
-      }
+      try {
+        await audioRecorder.stop();
+        await setAudioModeAsync({ allowsRecording: false });
+      } catch {}
     }
 
     setState("idle");
