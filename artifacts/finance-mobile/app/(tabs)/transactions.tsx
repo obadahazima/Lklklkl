@@ -1,6 +1,7 @@
 import {
   useListTransactions,
   useCreateTransaction,
+  useUpdateTransaction,
   useDeleteTransaction,
   useListClients,
   useListTrips,
@@ -168,6 +169,111 @@ export default function TransactionsScreen() {
   const { data: studios } = useListStudios();
   const { mutateAsync: createTx, isPending: creating } = useCreateTransaction();
   const { mutateAsync: deleteTx } = useDeleteTransaction();
+  const { mutateAsync: updateTx, isPending: updating } = useUpdateTransaction();
+
+  const [editingTx, setEditingTx] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState<FormState>(() => emptyForm(primaryCurrency));
+  const [editPicker, setEditPicker] = useState<{
+    title: string;
+    options: { value: string; label: string }[];
+    selected: string;
+    onSelect: (v: string) => void;
+  } | null>(null);
+
+  function openEdit(item: any) {
+    setEditingTx(item);
+    setEditForm({
+      type: item.type,
+      amount: String(item.amount),
+      currency: item.currency,
+      clientId: item.clientId != null ? String(item.clientId) : "",
+      tripId: item.tripId != null ? String(item.tripId) : "",
+      studioId: item.studioId != null ? String(item.studioId) : "",
+      description: item.description ?? "",
+      status: item.status,
+      date: String(item.date).slice(0, 10),
+    });
+  }
+
+  const handleUpdate = async () => {
+    if (!editingTx) return;
+    const amt = parseFloat(editForm.amount);
+    if (!amt || amt <= 0) {
+      Alert.alert(t("saveError"), t("saveErrorDesc"));
+      return;
+    }
+    try {
+      await updateTx({
+        id: editingTx.id,
+        data: {
+          type: editForm.type,
+          amount: amt,
+          currency: editForm.currency,
+          clientId: editForm.clientId ? parseInt(editForm.clientId, 10) : null,
+          tripId: editForm.tripId ? parseInt(editForm.tripId, 10) : null,
+          studioId: editForm.studioId ? parseInt(editForm.studioId, 10) : null,
+          description: editForm.description || null,
+          status: editForm.status,
+          date: editForm.date,
+        },
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setEditingTx(null);
+      qc.invalidateQueries({ queryKey: getListTransactionsQueryKey({}) });
+      qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+      refetch();
+    } catch {
+      Alert.alert(t("saveError"), t("updateErrorDesc"));
+    }
+  };
+
+  const openEditCurrencyPicker = () =>
+    setEditPicker({
+      title: t("currencyLabel"),
+      selected: editForm.currency,
+      options: settings.currencies.map((code) => ({
+        value: code,
+        label: `${getCurrencyName(code, language)} (${code})`,
+      })),
+      onSelect: (v) => setEditForm((f) => ({ ...f, currency: v })),
+    });
+
+  const openEditClientPicker = () =>
+    setEditPicker({
+      title: t("clientLabel"),
+      selected: editForm.clientId,
+      options: [
+        { value: "", label: t("noClient") },
+        ...(clients ?? []).map((c) => ({ value: String(c.id), label: c.name })),
+      ],
+      onSelect: (v) => setEditForm((f) => ({ ...f, clientId: v })),
+    });
+
+  const openEditTripPicker = () =>
+    setEditPicker({
+      title: t("tripLabel"),
+      selected: editForm.tripId,
+      options: [
+        { value: "", label: t("noTripOption") },
+        ...(trips ?? []).map((tp) => ({ value: String(tp.id), label: tp.name })),
+      ],
+      onSelect: (v) => setEditForm((f) => ({ ...f, tripId: v })),
+    });
+
+  const openEditStudioPicker = () =>
+    setEditPicker({
+      title: t("studioLabel"),
+      selected: editForm.studioId,
+      options: [
+        { value: "", label: t("noStudioOption") },
+        ...(studios ?? []).map((s) => ({ value: String(s.id), label: s.name })),
+      ],
+      onSelect: (v) => setEditForm((f) => ({ ...f, studioId: v })),
+    });
+
+  const editClientName = clients?.find((c) => String(c.id) === editForm.clientId)?.name;
+  const editTripName = trips?.find((tp) => String(tp.id) === editForm.tripId)?.name;
+  const editStudioName = studios?.find((s) => String(s.id) === editForm.studioId)?.name;
 
   const parseMutation = useParseVoiceInput({
     mutation: {
@@ -743,6 +849,13 @@ export default function TransactionsScreen() {
                 </Text>
                 <Text style={[styles.txCurrency, { color: colors.mutedForeground }]}>{item.currency}</Text>
               </View>
+              <Pressable
+                onPress={() => openEdit(item)}
+                hitSlop={10}
+                style={{ marginStart: 8, padding: 4 }}
+              >
+                <Feather name="edit-2" size={16} color={colors.mutedForeground} />
+              </Pressable>
             </Pressable>
           )}
         />
@@ -1174,6 +1287,194 @@ export default function TransactionsScreen() {
             </View>
           </KeyboardAvoidingView>
         </View>
+      </Modal>
+
+      {/* Edit modal */}
+      <Modal visible={!!editingTx} animationType="slide" transparent presentationStyle="overFullScreen">
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.modalHeader}>
+                <Pressable
+                  onPress={() => setEditingTx(null)}
+                  style={[styles.backBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                >
+                  <Feather name={language === "ar" ? "arrow-right" : "arrow-left"} size={16} color={colors.foreground} />
+                  <Text style={[styles.backBtnText, { color: colors.foreground }]}>
+                    {language === "ar" ? "رجوع" : "Back"}
+                  </Text>
+                </Pressable>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>{t("editTransaction")}</Text>
+                <View style={{ width: 72 }} />
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[styles.fieldLabel, { color: colors.foreground, marginTop: 0 }]}>{t("typeLabel")}</Text>
+                <View style={styles.segRow}>
+                  {TX_TYPES.map((ty) => (
+                    <Pressable
+                      key={ty}
+                      onPress={() => setEditForm((f) => ({ ...f, type: ty }))}
+                      style={[
+                        styles.segBtn,
+                        { borderColor: colors.border },
+                        editForm.type === ty && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={[styles.segText, editForm.type === ty && { color: "#fff" }]}>
+                        {ty === "income"
+                          ? t("typeIncome")
+                          : ty === "expense"
+                          ? t("typeExpense")
+                          : ty === "payment"
+                          ? t("typePayment")
+                          : t("typeReceipt")}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("amountLabel")}</Text>
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  value={editForm.amount}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, amount: v }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colors.mutedForeground}
+                  textAlign="right"
+                />
+
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("currencyLabel")}</Text>
+                <Pressable
+                  onPress={openEditCurrencyPicker}
+                  style={[styles.selectBtn, { borderColor: colors.border }]}
+                >
+                  <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.selectText, { color: colors.foreground }]}>
+                    {getCurrencyName(editForm.currency, language)} ({editForm.currency})
+                  </Text>
+                </Pressable>
+
+                {showClients && (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("clientLabel")}</Text>
+                    <Pressable onPress={openEditClientPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
+                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                      <Text style={[styles.selectText, { color: editClientName ? colors.foreground : colors.mutedForeground }]}>
+                        {editClientName ?? t("noClient")}
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+
+                {showTrips && (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("tripLabel")}</Text>
+                    <Pressable onPress={openEditTripPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
+                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                      <Text style={[styles.selectText, { color: editTripName ? colors.foreground : colors.mutedForeground }]}>
+                        {editTripName ?? t("noTripOption")}
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+
+                {showStudios && (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("studioLabel")}</Text>
+                    <Pressable onPress={openEditStudioPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
+                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                      <Text style={[styles.selectText, { color: editStudioName ? colors.foreground : colors.mutedForeground }]}>
+                        {editStudioName ?? t("noStudioOption")}
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("statusLabel")}</Text>
+                <View style={styles.segRow}>
+                  {(["pending", "settled"] as const).map((st) => (
+                    <Pressable
+                      key={st}
+                      onPress={() => setEditForm((f) => ({ ...f, status: st }))}
+                      style={[
+                        styles.segBtn,
+                        { borderColor: colors.border },
+                        editForm.status === st && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={[styles.segText, editForm.status === st && { color: "#fff" }]}>
+                        {st === "pending" ? t("statusPending") : t("statusSettled")}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("dateLabel")}</Text>
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  value={editForm.date}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, date: v }))}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.mutedForeground}
+                  textAlign="left"
+                />
+
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("descriptionLabel")}</Text>
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  value={editForm.description}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, description: v }))}
+                  placeholder={language === "ar" ? "وصف اختياري" : "Optional description"}
+                  placeholderTextColor={colors.mutedForeground}
+                  textAlign="right"
+                />
+
+                <Pressable
+                  style={[styles.saveBtn, { backgroundColor: colors.primary }, (!editForm.amount || updating) && { opacity: 0.5 }]}
+                  onPress={handleUpdate}
+                  disabled={!editForm.amount || updating}
+                >
+                  {updating ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t("save")}</Text>}
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* Edit picker modal */}
+      <Modal visible={!!editPicker} animationType="slide" transparent presentationStyle="overFullScreen">
+        <Pressable style={styles.modalOverlay} onPress={() => setEditPicker(null)}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, maxHeight: "70%" }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>{editPicker?.title}</Text>
+              <Pressable onPress={() => setEditPicker(null)}>
+                <Feather name="x" size={22} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+            <ScrollView>
+              {editPicker?.options.map((opt) => {
+                const active = opt.value === editPicker.selected;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      editPicker.onSelect(opt.value);
+                      setEditPicker(null);
+                    }}
+                    style={[styles.pickerRow, { borderBottomColor: colors.border }]}
+                  >
+                    <Text style={[styles.pickerRowText, { color: colors.foreground }, active && { color: colors.primary, fontWeight: "700" }]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
       </Modal>
 
       {/* Generic picker modal */}
