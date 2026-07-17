@@ -1,12 +1,18 @@
 import { useState } from "react";
-import { useListClients, useCreateClient, useDeleteClient, getListClientsQueryKey } from "@workspace/api-client-react";
+import {
+  useListClients,
+  useListTransactions,
+  useCreateClient,
+  useDeleteClient,
+  getListClientsQueryKey,
+} from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Plus, Users, ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useSettings } from "@/contexts/settings-context";
+import { useSettings, toAedFrontend, convertToPrimary } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import { cn, formatAmount } from "@/lib/utils";
 
 export default function Clients() {
   const [showAdd, setShowAdd] = useState(false);
@@ -14,11 +20,42 @@ export default function Clients() {
   const [phone, setPhone] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { settings } = useSettings();
-  const { language } = settings;
+  const { settings, effectiveRates } = useSettings();
+  const { language, primaryCurrency } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
   const { data: clients, isLoading } = useListClients();
+  const { data: txs } = useListTransactions({});
+
+  // Balance per client, converted to the primary currency (respects
+  // exchange-rate mode: auto live rates or manual rates from settings).
+  const balancesByClient = new Map<number, number>();
+  if (txs) {
+    const byClient = new Map<number, typeof txs>();
+    for (const tx of txs) {
+      if (tx.clientId == null) continue;
+      const list = byClient.get(tx.clientId) ?? [];
+      list.push(tx);
+      byClient.set(tx.clientId, list);
+    }
+    for (const [clientId, clientTxs] of byClient) {
+      const currencies = [...new Set(clientTxs.map((tx) => tx.currency))];
+      let totalPrimary = 0;
+      for (const currency of currencies) {
+        const currTxs = clientTxs.filter((tx) => tx.currency === currency);
+        const paid = currTxs
+          .filter((tx) => tx.type === "expense" || tx.type === "payment")
+          .reduce((s, tx) => s + tx.amount, 0);
+        const received = currTxs
+          .filter((tx) => tx.type === "income" || tx.type === "receipt")
+          .reduce((s, tx) => s + tx.amount, 0);
+        const openBalance = received - paid;
+        const inAed = toAedFrontend(openBalance, currency, effectiveRates);
+        totalPrimary += convertToPrimary(inAed, primaryCurrency, effectiveRates);
+      }
+      balancesByClient.set(clientId, Math.round(totalPrimary * 100) / 100);
+    }
+  }
 
   const createMutation = useCreateClient({
     mutation: {
@@ -110,7 +147,9 @@ export default function Clients() {
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {clients?.map((client) => (
+            {clients?.map((client) => {
+              const balance = balancesByClient.get(client.id) ?? 0;
+              return (
               <div key={client.id} className="flex items-center justify-between p-4" data-testid={`client-row-${client.id}`}>
                 <Link href={`/clients/${client.id}`}>
                   <div className="flex items-center gap-3 cursor-pointer hover:opacity-80">
@@ -123,23 +162,36 @@ export default function Clients() {
                     </div>
                   </div>
                 </Link>
-                <div className="flex items-center gap-2">
-                  <Link href={`/clients/${client.id}`}>
-                    <button className="text-primary text-xs font-medium flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-primary/10">
-                      {t("statement")}
-                      <ChevronNav className="w-3 h-3" />
+                <div className="flex flex-col items-end gap-1.5">
+                  {balance !== 0 && (
+                    <span
+                      className={cn("text-xs font-bold whitespace-nowrap", balance > 0 ? "text-green-600" : "text-red-600")}
+                      data-testid={`client-balance-${client.id}`}
+                    >
+                      {balance > 0
+                        ? (language === "ar" ? "له " : "") + formatAmount(balance, primaryCurrency)
+                        : (language === "ar" ? "عليه " : "-") + formatAmount(balance, primaryCurrency)}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Link href={`/clients/${client.id}`}>
+                      <button className="text-primary text-xs font-medium flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-primary/10">
+                        {t("statement")}
+                        <ChevronNav className="w-3 h-3" />
+                      </button>
+                    </Link>
+                    <button
+                      onClick={() => window.confirm(t("deleteClientConfirm")) && deleteMutation.mutate({ id: client.id })}
+                      className="text-muted-foreground hover:text-destructive p-1"
+                      data-testid={`btn-delete-client-${client.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
-                  </Link>
-                  <button
-                    onClick={() => window.confirm(t("deleteClientConfirm")) && deleteMutation.mutate({ id: client.id })}
-                    className="text-muted-foreground hover:text-destructive p-1"
-                    data-testid={`btn-delete-client-${client.id}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

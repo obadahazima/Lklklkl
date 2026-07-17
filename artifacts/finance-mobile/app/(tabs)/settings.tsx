@@ -1,9 +1,15 @@
-import { useClerk } from "@clerk/expo";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth, useClerk } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import * as Sharing from "expo-sharing";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
+  type AppStateStatus,
   Platform,
   Pressable,
   ScrollView,
@@ -19,18 +25,169 @@ import { useSettings, AVAILABLE_CURRENCIES } from "@/contexts/SettingsContext";
 import type { AppTheme } from "@/contexts/SettingsContext";
 
 const MAX_CURRENCIES = 5;
+const API_BASE_URL = "https://workspaceapi-server-production-85e3.up.railway.app";
+const AUTO_BACKUP_KEY = "finance_app_last_auto_backup";
+const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { signOut } = useClerk();
+  const { getToken } = useAuth();
   const router = useRouter();
   const { settings, updateSettings } = useSettings();
-  const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, showStudios, theme } = settings;
+  const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, showStudios, theme, autoBackup } = settings;
 
   const [localRates, setLocalRates] = useState<Record<string, number>>({ ...manualRates });
 
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [lastAutoBackup, setLastAutoBackup] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const autoBackupRunningRef = useRef(false);
+  const bannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showBanner(msg: string) {
+    setBanner(msg);
+    if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
+    bannerTimeoutRef.current = setTimeout(() => setBanner(null), 3000);
+  }
+
+  useEffect(() => {
+    AsyncStorage.getItem(AUTO_BACKUP_KEY).then((v) => {
+      if (v) setLastAutoBackup(v);
+    });
+  }, []);
+
+  // Downloads the backup .xlsx straight to disk and returns its local uri.
+  const downloadBackupFile = useCallback(async (): Promise<string> => {
+    const token = await getToken();
+    if (!token) throw new Error("no_token");
+    const date = new Date().toISOString().slice(0, 10);
+    const fileUri = `${FileSystem.cacheDirectory}backup-${date}-${Date.now()}.xlsx`;
+    const result = await FileSystem.downloadAsync(`${API_BASE_URL}/api/backup`, fileUri, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (result.status !== 200) throw new Error(`http_${result.status}`);
+    return result.uri;
+  }, [getToken]);
+
+  const runAutoBackupIfDue = useCallback(async () => {
+    if (!autoBackup) return;
+    if (autoBackupRunningRef.current) return;
+    const last = lastAutoBackup ? new Date(lastAutoBackup).getTime() : 0;
+    if (Date.now() - last < BACKUP_INTERVAL_MS) return;
+    autoBackupRunningRef.current = true;
+    try {
+      await downloadBackupFile();
+      const now = new Date().toISOString();
+      await AsyncStorage.setItem(AUTO_BACKUP_KEY, now);
+      setLastAutoBackup(now);
+      showBanner(isAr ? "تم إنشاء نسخة احتياطية تلقائية ✓" : "Automatic backup created ✓");
+    } catch {
+      // Auto backups fail silently — the user can always back up manually.
+    } finally {
+      autoBackupRunningRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBackup, lastAutoBackup, downloadBackupFile]);
+
+  useEffect(() => {
+    runAutoBackupIfDue();
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") runAutoBackupIfDue();
+    });
+    return () => sub.remove();
+  }, [runAutoBackupIfDue]);
+
+  async function handleManualBackup() {
+    setBackupLoading(true);
+    try {
+      const uri = await downloadBackupFile();
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          dialogTitle: isAr ? "مشاركة النسخة الاحتياطية" : "Share backup",
+        });
+      }
+      const now = new Date().toISOString();
+      await AsyncStorage.setItem(AUTO_BACKUP_KEY, now);
+      setLastAutoBackup(now);
+    } catch {
+      Alert.alert(
+        isAr ? "خطأ" : "Error",
+        isAr ? "فشل تحميل النسخة الاحتياطية" : "Backup failed"
+      );
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
+  async function handleRestore() {
+    let picked: DocumentPicker.DocumentPickerAsset | null = null;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel",
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      picked = result.assets[0];
+    } catch {
+      Alert.alert(isAr ? "خطأ" : "Error", isAr ? "تعذر اختيار الملف" : "Could not pick the file");
+      return;
+    }
+
+    const file = picked;
+    Alert.alert(
+      isAr ? "استعادة نسخة احتياطية" : "Restore backup",
+      isAr
+        ? "سيتم استبدال البيانات الحالية ببيانات الملف. متابعة؟"
+        : "This will replace your current data with the file's data. Continue?",
+      [
+        { text: isAr ? "إلغاء" : "Cancel", style: "cancel" },
+        {
+          text: isAr ? "استعادة" : "Restore",
+          style: "destructive",
+          onPress: async () => {
+            setRestoreLoading(true);
+            try {
+              const token = await getToken();
+              const formData = new FormData();
+              formData.append("file", {
+                uri: file.uri,
+                name: file.name ?? "backup.xlsx",
+                type: file.mimeType ?? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              } as unknown as Blob);
+
+              const res = await fetch(`${API_BASE_URL}/api/restore`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+              });
+              if (!res.ok) throw new Error(`http_${res.status}`);
+
+              Alert.alert(
+                isAr ? "تم" : "Done",
+                isAr ? "تمت استعادة البيانات بنجاح" : "Data restored successfully"
+              );
+            } catch {
+              Alert.alert(
+                isAr ? "خطأ" : "Error",
+                isAr ? "فشلت عملية الاستعادة" : "Restore failed"
+              );
+            } finally {
+              setRestoreLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -93,6 +250,13 @@ export default function SettingsScreen() {
           {isAr ? "الإعدادات" : "Settings"}
         </Text>
       </View>
+
+      {banner && (
+        <View style={[styles.banner, { backgroundColor: colors.primary }]}>
+          <Feather name="check-circle" size={15} color="#fff" />
+          <Text style={styles.bannerText}>{banner}</Text>
+        </View>
+      )}
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 100, gap: 16 }}
@@ -371,6 +535,64 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        {/* Backup */}
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.sectionHeader, { borderBottomColor: colors.border }]}>
+            <Feather name="database" size={16} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                {isAr ? "النسخة الاحتياطية" : "Backup"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.sectionToggleRow, { borderBottomColor: colors.border, paddingHorizontal: 14 }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                {isAr ? "نسخ تلقائي كل 24 ساعة" : "Auto backup every 24h"}
+              </Text>
+              {autoBackup && lastAutoBackup && (
+                <Text style={[styles.sectionSubtitle, { color: colors.mutedForeground }]}>
+                  {isAr ? "آخر نسخة: " : "Last backup: "}
+                  {new Date(lastAutoBackup).toLocaleString(isAr ? "ar-AE" : "en-AE")}
+                </Text>
+              )}
+            </View>
+            <Switch
+              value={autoBackup}
+              onValueChange={(v) => updateSettings({ autoBackup: v })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          <View style={{ padding: 12, gap: 8 }}>
+            <Pressable
+              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: backupLoading ? 0.6 : 1 }]}
+              onPress={handleManualBackup}
+              disabled={backupLoading}
+            >
+              <Text style={styles.saveBtnText}>
+                {backupLoading
+                  ? (isAr ? "جارٍ التحميل..." : "Downloading...")
+                  : (isAr ? "تحميل نسخة احتياطية الآن (.xlsx)" : "Download Backup Now (.xlsx)")}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.restoreBtn, { borderColor: colors.border, opacity: restoreLoading ? 0.6 : 1 }]}
+              onPress={handleRestore}
+              disabled={restoreLoading}
+            >
+              <Text style={[styles.restoreBtnText, { color: colors.foreground }]}>
+                {restoreLoading
+                  ? (isAr ? "جارٍ الاستعادة..." : "Restoring...")
+                  : (isAr ? "رفع ملف الاستعادة (.xlsx)" : "Upload Backup File (.xlsx)")}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
         {/* Sign Out */}
         <Pressable
           style={[styles.signOutBtn, { backgroundColor: colors.card, borderColor: "#fecaca" }]}
@@ -463,6 +685,13 @@ const styles = StyleSheet.create({
   },
   saveBtn: { borderRadius: 12, paddingVertical: 12, alignItems: "center", marginTop: 4 },
   saveBtnText: { color: "#fff", fontSize: 15, fontWeight: "600" as const, fontFamily: "Inter_600SemiBold" },
+  restoreBtn: { borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1.5 },
+  restoreBtnText: { fontSize: 15, fontWeight: "600" as const, fontFamily: "Inter_600SemiBold" },
+  banner: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    paddingVertical: 10, paddingHorizontal: 16,
+  },
+  bannerText: { color: "#fff", fontSize: 13, fontWeight: "600" as const, fontFamily: "Inter_600SemiBold" },
   autoNote: { textAlign: "center", fontSize: 12, fontFamily: "Inter_400Regular", paddingHorizontal: 14, paddingBottom: 12 },
   signOutBtn: {
     flexDirection: "row",

@@ -1,5 +1,6 @@
 import {
   useListClients,
+  useListTransactions,
   useCreateClient,
   useDeleteClient,
 } from "@workspace/api-client-react";
@@ -30,9 +31,10 @@ export default function ClientsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { settings } = useSettings();
+  const { settings, effectiveRates } = useSettings();
   const t = useTr(settings.language);
   const isAr = settings.language === "ar";
+  const { primaryCurrency } = settings;
 
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState("");
@@ -40,8 +42,44 @@ export default function ClientsScreen() {
   const [search, setSearch] = useState("");
 
   const { data: clients, isLoading, refetch } = useListClients();
+  const { data: txs } = useListTransactions({});
   const { mutateAsync: createClient, isPending: creating } = useCreateClient();
   const { mutateAsync: deleteClient } = useDeleteClient();
+
+  // Balance per client converted to the primary currency, respecting the
+  // auto/manual exchange-rate setting (same convention as the client
+  // statement screen).
+  function toPrimary(amount: number, currency: string, rates: Record<string, number>, primary: string) {
+    const inAed = currency === "AED" ? amount : amount * (rates[currency] ?? 1);
+    if (primary === "AED") return inAed;
+    return inAed / (rates[primary] ?? 1);
+  }
+
+  const balancesByClient = new Map<number, number>();
+  if (txs) {
+    const byClient = new Map<number, typeof txs>();
+    for (const tx of txs) {
+      if (tx.clientId == null) continue;
+      const list = byClient.get(tx.clientId) ?? [];
+      list.push(tx);
+      byClient.set(tx.clientId, list);
+    }
+    for (const [clientId, clientTxs] of byClient) {
+      const currencies = [...new Set(clientTxs.map((tx) => tx.currency))];
+      let totalPrimary = 0;
+      for (const currency of currencies) {
+        const currTxs = clientTxs.filter((tx) => tx.currency === currency);
+        const paid = currTxs
+          .filter((tx) => tx.type === "expense" || tx.type === "payment")
+          .reduce((s, tx) => s + tx.amount, 0);
+        const received = currTxs
+          .filter((tx) => tx.type === "income" || tx.type === "receipt")
+          .reduce((s, tx) => s + tx.amount, 0);
+        totalPrimary += toPrimary(received - paid, currency, effectiveRates, primaryCurrency);
+      }
+      balancesByClient.set(clientId, Math.round(totalPrimary * 100) / 100);
+    }
+  }
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -134,7 +172,9 @@ export default function ClientsScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }: any) => (
+          renderItem={({ item }: any) => {
+            const balance = balancesByClient.get(item.id) ?? 0;
+            return (
             <View style={[styles.clientCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Pressable
                 style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 12 }}
@@ -150,12 +190,13 @@ export default function ClientsScreen() {
                   ) : null}
                 </View>
                 <View style={{ alignItems: "flex-end", gap: 2 }}>
-                  {item.balance != null && (
+                  {balance !== 0 && (
                     <Text style={[
                       styles.clientBalance,
-                      { color: parseFloat(item.balance) >= 0 ? (colors.success ?? "#16a34a") : colors.destructive }
+                      { color: balance > 0 ? (colors.success ?? "#16a34a") : colors.destructive }
                     ]}>
-                      {parseFloat(item.balance).toLocaleString(isAr ? "ar" : "en", { maximumFractionDigits: 0 })}
+                      {balance > 0 ? (isAr ? "له " : "") : (isAr ? "عليه " : "-")}
+                      {Math.abs(balance).toLocaleString(isAr ? "ar" : "en", { maximumFractionDigits: 0 })} {primaryCurrency}
                     </Text>
                   )}
                   <Feather name={isAr ? "chevron-left" : "chevron-right"} size={14} color={colors.mutedForeground} />
@@ -169,7 +210,8 @@ export default function ClientsScreen() {
                 <Feather name="trash-2" size={15} color="#ef4444" />
               </Pressable>
             </View>
-          )}
+            );
+          }}
         />
       )}
 
