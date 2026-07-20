@@ -291,9 +291,14 @@ router.post("/ai/parse-voice", requireAuth, async (req, res): Promise<void> => {
     const genAI = getGeminiClient();
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+    const todayISO = new Date().toISOString().split("T")[0];
+    const todayHuman = new Date().toLocaleDateString("ar-AE", { dateStyle: "full" });
+
     const prompt = `أنت مساعد مالي ذكي ثنائي اللغة (عربي/إنجليزي). حلّل الجملة التالية واستخرج بيانات العملية المالية.
 
 الجملة قد تكون بالعربية أو بالإنجليزية أو خليطاً بينهما، وقد تحتوي أرقاماً بأي لغة. افهم المعنى مهما كانت اللغة.
+
+تاريخ اليوم هو: ${todayISO} (${todayHuman})
 
 الجملة: "${text}"
 
@@ -351,15 +356,22 @@ ${currencyHints}
 - لا تكرر أي كلمة في الوصف.
 - لا تضف كلمات زائدة أو توضيحات غير ضرورية.
 
+--- قواعد التاريخ (مهم جداً) ---
+- إذا ذكرت الجملة تاريخاً أو إشارة زمنية للمعاملة (مثل: "أمس"، "اليوم"، "أول أمس"، "قبل يومين"، "الأسبوع الماضي"، "بتاريخ ١٥/٧"، "يوم الاثنين الماضي"، "on July 15th"، "last Monday"، "yesterday")، احسب التاريخ الفعلي بالاعتماد على تاريخ اليوم (${todayISO}) وأعده بصيغة YYYY-MM-DD في حقل "date".
+- إذا ذُكر يوم من أيام الأسبوع بدون تحديد أنه الأسبوع الماضي أو القادم (مثل "يوم الأحد")، افترض أنه أقرب يوم أحد قبل اليوم (أو اليوم نفسه إذا كان اليوم هو نفس اليوم).
+- إذا لم تُذكر أي إشارة زمنية إطلاقاً في الجملة، اجعل قيمة "date" هي null (وليس تاريخ اليوم) — الواجهة ستستخدم تاريخ اليوم تلقائياً في هذه الحالة.
+- لا تخترع تاريخاً أبداً؛ التاريخ يُستخرج فقط إذا كان مذكوراً أو مفهوماً ضمنياً من الجملة بوضوح.
+
 أعِد JSON فقط بدون أي نص خارجه:
-{"type":"...","amount":0,"currency":"${primaryCurrency}","clientName":null,"clientId":null,"tripName":null,"tripId":null,"studioName":null,"studioId":null,"detectedLanguage":"...","description":"..."}
+{"type":"...","amount":0,"currency":"${primaryCurrency}","clientName":null,"clientId":null,"tripName":null,"tripId":null,"studioName":null,"studioId":null,"detectedLanguage":"...","description":"...","date":null}
 
 أمثلة:
-جملة: "دفعت فاتورة الكهرباء ٣٠٠ درهم" → type: expense (لا يوجد مستلم شخصي)
-جملة: "دفعت ٥٠٠ لأحمد" → type: payment (أحمد مستلم شخصي)
+جملة: "دفعت فاتورة الكهرباء ٣٠٠ درهم" → type: expense (لا يوجد مستلم شخصي)، date: null (لا يوجد ذكر للتاريخ)
+جملة: "دفعت ٥٠٠ لأحمد" → type: payment (أحمد مستلم شخصي)، date: null
 جملة: "دفعت أغراض لرشا بـ٢٠٠" → type: payment (رشا مستفيدة مباشرة)
 جملة: "دفعت إيجار الشقة" → type: expense (لا يوجد مستلم شخصي)
-جملة: "قبضت ١٠٠٠ من سامي" → type: receipt`;
+جملة: "قبضت ١٠٠٠ من سامي أمس" → type: receipt، date: التاريخ الفعلي ليوم أمس بصيغة YYYY-MM-DD
+جملة: "قبضت ٥٠٠ من محمد بتاريخ ١٥/٧" → date: التاريخ ١٥ تموز من السنة الحالية بصيغة YYYY-MM-DD`;
 
     const result = await withRetry(() => model.generateContent(prompt));
     const responseText = result.response.text().trim();
@@ -390,6 +402,16 @@ ${currencyHints}
       ? normalizedCurrency
       : (normalizedCurrency ?? primaryCurrency);
 
+    // Validate extracted date: must be a real, well-formed YYYY-MM-DD date, and not absurdly in the future/past.
+    const rawDate = typeof parsedResult.date === "string" ? parsedResult.date.trim() : null;
+    let finalDate: string | null = null;
+    if (rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      const d = new Date(rawDate + "T00:00:00Z");
+      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === rawDate) {
+        finalDate = rawDate;
+      }
+    }
+
     res.json({
       success: true,
       type: (parsedResult.type as string) || null,
@@ -403,6 +425,7 @@ ${currencyHints}
       studioId: toId(parsedResult.studioId, studioIds),
       detectedLanguage: (parsedResult.detectedLanguage as string) || null,
       description: (parsedResult.description as string) || null,
+      date: finalDate,
       rawText: text,
     });
   } catch (err: unknown) {
@@ -436,7 +459,7 @@ router.post("/ai/transcribe-voice", requireAuth, async (req, res): Promise<void>
     const genAI = getGeminiClient();
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `حوّل المقطع الصوتي التالي إلى نص مكتوب بدقة. المتحدث قد يتكلم بالعربية أو الإنجليزية أو خليطاً بينهما، وقد يذكر أرقاماً ومبالغ وأسماء. أعد النص المنطوق فقط بدون أي شرح أو علامات اقتباس أو نص إضافي.`;
+    const prompt = `حوّل المقطع الصوتي التالي إلى نص مكتوب بدقة. المتحدث قد يتكلم بالعربية أو الإنجليزية أو خليطاً بينهما، وقد يذكر أرقاماً ومبالغ وأسماء. أعد النص المنطوق فقط بدون أي شرح أو علامات اقتباس أو نص إضافي و لا تكرر الكلمات.`;
 
     const result = await withRetry(() =>
       model.generateContent([

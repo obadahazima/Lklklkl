@@ -245,6 +245,11 @@ export interface VoiceParseResult {
   detectedLanguage?: string | null;
   /** @nullable */
   description?: string | null;
+  /**
+     * Extracted transaction date (YYYY-MM-DD) if mentioned, null if not mentioned (client defaults to today)
+     * @nullable
+     */
+  date?: string | null;
   /** @nullable */
   rawText?: string | null;
   /** @nullable */
@@ -335,4 +340,3 @@ type?: string | null;
  */
 status?: string | null;
 };
-

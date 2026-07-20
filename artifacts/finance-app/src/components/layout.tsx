@@ -11,21 +11,37 @@ import {
   X,
   Settings,
   LogOut,
+  HelpCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 import { useClerk, useUser } from "@clerk/react";
+import { HelpModal } from "@/components/help-modal";
+
+const HELP_SEEN_KEY = "hasSeenAppHelp";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const { settings } = useSettings();
   const { language, showClients, showTrips, showStudios } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
   const { signOut } = useClerk();
   const { user } = useUser();
+
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(HELP_SEEN_KEY)) {
+        setHelpOpen(true);
+        localStorage.setItem(HELP_SEEN_KEY, "1");
+      }
+    } catch {
+      // localStorage unavailable — skip auto-help silently
+    }
+  }, []);
 
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -73,12 +89,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </p>
             </div>
           </div>
-          <button
-            className="lg:hidden text-sidebar-foreground/60 hover:text-white p-1"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setHelpOpen(true)}
+              className="text-sidebar-foreground/60 hover:text-white p-1.5 rounded-lg hover:bg-sidebar-accent/40"
+              title={language === "ar" ? "مساعدة" : "Help"}
+              data-testid="btn-help"
+            >
+              <HelpCircle className="w-5 h-5" />
+            </button>
+            <button
+              className="lg:hidden text-sidebar-foreground/60 hover:text-white p-1"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="px-4 pt-4">
@@ -165,11 +191,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <h1 className="font-bold text-foreground">
             {language === "ar" ? "حسابات" : "Hisabat"}
           </h1>
-          <Link href="/transactions/new">
-            <button className="p-2 rounded-lg bg-primary text-primary-foreground" data-testid="btn-quick-add">
-              <Plus className="w-4 h-4" />
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setHelpOpen(true)}
+              className="p-2 rounded-lg hover:bg-muted text-muted-foreground"
+              title={language === "ar" ? "مساعدة" : "Help"}
+              data-testid="btn-help-mobile"
+            >
+              <HelpCircle className="w-5 h-5" />
             </button>
-          </Link>
+            <Link href="/transactions/new">
+              <button className="p-2 rounded-lg bg-primary text-primary-foreground" data-testid="btn-quick-add">
+                <Plus className="w-4 h-4" />
+              </button>
+            </Link>
+          </div>
         </header>
 
         <nav className="lg:hidden flex items-center justify-around bg-card border-b border-border py-1.5 px-1 shrink-0">
@@ -193,6 +229,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
+
+      <HelpModal open={helpOpen} onOpenChange={setHelpOpen} language={language} />
     </div>
   );
 }

@@ -909,6 +909,9 @@ components:
           description: "Language detected in the input (ar | en | mixed)"
         description:
           type: ["string", "null"]
+        date:
+          type: ["string", "null"]
+          description: "Extracted transaction date (YYYY-MM-DD) if mentioned, null if not mentioned (client defaults to today)"
         rawText:
           type: ["string", "null"]
         error:

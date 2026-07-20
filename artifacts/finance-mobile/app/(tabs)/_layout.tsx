@@ -22,6 +22,7 @@ import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useColors } from "@/hooks/useColors";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTr } from "@/lib/i18n";
+import { HelpOverlay } from "@/components/HelpOverlay";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded, getToken } = useAuth();
@@ -285,12 +286,14 @@ export default function TabLayout() {
     return (
       <AuthGate>
         <NativeTabLayout />
+        <HelpOverlay />
       </AuthGate>
     );
   }
   return (
     <AuthGate>
       <ClassicTabLayout />
+      <HelpOverlay />
     </AuthGate>
   );
 }

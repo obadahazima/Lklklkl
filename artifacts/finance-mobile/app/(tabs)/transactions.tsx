@@ -157,6 +157,7 @@ export default function TransactionsScreen() {
   const [newClientPhone, setNewClientPhone] = useState("");
 
   const parsedRef = useRef<VoiceParseResult | null>(null);
+  const parsedDateDetectedRef = useRef(false);
   const resolveRef = useRef<{ clientId?: number | null; tripId?: number | null; studioId?: number | null }>({});
 
   const [voiceSheetVisible, setVoiceSheetVisible] = useState(false);
@@ -348,7 +349,9 @@ export default function TransactionsScreen() {
       amount: data.amount != null ? String(data.amount) : f.amount,
       currency: data.currency || f.currency,
       description: data.description ?? f.description,
+      date: data.date || new Date().toISOString().slice(0, 10),
     }));
+    parsedDateDetectedRef.current = !!data.date;
     parsedRef.current = data;
     resolveRef.current = {};
     advanceResolutionChain();
@@ -1022,6 +1025,18 @@ export default function TransactionsScreen() {
                       <Text style={[{ color: colors.foreground, textAlign: "right", fontSize: 13 }]}>{form.description}</Text>
                     </View>
                   )}
+
+                  <View style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <Feather name="calendar" size={14} color={colors.primary} />
+                    <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
+                      {language === "ar" ? "التاريخ:" : "Date:"}
+                    </Text>
+                    <Text style={[styles.entityName, { color: colors.foreground }]}>
+                      {parsedDateDetectedRef.current
+                        ? form.date
+                        : `${form.date} (${language === "ar" ? "اليوم، لم يُذكر تاريخ" : "today, none mentioned"})`}
+                    </Text>
+                  </View>
 
                   <Pressable
                     style={[

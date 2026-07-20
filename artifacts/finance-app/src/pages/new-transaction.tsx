@@ -49,6 +49,7 @@ type ParsedData = {
   studioId?: number | null;
   detectedLanguage?: string | null;
   description?: string | null;
+  date?: string | null;
   rawText?: string | null;
 };
 
@@ -379,7 +380,7 @@ export default function NewTransaction() {
       currency: parsed.currency || "AED",
       description: parsed.description ?? null,
       status: "pending",
-      date: new Date().toISOString().split("T")[0],
+      date: parsed.date || new Date().toISOString().split("T")[0],
       clientId: undefined,
       tripId: undefined,
       studioId: undefined,
@@ -990,6 +991,12 @@ export default function NewTransaction() {
                 { label: language === "ar" ? "الرحلة" : "Trip", value: parsed?.tripName },
                 { label: language === "ar" ? "الاستديو" : "Studio", value: parsed?.studioName },
                 { label: language === "ar" ? "الوصف" : "Description", value: parsed?.description },
+                {
+                  label: language === "ar" ? "التاريخ" : "Date",
+                  value: parsed?.date
+                    ? parsed.date
+                    : (language === "ar" ? "اليوم (لم يُذكر تاريخ)" : "Today (no date mentioned)"),
+                },
               ]
                 .filter((r) => r.value)
                 .map((row, i, arr) => (
