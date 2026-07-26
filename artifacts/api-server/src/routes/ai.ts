@@ -8,8 +8,8 @@ import {
   studioExpensesTable,
 } from "@workspace/db";
 import { ParseVoiceInputBody, AiQueryBody, TranscribeVoiceBody } from "@workspace/api-zod";
-import { GoogleGenerativeAI, type Content } from "@google/generative-ai";
-import { eq } from "drizzle-orm";
+import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration } from "@google/generative-ai";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = Router();
@@ -91,6 +91,113 @@ function normalizeCurrency(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
   const key = raw.trim().toLowerCase();
   return CURRENCY_NORMALIZE[key] ?? raw.trim().toUpperCase();
+}
+
+/** Format a Date as YYYY-MM-DD (local calendar day, no timezone drift). */
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Deterministic, regex-based date extractor. Runs independently of Gemini so that if the
+ * model fails to return (or mis-formats) a date, we still catch common Levantine Arabic
+ * and English time expressions ourselves.
+ */
+function extractDateFallback(text: string, today: Date): string | null {
+  const t = text.trim();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const addDays = (n: number) => new Date(today.getTime() + n * dayMs);
+
+  const arNumWords: Record<string, number> = {
+    "يومين": 2, "يومان": 2, "ثلاثة أيام": 3, "تلاتة أيام": 3, "أربعة أيام": 4,
+    "اربعة أيام": 4, "خمسة أيام": 5,
+  };
+  let m = t.match(/قبل\s+(\d+)\s*(?:يوم|أيام)/);
+  if (m) return toISODate(addDays(-Number(m[1])));
+  for (const [phrase, n] of Object.entries(arNumWords)) {
+    if (t.includes(`قبل ${phrase}`)) return toISODate(addDays(-n));
+  }
+  m = t.match(/(\d+)\s+days?\s+ago/i);
+  if (m) return toISODate(addDays(-Number(m[1])));
+
+  if (/أول\s*(?:أمس|امبارح|إمبارح|مبارح)|day before yesterday/i.test(t)) {
+    return toISODate(addDays(-2));
+  }
+
+  if (/(?:^|[^أ\p{L}])(أمس|امبارح|إمبارح|مبارح)(?:$|[^\p{L}])/u.test(t) || /\byesterday\b/i.test(t)) {
+    return toISODate(addDays(-1));
+  }
+
+  if (/الأسبوع\s+(?:الماضي|اللي فات|السابق)|last week/i.test(t)) {
+    return toISODate(addDays(-7));
+  }
+
+  if (/(?:^|[^\p{L}])اليوم(?:$|[^\p{L}])/u.test(t) || /\btoday\b/i.test(t)) {
+    return toISODate(today);
+  }
+
+  const arWeekdays: Record<string, number> = {
+    "الأحد": 0, "الاحد": 0, "الإثنين": 1, "الاثنين": 1, "الثلاثاء": 2, "الثلاثا": 2,
+    "الأربعاء": 3, "الاربعاء": 3, "الخميس": 4, "الجمعة": 5, "الجمعه": 5, "السبت": 6,
+  };
+  for (const [name, dow] of Object.entries(arWeekdays)) {
+    if (t.includes(name)) {
+      const diff = (today.getDay() - dow + 7) % 7;
+      return toISODate(addDays(-diff));
+    }
+  }
+  const enWeekdays: Record<string, number> = {
+    sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+  };
+  const wdMatch = t.toLowerCase().match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (wdMatch) {
+    const dow = enWeekdays[wdMatch[1]];
+    const diff = (today.getDay() - dow + 7) % 7;
+    return toISODate(addDays(-diff));
+  }
+
+  // Arabic-Indic digits -> Western digits
+  const western = t.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+
+  m = western.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+  if (m) {
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    let year = m[3] ? Number(m[3]) : today.getFullYear();
+    if (year < 100) year += 2000;
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      const d = new Date(year, month - 1, day);
+      if (d.getMonth() === month - 1) return toISODate(d);
+    }
+  }
+
+  m = western.match(/(?:بتاريخ|يوم)\s+(\d{1,2})(?!\s*[\/\-]\s*\d)/);
+  if (!m) m = western.match(/(\d{1,2})\s+الشهر/);
+  if (m) {
+    const day = Number(m[1]);
+    if (day >= 1 && day <= 31) {
+      const d = new Date(today.getFullYear(), today.getMonth(), day);
+      if (d.getMonth() === today.getMonth()) return toISODate(d);
+    }
+  }
+
+  const enMonths: Record<string, number> = {
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6,
+    august: 7, september: 8, october: 9, november: 10, december: 11,
+  };
+  const monthMatch = western.toLowerCase().match(
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?\b/,
+  );
+  if (monthMatch) {
+    const month = enMonths[monthMatch[1]];
+    const day = Number(monthMatch[2]);
+    if (day >= 1 && day <= 31) return toISODate(new Date(today.getFullYear(), month, day));
+  }
+
+  return null;
 }
 
 function isDailyQuotaExceeded(err: unknown): boolean {
@@ -411,6 +518,11 @@ ${currencyHints}
         finalDate = rawDate;
       }
     }
+    // Safety net: if Gemini didn't return a valid date, try to extract it ourselves via regex.
+    // This is what actually fixes "مبارح" / "15 الشهر" / "15/7" being missed.
+    if (!finalDate) {
+      finalDate = extractDateFallback(text, new Date());
+    }
 
     res.json({
       success: true,
@@ -493,6 +605,138 @@ router.post("/ai/transcribe-voice", requireAuth, async (req, res): Promise<void>
   }
 });
 
+// --- Tools the AI assistant is allowed to execute against the user's own data ---
+
+const createTransactionDeclaration: FunctionDeclaration = {
+  name: "create_transaction",
+  description:
+    "أضف معاملة مالية جديدة (دخل، مصروف، دفعة لزبون، أو قبض من زبون). استخدمها فقط عندما يطلب المستخدم صراحةً إضافة/تسجيل معاملة.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt"], description: "نوع المعاملة" },
+      amount: { type: SchemaType.NUMBER, description: "المبلغ (رقم موجب)" },
+      currency: { type: SchemaType.STRING, description: "كود العملة ISO مثل AED أو USD أو SYP" },
+      date: { type: SchemaType.STRING, description: "تاريخ المعاملة بصيغة YYYY-MM-DD. إذا لم يُذكر تاريخ استخدم تاريخ اليوم." },
+      clientId: { type: SchemaType.NUMBER, description: "معرّف الزبون إذا كانت المعاملة مرتبطة بزبون موجود (اختياري)" },
+      tripId: { type: SchemaType.NUMBER, description: "معرّف الرحلة إذا كانت مرتبطة برحلة (اختياري)" },
+      studioId: { type: SchemaType.NUMBER, description: "معرّف الاستديو إذا كانت مصروف استديو (اختياري)" },
+      description: { type: SchemaType.STRING, description: "وصف موجز للمعاملة (اختياري)" },
+      status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"], description: "حالة المعاملة، افتراضياً pending" },
+    },
+    required: ["type", "amount", "currency", "date"],
+  },
+};
+
+const updateTransactionDeclaration: FunctionDeclaration = {
+  name: "update_transaction",
+  description:
+    "عدّل معاملة موجودة بالفعل (غيّر المبلغ، التاريخ، الحالة، الوصف، إلخ). استخدمها فقط عندما يحدد المستخدم أي معاملة يقصد (برقمها id أو بوصف واضح يطابق سجل معاملات واحد بعينه من البيانات المتوفرة لك).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      id: { type: SchemaType.NUMBER, description: "معرّف المعاملة (id) المطلوب تعديلها" },
+      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt"] },
+      amount: { type: SchemaType.NUMBER },
+      currency: { type: SchemaType.STRING },
+      date: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
+      clientId: { type: SchemaType.NUMBER },
+      tripId: { type: SchemaType.NUMBER },
+      description: { type: SchemaType.STRING },
+      status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"] },
+    },
+    required: ["id"],
+  },
+};
+
+const deleteTransactionDeclaration: FunctionDeclaration = {
+  name: "delete_transaction",
+  description:
+    "احذف معاملة موجودة نهائياً. استخدمها فقط عندما يطلب المستخدم صراحةً حذف/إلغاء معاملة محددة، ويجب أن تكون متأكداً 100% من هوية المعاملة (id) قبل الحذف.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      id: { type: SchemaType.NUMBER, description: "معرّف المعاملة (id) المطلوب حذفها" },
+    },
+    required: ["id"],
+  },
+};
+
+type ExecutedAction = { name: string; success: boolean; result: Record<string, unknown> };
+
+async function executeTool(
+  userId: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const num = (v: unknown): number | undefined => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : undefined);
+
+  if (name === "create_transaction") {
+    const amount = num(args.amount);
+    if (!amount || amount <= 0) return { error: "amount غير صالح" };
+    if (typeof args.type !== "string" || typeof args.currency !== "string" || typeof args.date !== "string") {
+      return { error: "حقول ناقصة (type/currency/date)" };
+    }
+    const [tx] = await db
+      .insert(transactionsTable)
+      .values({
+        userId,
+        type: args.type,
+        amount: String(amount),
+        currency: args.currency.toUpperCase(),
+        date: args.date,
+        status: (args.status as string) || "pending",
+        description: (args.description as string) ?? null,
+        clientId: num(args.clientId) ?? null,
+        tripId: num(args.tripId) ?? null,
+        studioId: num(args.studioId) ?? null,
+      })
+      .returning();
+    return { success: true, transaction: { ...tx, amount: Number(tx.amount) } };
+  }
+
+  if (name === "update_transaction") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const updateData: Record<string, unknown> = {};
+    if (typeof args.type === "string") updateData.type = args.type;
+    const amount = num(args.amount);
+    if (amount !== undefined) {
+      if (amount <= 0) return { error: "amount غير صالح" };
+      updateData.amount = String(amount);
+    }
+    if (typeof args.currency === "string") updateData.currency = args.currency.toUpperCase();
+    if (typeof args.date === "string") updateData.date = args.date;
+    if (typeof args.status === "string") updateData.status = args.status;
+    if (typeof args.description === "string") updateData.description = args.description;
+    const clientId = num(args.clientId);
+    if (clientId !== undefined) updateData.clientId = clientId;
+    const tripId = num(args.tripId);
+    if (tripId !== undefined) updateData.tripId = tripId;
+
+    const [tx] = await db
+      .update(transactionsTable)
+      .set(updateData)
+      .where(and(eq(transactionsTable.id, id), eq(transactionsTable.userId, userId)))
+      .returning();
+    if (!tx) return { error: "المعاملة غير موجودة" };
+    return { success: true, transaction: { ...tx, amount: Number(tx.amount) } };
+  }
+
+  if (name === "delete_transaction") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const deleted = await db
+      .delete(transactionsTable)
+      .where(and(eq(transactionsTable.id, id), eq(transactionsTable.userId, userId)))
+      .returning();
+    if (deleted.length === 0) return { error: "المعاملة غير موجودة" };
+    return { success: true, deletedId: id };
+  }
+
+  return { error: `أداة غير معروفة: ${name}` };
+}
+
 router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
   const parsed = AiQueryBody.safeParse(req.body);
   if (!parsed.success) {
@@ -519,20 +763,42 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
       expenses as ExpenseRow[],
     );
 
+    const todayISO = new Date().toISOString().split("T")[0];
+
     const systemInstruction = `أنت مساعد مالي ذكي لتاجر يعمل بين الإمارات والولايات المتحدة وسوريا.
-مهمتك الإجابة على الأسئلة المالية بدقة بناءً على البيانات الحالية المقدمة.
+مهمتك الإجابة على الأسئلة المالية بدقة بناءً على البيانات الحالية المقدمة، وأيضاً تنفيذ عمليات فعلية على المعاملات (إضافة/تعديل/حذف) عند الطلب.
+تاريخ اليوم: ${todayISO}
+
 - أجب دائماً بالعربية بشكل موجز وواضح
 - استخدم الأرقام الفعلية من البيانات دون تقريب كبير
 - إذا كان السؤال عن معلومة غير موجودة، قل ذلك بوضوح
 - يمكنك الإجابة على أسئلة مثل: الأرصدة، ذمم الزبائن، أرباح الرحلات، مصاريف الاستديوهات، المعاملات المعلقة، مقارنات، وأي تحليل مالي
 
+--- الصلاحيات التنفيذية (مهم جداً) ---
+- لديك أدوات فعلية لإضافة/تعديل/حذف المعاملات (create_transaction / update_transaction / delete_transaction). استخدمها فقط عندما يطلب المستخدم صراحةً ذلك (مثل: "سجّلي قبضت ٥٠٠ من أحمد اليوم"، "احذف آخر معاملة لسامر"، "عدّل معاملة ٣٠٠ الفاتورة صيرها ٤٠٠").
+- قبل الحذف أو التعديل، تأكد من هوية المعاملة (id) بالاعتماد على سجل المعاملات المتوفر لك أعلاه في البيانات (التاريخ، المبلغ، الزبون، الوصف). إذا كان هناك أكثر من معاملة تطابق الوصف ولم يكن واضحاً أيها يقصد المستخدم، لا تنفّذ أي شيء واسأله ليحدد بدقة (مثلاً بذكر المبلغ أو التاريخ أو رقم المعاملة).
+- إذا لم يُذكر تاريخ عند الإضافة، استخدم تاريخ اليوم (${todayISO}).
+- بعد تنفيذ أي عملية، أكّد للمستخدم بوضوح ماذا تم (النوع، المبلغ، العملة، التاريخ)، وإذا فشلت العملية اشرح السبب بإيجاز.
+- لا تنفّذ أكثر من عملية واحدة لكل رسالة ما لم يطلب المستخدم صراحةً عدة عمليات في نفس الرسالة.
+
 البيانات المالية الحالية:
 ${context}`;
+
+    const tools = [
+      {
+        functionDeclarations: [
+          createTransactionDeclaration,
+          updateTransactionDeclaration,
+          deleteTransactionDeclaration,
+        ],
+      },
+    ];
 
     const genAI = getGeminiClient();
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       systemInstruction,
+      tools,
     });
 
     const chatHistory: Content[] = (history ?? [])
@@ -546,10 +812,38 @@ ${context}`;
       }));
 
     const chat = model.startChat({ history: chatHistory });
-    const result = await withRetry(() => chat.sendMessage(question));
-    const answer = result.response.text();
+    let result = await withRetry(() => chat.sendMessage(question));
 
-    res.json({ answer, data: { totalTransactions: txs.length, clientCount: clients.length } });
+    const executedActions: ExecutedAction[] = [];
+    // Allow a short chain of tool calls (model may call a function, see the result, then reply
+    // or call another function), capped to avoid runaway loops.
+    for (let round = 0; round < 4; round++) {
+      const calls = result.response.functionCalls();
+      if (!calls || calls.length === 0) break;
+
+      const responseParts = [];
+      for (const call of calls) {
+        const toolResult = await executeTool(req.userId, call.name, (call.args ?? {}) as Record<string, unknown>);
+        executedActions.push({ name: call.name, success: !!toolResult.success, result: toolResult });
+        responseParts.push({
+          functionResponse: { name: call.name, response: toolResult },
+        });
+      }
+      result = await withRetry(() => chat.sendMessage(responseParts));
+    }
+
+    const answer = result.response.text();
+    const actionsPerformed = executedActions.some((a) => a.success);
+
+    res.json({
+      answer,
+      data: {
+        totalTransactions: txs.length,
+        clientCount: clients.length,
+        actionsPerformed,
+        actions: executedActions,
+      },
+    });
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status;
     if (status === 429) {

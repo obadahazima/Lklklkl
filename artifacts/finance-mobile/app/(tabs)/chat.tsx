@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useAiQuery } from "@workspace/api-client-react";
 import type { AiHistoryItem } from "@workspace/api-client-react";
 import { Feather } from "@expo/vector-icons";
@@ -44,6 +45,7 @@ export default function ChatScreen() {
   ]);
 
   const { mutateAsync: askAi, isPending } = useAiQuery();
+  const queryClient = useQueryClient();
   const { state: voiceState, startRecording, stopAndTranscribe } = useVoiceRecording();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -82,6 +84,11 @@ export default function ChatScreen() {
         content: answer,
       };
       setMessages((prev) => [...prev, aiMsg]);
+      // If the assistant added/edited/deleted a transaction, refresh all cached data
+      // (transactions list, dashboard, client balances, etc.) so the UI reflects it immediately.
+      if ((result as any)?.data?.actionsPerformed) {
+        queryClient.invalidateQueries();
+      }
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e: any) {
       const errMsg: Message = {

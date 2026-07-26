@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAiQuery } from "@workspace/api-client-react";
 import type { AiHistoryItem } from "@workspace/api-client-react";
 import { Mic, MicOff, Send, Bot, User, Loader2, Trash2 } from "lucide-react";
@@ -48,6 +49,7 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const QUICK_QUESTIONS = language === "ar" ? QUICK_QUESTIONS_AR : QUICK_QUESTIONS_EN;
 
@@ -58,6 +60,12 @@ export default function Chat() {
           ...prev,
           { id: Date.now(), role: "assistant", content: data.answer },
         ]);
+        // If the assistant added/edited/deleted a transaction, refresh all cached data
+        // (transactions list, dashboard, client balances, etc.) so the UI reflects it immediately.
+        const actionsPerformed = (data.data as { actionsPerformed?: boolean } | undefined)?.actionsPerformed;
+        if (actionsPerformed) {
+          queryClient.invalidateQueries();
+        }
       },
       onError: (err: unknown) => {
         const apiErr = err as { status?: number; data?: { message?: string } };
