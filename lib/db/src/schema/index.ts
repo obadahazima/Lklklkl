@@ -3,3 +3,4 @@ export * from "./trips";
 export * from "./studios";
 export * from "./transactions";
 export * from "./userSettings";
+export * from "./aiMessages";

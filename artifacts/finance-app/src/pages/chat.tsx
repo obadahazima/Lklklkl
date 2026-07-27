@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAiQuery } from "@workspace/api-client-react";
-import type { AiHistoryItem } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react";
 import { Mic, MicOff, Send, Bot, User, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -53,6 +53,31 @@ export default function Chat() {
 
   const QUICK_QUESTIONS = language === "ar" ? QUICK_QUESTIONS_AR : QUICK_QUESTIONS_EN;
 
+  // Load the real, persistent conversation from the server on mount — this is what lets the
+  // person see and continue past conversations instead of losing them on every reload.
+  useEffect(() => {
+    let cancelled = false;
+    customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>("/ai/history")
+      .then((res) => {
+        if (cancelled || res.messages.length === 0) return;
+        setMessages([
+          INITIAL_MESSAGE,
+          ...res.messages.map((m) => ({
+            id: m.id,
+            role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+            content: m.content,
+          })),
+        ]);
+      })
+      .catch(() => {
+        // Non-fatal: just start a fresh visible conversation if history can't be loaded.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const queryMutation = useAiQuery({
     mutation: {
       onSuccess: (data) => {
@@ -87,30 +112,21 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  function buildHistory(currentMessages: Message[]): AiHistoryItem[] {
-    return currentMessages
-      .filter((m) => m.id !== 0)
-      .map((m) => ({ role: m.role, content: m.content }));
-  }
-
   function sendMessage(text: string) {
     if (!text.trim() || queryMutation.isPending) return;
     const userMsg: Message = { id: Date.now(), role: "user", content: text };
-    setMessages((prev) => {
-      const next = [...prev, userMsg];
-      queryMutation.mutate({
-        data: {
-          question: text,
-          history: buildHistory(prev),
-        },
-      });
-      return next;
-    });
+    setMessages((prev) => [...prev, userMsg]);
+    // History is now tracked server-side (persisted per user) — we only send the new
+    // question, and the server appends it to the real stored conversation itself.
+    queryMutation.mutate({ data: { question: text } });
     setInput("");
   }
 
   function clearHistory() {
     setMessages([INITIAL_MESSAGE]);
+    customFetch("/ai/history", { method: "DELETE" }).catch(() => {
+      // Non-fatal — the visible chat is already cleared locally either way.
+    });
   }
 
   function toggleVoiceRecording() {

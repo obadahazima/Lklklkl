@@ -6,10 +6,11 @@ import {
   tripsTable,
   studiosTable,
   studioExpensesTable,
+  aiMessagesTable,
 } from "@workspace/db";
 import { ParseVoiceInputBody, AiQueryBody, TranscribeVoiceBody } from "@workspace/api-zod";
 import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration } from "@google/generative-ai";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = Router();
@@ -737,6 +738,37 @@ async function executeTool(
   return { error: `أداة غير معروفة: ${name}` };
 }
 
+// GET /ai/history — full persistent conversation for the current user (oldest first).
+router.get("/ai/history", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const rows = await db
+      .select()
+      .from(aiMessagesTable)
+      .where(eq(aiMessagesTable.userId, req.userId))
+      .orderBy(asc(aiMessagesTable.createdAt));
+    res.json({ messages: rows });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Failed to load AI history");
+    res.status(500).json({ error: "فشل تحميل سجل المحادثة" });
+  }
+});
+
+// DELETE /ai/history — start a fresh conversation (wipes stored messages for this user only).
+router.delete("/ai/history", requireAuth, async (req, res): Promise<void> => {
+  try {
+    await db.delete(aiMessagesTable).where(eq(aiMessagesTable.userId, req.userId));
+    res.json({ success: true });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Failed to clear AI history");
+    res.status(500).json({ error: "فشل حذف سجل المحادثة" });
+  }
+});
+
+// Phrases that sound like a completed write action. If the model uses these without an
+// actual successful tool call behind them, we must not let the fabricated claim reach the user.
+const CONFIRMATION_PATTERN = /\b(تم|تمت|أضفت|حذفت|عدّلت|عدلت|سجّلت|سجلت|أنجزت|done|added|deleted|updated)\b/i;
+const ACTION_INTENT_PATTERN = /(أضف|ضيف|سجّل|سجل|احذف|امسح|عدّل|عدل|غيّر|غير|add\b|delete\b|remove\b|update\b|edit\b)/i;
+
 router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
   const parsed = AiQueryBody.safeParse(req.body);
   if (!parsed.success) {
@@ -744,7 +776,7 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const { question, history = [] } = parsed.data;
+  const { question } = parsed.data;
 
   try {
     const [txs, clients, trips, studios, expenses] = await Promise.all([
@@ -780,6 +812,7 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 - إذا لم يُذكر تاريخ عند الإضافة، استخدم تاريخ اليوم (${todayISO}).
 - بعد تنفيذ أي عملية، أكّد للمستخدم بوضوح ماذا تم (النوع، المبلغ، العملة، التاريخ)، وإذا فشلت العملية اشرح السبب بإيجاز.
 - لا تنفّذ أكثر من عملية واحدة لكل رسالة ما لم يطلب المستخدم صراحةً عدة عمليات في نفس الرسالة.
+- ⚠️ ممنوع منعاً باتاً أن تقول "تم إضافة/تعديل/حذف..." أو أي صيغة توحي بأن عملية حصلت فعلياً، إلا إذا استدعيت الأداة (function call) فعلياً وحصلت على نتيجة success من نتيجتها. لا تفترض النجاح أبداً ولا تتظاهر بالتنفيذ اعتماداً على الحوار فقط.
 
 البيانات المالية الحالية:
 ${context}`;
@@ -801,14 +834,19 @@ ${context}`;
       tools,
     });
 
-    const chatHistory: Content[] = (history ?? [])
-      .filter((_, i, arr) => {
-        if (i === 0 && arr[0].role !== "user") return false;
-        return true;
-      })
-      .map((msg) => ({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }],
+    // Load the real, persistent conversation from the DB (source of truth — not whatever the
+    // client happens to hold in memory), so history survives across sessions/devices/reloads.
+    const storedMessages = await db
+      .select()
+      .from(aiMessagesTable)
+      .where(eq(aiMessagesTable.userId, req.userId))
+      .orderBy(asc(aiMessagesTable.createdAt));
+
+    const chatHistory: Content[] = storedMessages
+      .filter((m, i) => (i === 0 ? m.role === "user" : true))
+      .map((m) => ({
+        role: m.role === "user" ? "user" : "model",
+        parts: [{ text: m.content }],
       }));
 
     const chat = model.startChat({ history: chatHistory });
@@ -832,8 +870,21 @@ ${context}`;
       result = await withRetry(() => chat.sendMessage(responseParts));
     }
 
-    const answer = result.response.text();
+    let answer = result.response.text();
     const actionsPerformed = executedActions.some((a) => a.success);
+
+    // Safety net: never let a fabricated "تم!" reach the user when nothing was actually
+    // executed — this is what stops the assistant from claiming success without a real write.
+    if (!actionsPerformed && CONFIRMATION_PATTERN.test(answer) && ACTION_INTENT_PATTERN.test(question)) {
+      answer =
+        "ما قدرت أتأكد إنه العملية نُفّذت فعلياً، فما بدي أأكد شي ما صار. ممكن تحدد أكتر (المبلغ، التاريخ، أو الزبون) وجرب تاني؟";
+    }
+
+    // Persist both sides of the exchange so the conversation survives reloads/devices.
+    await db.insert(aiMessagesTable).values([
+      { userId: req.userId, role: "user", content: question, actions: null },
+      { userId: req.userId, role: "model", content: answer, actions: executedActions.length ? executedActions : null },
+    ]);
 
     res.json({
       answer,

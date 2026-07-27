@@ -1,9 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useAiQuery } from "@workspace/api-client-react";
-import type { AiHistoryItem } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -53,10 +53,30 @@ export default function ChatScreen() {
 
   const QUICK_QUESTIONS = [t("q1"), t("q2"), t("q3"), t("q4")];
 
-  const buildHistory = (current: Message[]): AiHistoryItem[] =>
-    current
-      .filter((m) => m.id !== "0")
-      .map((m) => ({ role: m.role, content: m.content }));
+  // Load the real, persistent conversation from the server on mount — so past chats show up
+  // again instead of resetting every time the app is reopened.
+  useEffect(() => {
+    let cancelled = false;
+    customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>("/ai/history")
+      .then((res) => {
+        if (cancelled || res.messages.length === 0) return;
+        setMessages((prev) => [
+          prev[0],
+          ...res.messages.map((m) => ({
+            id: String(m.id),
+            role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+            content: m.content,
+          })),
+        ]);
+      })
+      .catch(() => {
+        // Non-fatal: just start a fresh visible conversation if history can't be loaded.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sendMessage = async (raw?: string) => {
     const text = (raw ?? input).trim();
@@ -68,7 +88,6 @@ export default function ChatScreen() {
       content: text,
     };
 
-    const history = buildHistory(messages);
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -76,7 +95,8 @@ export default function ChatScreen() {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      const result = await askAi({ data: { question: text, history } });
+      // History is tracked server-side now (persisted per user) — only the new question is sent.
+      const result = await askAi({ data: { question: text } });
       const answer = (result as any)?.answer ?? (language === "ar" ? "عذراً، لم أتمكن من فهم سؤالك." : "Sorry, I couldn't understand your question.");
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
