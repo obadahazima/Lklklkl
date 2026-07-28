@@ -212,7 +212,7 @@ export default function SignUpPage() {
             resizeMode="contain"
           />
           <Text style={styles.title}>إنشاء حساب</Text>
-          <Text style={styles.subtitle}>Voice Accounting AI</Text>
+          <Text style={styles.subtitle}>Billy Bills AI</Text>
         </View>
 
         <View style={styles.card}>

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Voice Accounting AI",
+    "name": "Billy Bills AI",
     "slug": "finance-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,7 +17,7 @@
       "supportsTablet": false
     },
     "android": {
-      "package": "com.obhazima.VoiceAccountingAi"
+      "package": "com.obhazima.billybillsai"
     },
     "web": {
       "favicon": "./assets/images/icon.png"

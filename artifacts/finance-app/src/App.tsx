@@ -247,13 +247,13 @@ function ClerkProviderWithRoutes() {
       localization={{
         signIn: {
           start: {
-            title: "أهلاً بك في Voice Accounting AI",
+            title: "أهلاً بك في Billy Bills AI",
             subtitle: "سجّل دخولك للوصول إلى حساباتك",
           },
         },
         signUp: {
           start: {
-            title: "انضم إلى Voice Accounting AI",
+            title: "انضم إلى Billy Bills AI",
             subtitle: "ابدأ بإدارة حساباتك بالذكاء الاصطناعي",
           },
         },
