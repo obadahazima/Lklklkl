@@ -71,7 +71,14 @@ export function clerkProxyMiddleware(): RequestHandler {
     on: {
       proxyReq: (proxyReq, req) => {
         const protocol = req.headers["x-forwarded-proto"] || "https";
-        const host = getClerkProxyHost(req) || "";
+        // Prefer an explicit, fixed public host if provided — requests that
+        // pass through Vercel's external-destination rewrite to reach this
+        // server may not preserve the original public Host/x-forwarded-host,
+        // which would otherwise cause Clerk-Proxy-Url to point at the
+        // Railway hostname instead of the real public domain and get
+        // rejected by Clerk ("unable to attribute this request to an
+        // instance").
+        const host = process.env.CLERK_PROXY_HOST || getClerkProxyHost(req) || "";
         const proxyUrl = `${protocol}://${host}${CLERK_PROXY_PATH}`;
 
         proxyReq.setHeader("Clerk-Proxy-Url", proxyUrl);
