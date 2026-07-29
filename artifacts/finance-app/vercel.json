@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/__clerk/:path*", "destination": "https://workspaceapi-server-production-85e3.up.railway.app/api/__clerk/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
