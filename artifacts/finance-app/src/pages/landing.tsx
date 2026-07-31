@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import MobileHeaderMenu from "./MobileHeaderMenu";
 import {
   Mic,
   Users,
@@ -11,8 +12,11 @@ import {
   BarChart3,
   MessageCircle,
   Star,
+  Menu,
+  X,
 } from "lucide-react";
 import { useSettings } from "@/contexts/settings-context";
+import { useState } from "react";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -115,12 +119,14 @@ export default function Landing() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-2">
-          <img src={`${basePath}/logo-symbol-32.png`} alt="Billy Bills AI" className="w-8 h-8 rounded-lg" />
+          <img src={`${basePath}/logo-mark-white.svg`} alt="Billy Bills AI" className="w-8 h-8" />
           <span className="font-semibold text-foreground text-base">
             Billy Bills <span className="text-primary">AI</span>
           </span>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Desktop / tablet actions */}
+        <div className="hidden sm:flex items-center gap-2">
           <button
             onClick={() => updateSettings({ language: lang === "ar" ? "en" : "ar" })}
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-2 transition-colors"
@@ -147,12 +153,21 @@ export default function Landing() {
             </button>
           </Link>
         </div>
+
+        {/* Mobile menu: visible on small screens */}
+        <MobileHeaderMenu
+          className="sm:hidden"
+          lang={lang}
+          isDark={isDark}
+          t={t}
+          updateSettings={updateSettings}
+        />
       </header>
 
       {/* Hero band — fixed dark-teal gradient regardless of light/dark mode, so the
           headline stays legibly white either way. */}
       <div
-        className="px-6 pt-14 pb-12 md:pt-20 md:pb-16"
+        className="landing-hero px-6 pt-14 pb-12 md:pt-20 md:pb-16"
         style={{
           background:
             "linear-gradient(160deg, hsl(var(--hero-from)), hsl(var(--hero-via)) 65%, hsl(var(--hero-to)))",

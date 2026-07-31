@@ -216,3 +216,82 @@
   border-radius: 1rem;
   padding: 0.5rem 0.75rem;
 }
+
+/* Landing page responsive tweaks for small screens */
+.landing-hero {
+  /* keep the same gradient but allow CSS overrides for spacing */
+}
+
+@media (max-width: 640px) {
+  .landing-hero {
+    padding-top: 3.5rem !important; /* smaller top padding on phones */
+    padding-bottom: 1.25rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .landing-hero h1 {
+    font-size: 1.5rem !important; /* ~24px */
+    line-height: 1.05 !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .landing-hero p {
+    font-size: 0.95rem !important;
+    line-height: 1.3 !important;
+    max-width: 100% !important;
+  }
+
+  /* Make CTAs stack and expand full width on mobile */
+  .landing-hero .flex.gap-3.justify-center.flex-wrap.mb-3 {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+    align-items: stretch !important;
+  }
+  .landing-hero .flex.gap-3.justify-center.flex-wrap.mb-3 > a > button {
+    width: 100% !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  /* Mini chat preview scale down */
+  .landing-hero .max-w-md.mx-auto.mt-10 {
+    margin-top: 0.75rem !important;
+  }
+  .landing-hero .max-w-md.mx-auto .bg-card {
+    padding: 0.75rem !important;
+  }
+
+  /* Stats strip: stack vertically */
+  .bg-card .max-w-xl.mx-auto.grid.grid-cols-3 {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Reduce hero badge and icon sizes */
+  .landing-hero .inline-flex.items-center.gap-1.5.text-xs {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 11px !important;
+  }
+
+  /* Header compress: smaller logo and hide secondary buttons */
+  header.flex.items-center.justify-between.px-6.py-4.border-b.border-border {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+  header .flex.items-center.gap-2 img {
+    width: 28px !important;
+    height: 28px !important;
+  }
+  header .flex.items-center.gap-2 span {
+    font-size: 0.95rem !important;
+  }
+
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  /* small tablets — slightly smaller hero */
+  .landing-hero h1 { font-size: 2rem !important; }
+  .landing-hero p { font-size: 1rem !important; }
+}

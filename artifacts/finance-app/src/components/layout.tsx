@@ -80,7 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       >
         <div className="flex items-center justify-between p-5 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <img src={`${basePath}/logo-symbol-64.png`} alt="Logo" className="w-10 h-10 rounded-xl shrink-0" />
+            <img src={`${basePath}/logo-mark-white.svg`} alt="Logo" className="w-10 h-10 shrink-0" />
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">
                 Billy Bills AI
@@ -189,9 +189,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <h1 className="font-bold text-foreground">
-            {language === "ar" ? "حسابات" : "Hisabat"}
-          </h1>
+          <div className="flex items-center gap-2">
+            <img src={`${basePath}/logo-mark-white.svg`} alt="Logo" className="w-6 h-6" />
+            <h1 className="font-bold text-foreground">
+              {language === "ar" ? "حسابات" : "Hisabat"}
+            </h1>
+          </div>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setHelpOpen(true)}
