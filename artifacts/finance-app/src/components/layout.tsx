@@ -80,7 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       >
         <div className="flex items-center justify-between p-5 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <img src={`${basePath}/logo.png`} alt="Logo" className="w-10 h-10 rounded-xl shrink-0" />
+            <img src={`${basePath}/logo-symbol-64.png`} alt="Logo" className="w-10 h-10 rounded-xl shrink-0" />
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">
                 Billy Bills AI

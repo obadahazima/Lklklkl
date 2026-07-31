@@ -115,7 +115,7 @@ export default function Landing() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-2">
-          <img src={`${basePath}/logo.png`} alt="Billy Bills AI" className="w-8 h-8 rounded-lg" />
+          <img src={`${basePath}/logo-symbol-32.png`} alt="Billy Bills AI" className="w-8 h-8 rounded-lg" />
           <span className="font-semibold text-foreground text-base">
             Billy Bills <span className="text-primary">AI</span>
           </span>

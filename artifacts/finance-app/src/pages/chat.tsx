@@ -51,6 +51,8 @@ export default function Chat() {
   };
 
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
+  const [summary, setSummary] = useState<{ totalTx: number; pendingCount: number; balances: Record<string, number> } | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -79,6 +81,24 @@ export default function Chat() {
       .catch(() => {
         // Non-fatal: just start a fresh visible conversation if history can't be loaded.
       });
+
+    // load transactions summary for quick glance
+    (async () => {
+      try {
+        const txRes = await customFetch<any>("/api/transactions");
+        const txs = Array.isArray(txRes) ? txRes : txRes.items ?? txRes;
+        const totalTx = txs.length || 0;
+        let pendingCount = 0;
+        const balances: Record<string, number> = {};
+        for (const t of txs) {
+          const amt = Number(t.amount) || 0;
+          balances[t.currency] = (balances[t.currency] || 0) + (t.type === "income" || t.type === "receipt" ? amt : -amt);
+          if (t.status === "pending") pendingCount++;
+        }
+        if (!cancelled) setSummary({ totalTx, pendingCount, balances });
+      } catch {}
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -186,18 +206,18 @@ export default function Chat() {
   return (
     <div className={cn("flex flex-col h-full max-w-2xl mx-auto", language === "ar" ? "text-right" : "text-left")}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border bg-card shrink-0">
-        <div className="flex items-center justify-between">
+      <div className="assistant-header assistant-hero assistant-card shrink-0">
+        <div className="flex items-center justify-between w-full px-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <Bot className="w-5 h-5 text-primary" />
+            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+              <Bot className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-foreground">{t("aiAssistantTitle")}</h1>
-              <p className="text-xs text-green-500 font-medium">
+              <h1 className="font-bold text-white">{t("aiAssistantTitle")}</h1>
+              <p className="text-xs text-white/90 font-medium">
                 Gemini 2.5 Flash
                 {conversationCount > 0 && (
-                  <span className="text-muted-foreground ms-2">
+                  <span className="text-white/80 ms-2">
                     · {Math.floor(conversationCount / 2)} {t("questionsCount")}
                   </span>
                 )}
@@ -207,11 +227,11 @@ export default function Chat() {
           {conversationCount > 0 && (
             <button
               onClick={clearHistory}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1.5 rounded-lg hover:bg-muted"
+              className="flex items-center gap-1.5 text-xs text-white/90 transition-colors px-2 py-1.5 rounded-lg hover:bg-white/10"
               title={t("clearChat")}
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              {t("clearChat")}
+              <Trash2 className="w-3.5 h-3.5 text-white" />
+              <span className="ms-1">{t("clearChat")}</span>
             </button>
           )}
         </div>
@@ -219,6 +239,23 @@ export default function Chat() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Summary banner: quick financial snapshot */}
+        {summary && (
+          <div className="assistant-summary-card mb-3 px-3 py-2 rounded-lg bg-gradient-to-r from-[var(--hero-from)] via-[var(--hero-via)] to-[var(--hero-to)] text-white">
+            <div className="flex items-center justify-between text-sm">
+              <div>Transactions: <strong>{summary.totalTx}</strong></div>
+              <div>Pending: <strong>{summary.pendingCount}</strong></div>
+            </div>
+            <div className="flex gap-3 mt-2 text-xs">
+              {Object.entries(summary.balances).map(([cur, val]) => (
+                <div key={cur} className="px-2 py-1 bg-white/10 rounded-md">
+                  {cur} <strong>{val.toFixed(2)}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -272,6 +309,35 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {/* Quick actions (add transaction, report, overdue) */}
+      <div className="px-4 pb-2 flex gap-2 overflow-x-auto shrink-0">
+        <button
+          onClick={() => {
+            const tpl = language === "ar" ? "اضف مصروف 450 تصوير لعرس سارة" : "Add expense 450 photography for Sarah's wedding";
+            setInput(tpl);
+            setTimeout(() => inputRef.current?.focus(), 50);
+          }}
+          className="shrink-0 text-xs bg-accent text-accent-foreground px-3 py-1.5 rounded-full border border-border hover:bg-primary/10 transition-colors"
+          data-testid="quick-action-add-tx"
+        >
+          {language === "ar" ? "أضف معاملة" : "Add transaction"}
+        </button>
+        <button
+          onClick={() => sendMessage(language === "ar" ? "اعملي تقرير عن هاد الشهر" : "Generate a report for this month")}
+          className="shrink-0 text-xs bg-accent text-accent-foreground px-3 py-1.5 rounded-full border border-border hover:bg-primary/10 transition-colors"
+          data-testid="quick-action-report"
+        >
+          {language === "ar" ? "تقرير" : "Report"}
+        </button>
+        <button
+          onClick={() => sendMessage(language === "ar" ? "مين متأخر بالدفع؟" : "Who's overdue on payments?")}
+          className="shrink-0 text-xs bg-accent text-accent-foreground px-3 py-1.5 rounded-full border border-border hover:bg-primary/10 transition-colors"
+          data-testid="quick-action-overdue"
+        >
+          {language === "ar" ? "المتأخرون" : "Who's overdue"}
+        </button>
+      </div>
+
       {/* Quick questions */}
       <div className="px-4 pb-2 flex gap-2 overflow-x-auto shrink-0">
         {QUICK_QUESTIONS.map((q) => (
@@ -307,6 +373,7 @@ export default function Chat() {
             )}
           </button>
           <input
+            ref={(el) => (inputRef.current = el)}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}

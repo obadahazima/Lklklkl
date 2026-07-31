@@ -195,3 +195,24 @@
   50% { box-shadow: 0 0 0 16px rgba(239, 68, 68, 0); }
 }
 .animate-recording { animation: recording-pulse 1.2s infinite; }
+
+/* Assistant / Hero shared styles — use site hero gradient and rounded card look */
+.assistant-hero {
+  background: linear-gradient(160deg, hsl(var(--hero-from)), hsl(var(--hero-via)) 65%, hsl(var(--hero-to)));
+  color: hsl(var(--primary-foreground));
+}
+.assistant-card {
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  overflow: hidden;
+}
+.assistant-header {
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.assistant-bubble {
+  border-radius: 1rem;
+  padding: 0.5rem 0.75rem;
+}

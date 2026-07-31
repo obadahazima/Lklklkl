@@ -46,6 +46,7 @@ export function FloatingAssistant() {
     { id: "0", role: "assistant", content: t("chatWelcome") },
   ]);
   const flatListRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput | null>(null);
   const { mutateAsync: askAi, isPending } = useAiQuery();
 
   // Hide on the chat tab itself — redundant there.
@@ -156,23 +157,53 @@ export function FloatingAssistant() {
               }
             />
 
-            <View style={[styles.inputBar, { borderTopColor: colors.border }]}>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                value={input}
-                onChangeText={setInput}
-                placeholder={t("chatPlaceholder")}
-                placeholderTextColor={colors.mutedForeground}
-                textAlign={language === "ar" ? "right" : "left"}
-                onSubmitEditing={() => sendMessage()}
-              />
-              <Pressable
-                onPress={() => sendMessage()}
-                disabled={!input.trim() || isPending}
-                style={[styles.sendBtn, { backgroundColor: colors.primary }, (!input.trim() || isPending) && { opacity: 0.4 }]}
-              >
-                <Feather name="send" size={15} color="#fff" />
-              </Pressable>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                <Pressable
+                  onPress={() => {
+                    const tpl = language === "ar" ? "اضف مصروف 450 تصوير لعرس سارة" : "Add expense 450 photography for Sarah's wedding";
+                    setInput(tpl);
+                    setTimeout(() => inputRef.current?.focus(), 80);
+                  }}
+                  style={[styles.actionPill, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 13 }}>{language === "ar" ? "أضف معاملة" : "Add"}</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => sendMessage(language === "ar" ? "اعملي تقرير عن هاد الشهر" : "Generate a report for this month")}
+                  style={[styles.actionPill, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 13 }}>{language === "ar" ? "تقرير" : "Report"}</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => sendMessage(language === "ar" ? "مين متأخر بالدفع؟" : "Who's overdue on payments?")}
+                  style={[styles.actionPill, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 13 }}>{language === "ar" ? "المتأخرون" : "Overdue"}</Text>
+                </Pressable>
+              </View>
+
+              <View style={[styles.inputBar, { borderTopColor: colors.border }]}>
+                <TextInput
+                  ref={(el) => (inputRef.current = el)}
+                  style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                  value={input}
+                  onChangeText={setInput}
+                  placeholder={t("chatPlaceholder")}
+                  placeholderTextColor={colors.mutedForeground}
+                  textAlign={language === "ar" ? "right" : "left"}
+                  onSubmitEditing={() => sendMessage()}
+                />
+                <Pressable
+                  onPress={() => sendMessage()}
+                  disabled={!input.trim() || isPending}
+                  style={[styles.sendBtn, { backgroundColor: colors.primary }, (!input.trim() || isPending) && { opacity: 0.4 }]}
+                >
+                  <Feather name="send" size={15} color="#fff" />
+                </Pressable>
+              </View>
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -261,5 +292,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
   },
 });
