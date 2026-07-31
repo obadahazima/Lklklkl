@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -22,10 +23,13 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useTr } from "@/lib/i18n";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 
+export type ExecutedAction = { name: string; success: boolean; result: Record<string, unknown> };
+
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  actions?: ExecutedAction[];
 };
 
 export default function ChatScreen() {
@@ -98,10 +102,12 @@ export default function ChatScreen() {
       // History is tracked server-side now (persisted per user) — only the new question is sent.
       const result = await askAi({ data: { question: text } });
       const answer = (result as any)?.answer ?? (language === "ar" ? "عذراً، لم أتمكن من فهم سؤالك." : "Sorry, I couldn't understand your question.");
+      const actions = (result as any)?.data?.actions as ExecutedAction[] | undefined;
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: answer,
+        actions,
       };
       setMessages((prev) => [...prev, aiMsg]);
       // If the assistant added/edited/deleted a transaction, refresh all cached data
@@ -150,28 +156,33 @@ export default function ChatScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: bottomPad + 100 }}
         renderItem={({ item }) => (
-          <View style={[
-            styles.bubbleRow,
-            item.role === "user" ? styles.userRow : styles.aiRow,
-          ]}>
-            {item.role === "assistant" && (
-              <View style={[styles.aiAvatar, { backgroundColor: colors.accent }]}>
-                <Feather name="cpu" size={14} color={colors.primary} />
-              </View>
-            )}
+          <View>
             <View style={[
-              styles.bubble,
-              item.role === "user"
-                ? [styles.userBubble, { backgroundColor: colors.primary }]
-                : [styles.aiBubble, { backgroundColor: colors.card, borderColor: colors.border }],
+              styles.bubbleRow,
+              item.role === "user" ? styles.userRow : styles.aiRow,
             ]}>
-              <Text style={[
-                styles.bubbleText,
-                { color: item.role === "user" ? "#fff" : colors.foreground, textAlign: language === "ar" ? "right" : "left" },
+              {item.role === "assistant" && (
+                <View style={[styles.aiAvatar, { backgroundColor: colors.accent }]}>
+                  <Feather name="cpu" size={14} color={colors.primary} />
+                </View>
+              )}
+              <View style={[
+                styles.bubble,
+                item.role === "user"
+                  ? [styles.userBubble, { backgroundColor: colors.primary }]
+                  : [styles.aiBubble, { backgroundColor: colors.card, borderColor: colors.border }],
               ]}>
-                {item.content}
-              </Text>
+                <Text style={[
+                  styles.bubbleText,
+                  { color: item.role === "user" ? "#fff" : colors.foreground, textAlign: language === "ar" ? "right" : "left" },
+                ]}>
+                  {item.content}
+                </Text>
+              </View>
             </View>
+            {item.role === "assistant" && item.actions && item.actions.length > 0 && (
+              <ActionCards actions={item.actions} language={language} colors={colors} onAsk={sendMessage} />
+            )}
           </View>
         )}
         ListFooterComponent={
@@ -265,6 +276,125 @@ export default function ChatScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+export function ActionCards({
+  actions,
+  language,
+  colors,
+  onAsk,
+}: {
+  actions: ExecutedAction[];
+  language: "ar" | "en";
+  colors: ReturnType<typeof useColors>;
+  onAsk: (text: string) => void;
+}) {
+  return (
+    <View style={{ marginLeft: language === "ar" ? 0 : 36, marginRight: language === "ar" ? 36 : 0, marginTop: 6, gap: 8 }}>
+      {actions.map((action, i) => {
+        if (!action.success) return null;
+
+        if (action.name === "get_overdue_clients") {
+          const clients = (action.result.overdueClients as Array<{
+            clientId: number;
+            clientName: string;
+            daysOverdue: number;
+          }>) ?? [];
+          if (clients.length === 0) return null;
+          return (
+            <View key={i} style={{ gap: 8 }}>
+              {clients.map((c) => (
+                <View
+                  key={c.clientId}
+                  style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                    <Feather name="alert-circle" size={16} color="#f59e0b" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600" as const, color: colors.foreground }}>
+                        {c.clientName}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.mutedForeground }}>
+                        {language === "ar" ? `متأخر ${c.daysOverdue} يوم` : `${c.daysOverdue} days overdue`}
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={() =>
+                      onAsk(
+                        language === "ar"
+                          ? `جهزلي تذكير واتساب لـ ${c.clientName}`
+                          : `Prepare a whatsapp reminder for ${c.clientName}`,
+                      )
+                    }
+                    style={[styles.actionBtn, { backgroundColor: colors.accent, borderColor: colors.border }]}
+                  >
+                    <Text style={{ fontSize: 11, color: colors.primary, fontWeight: "600" as const }}>
+                      {language === "ar" ? "جهّز تذكير" : "Prepare"}
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          );
+        }
+
+        if (action.name === "prepare_whatsapp_reminder") {
+          const link = action.result.whatsappLink as string | undefined;
+          const clientName = action.result.clientName as string | undefined;
+          if (!link) return null;
+          return (
+            <Pressable
+              key={i}
+              onPress={() => Linking.openURL(link)}
+              style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Feather name="message-circle" size={16} color="#16a34a" />
+              <Text style={{ fontSize: 13, color: colors.foreground, flex: 1 }}>
+                {language === "ar"
+                  ? `افتح واتساب وابعث التذكير لـ ${clientName}`
+                  : `Open WhatsApp and send reminder to ${clientName}`}
+              </Text>
+            </Pressable>
+          );
+        }
+
+        if (action.name === "generate_report") {
+          const totals = (action.result.totals as Array<{
+            currency: string;
+            income: number;
+            expense: number;
+            net: number;
+          }>) ?? [];
+          if (totals.length === 0) return null;
+          return (
+            <View key={i} style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <Feather name="bar-chart-2" size={16} color={colors.primary} />
+                <Text style={{ fontSize: 13, fontWeight: "600" as const, color: colors.foreground }}>
+                  {language === "ar" ? "التقرير المالي" : "Financial report"}
+                </Text>
+              </View>
+              {totals.map((t) => (
+                <View key={t.currency} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, color: colors.mutedForeground }}>{t.currency}</Text>
+                  <Text style={{ fontSize: 11, color: colors.foreground }}>
+                    {language === "ar" ? "دخل" : "In"} {t.income.toFixed(0)} ·{" "}
+                    {language === "ar" ? "مصروف" : "Out"} {t.expense.toFixed(0)} ·{" "}
+                    <Text style={{ fontWeight: "700" as const, color: t.net >= 0 ? "#16a34a" : "#ef4444" }}>
+                      {language === "ar" ? "صافي" : "Net"} {t.net.toFixed(0)}
+                    </Text>
+                  </Text>
+                </View>
+              ))}
+            </View>
+          );
+        }
+
+        return null;
+      })}
     </View>
   );
 }
@@ -397,5 +527,26 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  actionBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  reportCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
 });

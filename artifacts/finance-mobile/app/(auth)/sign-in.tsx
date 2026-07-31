@@ -60,9 +60,11 @@ export default function SignInPage() {
       try {
         setSsoLoading(provider === "oauth_google" ? "google" : "apple");
         setLocalError("");
+        const __debugRedirectUrl = AuthSession.makeRedirectUri();
+        console.log("=== SSO redirectUrl ===", __debugRedirectUrl);
         const { createdSessionId, setActive } = await startSSOFlow({
           strategy: provider,
-          redirectUrl: AuthSession.makeRedirectUri(),
+          redirectUrl: __debugRedirectUrl,
         });
         if (createdSessionId && setActive) {
           await setActive({

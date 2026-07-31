@@ -19,6 +19,7 @@ import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 import { useClerk, useUser } from "@clerk/react";
 import { HelpModal } from "@/components/help-modal";
+import { FloatingAssistant } from "@/components/floating-assistant";
 
 const HELP_SEEN_KEY = "hasSeenAppHelp";
 
@@ -79,7 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       >
         <div className="flex items-center justify-between p-5 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <img src={`${basePath}/logo.jpg`} alt="Logo" className="w-10 h-10 rounded-xl shrink-0" />
+            <img src={`${basePath}/logo.png`} alt="Logo" className="w-10 h-10 rounded-xl shrink-0" />
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">
                 Billy Bills AI
@@ -231,6 +232,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       <HelpModal open={helpOpen} onOpenChange={setHelpOpen} language={language} />
+      <FloatingAssistant />
     </div>
   );
 }

@@ -2,20 +2,25 @@ import { useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAiQuery } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react";
-import { Mic, MicOff, Send, Bot, User, Loader2, Trash2 } from "lucide-react";
+import { Mic, MicOff, Send, Bot, User, Loader2, Trash2, AlertCircle, MessageCircle, FileBarChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 
+export type ExecutedAction = { name: string; success: boolean; result: Record<string, unknown> };
+
 type Message = {
   id: number;
   role: "user" | "assistant";
   content: string;
+  actions?: ExecutedAction[];
 };
 
 const QUICK_QUESTIONS_AR = [
   "كم رصيدي الإجمالي؟",
+  "مين متأخر بالدفع؟",
+  "اعملي تقرير عن هاد الشهر",
   "من أكبر مدين عندي؟",
   "ما أرباح آخر رحلة؟",
   "كم معاملة معلّقة؟",
@@ -25,6 +30,8 @@ const QUICK_QUESTIONS_AR = [
 
 const QUICK_QUESTIONS_EN = [
   "What's my total balance?",
+  "Who's overdue on payments?",
+  "Generate a report for this month",
   "Who owes me the most?",
   "What's the last trip's profit?",
   "How many pending transactions?",
@@ -81,9 +88,10 @@ export default function Chat() {
   const queryMutation = useAiQuery({
     mutation: {
       onSuccess: (data) => {
+        const actions = (data.data as { actions?: ExecutedAction[] } | undefined)?.actions;
         setMessages((prev) => [
           ...prev,
-          { id: Date.now(), role: "assistant", content: data.answer },
+          { id: Date.now(), role: "assistant", content: data.answer, actions },
         ]);
         // If the assistant added/edited/deleted a transaction, refresh all cached data
         // (transactions list, dashboard, client balances, etc.) so the UI reflects it immediately.
@@ -232,15 +240,20 @@ export default function Chat() {
                 <User className="w-4 h-4 text-muted-foreground" />
               )}
             </div>
-            <div
-              className={cn(
-                "max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
-                msg.role === "assistant"
-                  ? "bg-card border border-border text-foreground rounded-tr-sm"
-                  : "bg-primary text-primary-foreground rounded-tl-sm",
+            <div className="flex flex-col gap-2 max-w-[80%]">
+              <div
+                className={cn(
+                  "px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
+                  msg.role === "assistant"
+                    ? "bg-card border border-border text-foreground rounded-tr-sm"
+                    : "bg-primary text-primary-foreground rounded-tl-sm",
+                )}
+              >
+                {msg.content}
+              </div>
+              {msg.role === "assistant" && msg.actions && msg.actions.length > 0 && (
+                <ActionCards actions={msg.actions} language={language} onAsk={sendMessage} />
               )}
-            >
-              {msg.content}
             </div>
           </div>
         ))}
@@ -315,5 +328,124 @@ export default function Chat() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function ActionCards({
+  actions,
+  language,
+  onAsk,
+}: {
+  actions: ExecutedAction[];
+  language: "ar" | "en";
+  onAsk: (text: string) => void;
+}) {
+  return (
+    <>
+      {actions.map((action, i) => {
+        if (!action.success) return null;
+
+        if (action.name === "get_overdue_clients") {
+          const clients = (action.result.overdueClients as Array<{
+            clientId: number;
+            clientName: string;
+            phone: string | null;
+            daysOverdue: number;
+            amounts: Record<string, number>;
+          }>) ?? [];
+          if (clients.length === 0) return null;
+          return (
+            <div key={i} className="flex flex-col gap-2">
+              {clients.map((c) => (
+                <div
+                  key={c.clientId}
+                  className="bg-card border border-border rounded-xl px-3 py-2.5 flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{c.clientName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {language === "ar"
+                          ? `متأخر ${c.daysOverdue} يوم`
+                          : `${c.daysOverdue} days overdue`}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() =>
+                      onAsk(
+                        language === "ar"
+                          ? `جهزلي تذكير واتساب لـ ${c.clientName}`
+                          : `Prepare a whatsapp reminder for ${c.clientName}`,
+                      )
+                    }
+                    className="shrink-0 text-xs bg-accent text-accent-foreground px-2.5 py-1.5 rounded-lg border border-border hover:bg-primary/10 transition-colors"
+                  >
+                    {language === "ar" ? "جهّز تذكير" : "Prepare reminder"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        if (action.name === "prepare_whatsapp_reminder") {
+          const link = action.result.whatsappLink as string | undefined;
+          const clientName = action.result.clientName as string | undefined;
+          if (!link) return null;
+          return (
+            <a
+              key={i}
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2.5 hover:bg-primary/5 transition-colors"
+            >
+              <MessageCircle className="w-4 h-4 text-green-600 shrink-0" />
+              <span className="text-sm">
+                {language === "ar"
+                  ? `افتح واتساب وابعث التذكير لـ ${clientName}`
+                  : `Open WhatsApp and send reminder to ${clientName}`}
+              </span>
+            </a>
+          );
+        }
+
+        if (action.name === "generate_report") {
+          const totals = (action.result.totals as Array<{
+            currency: string;
+            income: number;
+            expense: number;
+            net: number;
+          }>) ?? [];
+          if (totals.length === 0) return null;
+          return (
+            <div key={i} className="bg-card border border-border rounded-xl px-3 py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <FileBarChart className="w-4 h-4 text-primary shrink-0" />
+                <p className="text-sm font-medium">{language === "ar" ? "التقرير المالي" : "Financial report"}</p>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5">
+                {totals.map((t) => (
+                  <div key={t.currency} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{t.currency}</span>
+                    <span>
+                      {language === "ar" ? "دخل" : "In"} {t.income.toFixed(0)} ·{" "}
+                      {language === "ar" ? "مصروف" : "Out"} {t.expense.toFixed(0)} ·{" "}
+                      <span className={cn("font-medium", t.net >= 0 ? "text-green-600" : "text-red-500")}>
+                        {language === "ar" ? "صافي" : "Net"} {t.net.toFixed(0)}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        return null;
+      })}
+    </>
   );
 }

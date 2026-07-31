@@ -663,6 +663,49 @@ const deleteTransactionDeclaration: FunctionDeclaration = {
   },
 };
 
+const getOverdueClientsDeclaration: FunctionDeclaration = {
+  name: "get_overdue_clients",
+  description:
+    "اجلب قائمة الزبائن اللي عندهم معاملات معلّقة (pending) من فترة، مرتّبة من الأكثر تأخراً. استخدمها عندما يسأل المستخدم عن الزبائن المتأخرين بالدفع أو الذمم المستحقة، أو عندما تحلل البيانات وتلاحظ تأخيراً وتريد اقتراح تذكير.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      minDaysOverdue: {
+        type: SchemaType.NUMBER,
+        description: "أقل عدد أيام تأخير لاعتبار الزبون متأخراً (افتراضياً 7)",
+      },
+    },
+    required: [],
+  },
+};
+
+const prepareWhatsappReminderDeclaration: FunctionDeclaration = {
+  name: "prepare_whatsapp_reminder",
+  description:
+    "جهّز رسالة تذكير دفع لزبون معيّن ورابط واتساب جاهز لإرسالها (wa.me). لا يرسل الرسالة تلقائياً — فقط يجهّز الرابط والنص ليضغط المستخدم عليه بنفسه. استخدمها فقط بعد أن يوافق المستخدم صراحةً على إرسال تذكير لزبون محدد.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      clientId: { type: SchemaType.NUMBER, description: "معرّف الزبون" },
+    },
+    required: ["clientId"],
+  },
+};
+
+const generateReportDeclaration: FunctionDeclaration = {
+  name: "generate_report",
+  description:
+    "احسب تقريراً مالياً دقيقاً ومنظّماً لفترة محددة (دخل، مصاريف، صافي، أكبر بنود، ذمم معلّقة) بدل الاعتماد على تقدير نصي. استخدمها عندما يطلب المستخدم تقريراً أو ملخصاً مالياً لشهر أو فترة معينة.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      startDate: { type: SchemaType.STRING, description: "بداية الفترة YYYY-MM-DD" },
+      endDate: { type: SchemaType.STRING, description: "نهاية الفترة YYYY-MM-DD (شامل)" },
+    },
+    required: ["startDate", "endDate"],
+  },
+};
+
 type ExecutedAction = { name: string; success: boolean; result: Record<string, unknown> };
 
 async function executeTool(
@@ -733,6 +776,127 @@ async function executeTool(
       .returning();
     if (deleted.length === 0) return { error: "المعاملة غير موجودة" };
     return { success: true, deletedId: id };
+  }
+
+  if (name === "get_overdue_clients") {
+    const minDays = num(args.minDaysOverdue) ?? 7;
+    const today = new Date();
+    const pending = await db
+      .select()
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.userId, userId), eq(transactionsTable.status, "pending")));
+    const clients = await db.select().from(clientsTable).where(eq(clientsTable.userId, userId));
+    const clientMap = new Map((clients as ClientRow[]).map((c) => [c.id, c]));
+
+    const byClient = new Map<number, { amounts: Map<string, number>; oldestDate: string }>();
+    for (const t of pending as TxRow[]) {
+      if (!t.clientId) continue;
+      const entry = byClient.get(t.clientId) ?? { amounts: new Map<string, number>(), oldestDate: t.date };
+      entry.amounts.set(t.currency, (entry.amounts.get(t.currency) ?? 0) + Number(t.amount));
+      if (t.date < entry.oldestDate) entry.oldestDate = t.date;
+      byClient.set(t.clientId, entry);
+    }
+
+    const overdueClients = [...byClient.entries()]
+      .map(([clientId, entry]) => {
+        const client = clientMap.get(clientId);
+        if (!client) return null;
+        const days = Math.floor((today.getTime() - new Date(entry.oldestDate).getTime()) / 86_400_000);
+        return {
+          clientId,
+          clientName: client.name,
+          phone: client.phone,
+          daysOverdue: days,
+          amounts: Object.fromEntries(entry.amounts),
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null && c.daysOverdue >= minDays)
+      .sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+    return { success: true, overdueClients };
+  }
+
+  if (name === "prepare_whatsapp_reminder") {
+    const clientId = num(args.clientId);
+    if (!clientId) return { error: "clientId مفقود" };
+    const [client] = await db
+      .select()
+      .from(clientsTable)
+      .where(and(eq(clientsTable.id, clientId), eq(clientsTable.userId, userId)));
+    if (!client) return { error: "الزبون غير موجود" };
+    if (!client.phone) return { error: "لا يوجد رقم هاتف مسجّل لهذا الزبون، ما فيني جهّز رابط واتساب" };
+
+    const pending = await db
+      .select()
+      .from(transactionsTable)
+      .where(
+        and(
+          eq(transactionsTable.userId, userId),
+          eq(transactionsTable.status, "pending"),
+          eq(transactionsTable.clientId, clientId),
+        ),
+      );
+
+    const amounts = new Map<string, number>();
+    for (const t of pending as TxRow[]) {
+      amounts.set(t.currency, (amounts.get(t.currency) ?? 0) + Number(t.amount));
+    }
+    const amountsStr =
+      [...amounts.entries()].map(([cur, amt]) => `${amt.toFixed(2)} ${cur}`).join(" + ") || "0";
+
+    const message = `مرحباً ${client.name}، تذكير ودّي بخصوص مبلغ مستحق قدره ${amountsStr}. يسعدنا نسددها بأقرب وقت يناسبك. شكراً لتعاملك معنا.`;
+    const digitsOnly = client.phone.replace(/[^\d]/g, "");
+    const whatsappLink = `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`;
+
+    return { success: true, clientName: client.name, message, whatsappLink };
+  }
+
+  if (name === "generate_report") {
+    const startDate = typeof args.startDate === "string" ? args.startDate : null;
+    const endDate = typeof args.endDate === "string" ? args.endDate : null;
+    if (!startDate || !endDate) return { error: "startDate/endDate مفقودة" };
+
+    const [allTxs, clients] = await Promise.all([
+      db.select().from(transactionsTable).where(eq(transactionsTable.userId, userId)),
+      db.select().from(clientsTable).where(eq(clientsTable.userId, userId)),
+    ]);
+    const clientMap = new Map((clients as ClientRow[]).map((c) => [c.id, c.name]));
+    const inRange = (allTxs as TxRow[]).filter((t) => t.date >= startDate && t.date <= endDate);
+
+    const byCurrency = new Map<string, { income: number; expense: number }>();
+    for (const t of inRange) {
+      const entry = byCurrency.get(t.currency) ?? { income: 0, expense: 0 };
+      if (t.type === "income" || t.type === "receipt") entry.income += Number(t.amount);
+      else entry.expense += Number(t.amount);
+      byCurrency.set(t.currency, entry);
+    }
+    const totals = [...byCurrency.entries()].map(([currency, v]) => ({
+      currency,
+      income: v.income,
+      expense: v.expense,
+      net: v.income - v.expense,
+    }));
+
+    const topExpenses = [...inRange]
+      .filter((t) => t.type === "expense" || t.type === "payment")
+      .sort((a, b) => Number(b.amount) - Number(a.amount))
+      .slice(0, 5)
+      .map((t) => ({
+        date: t.date,
+        amount: Number(t.amount),
+        currency: t.currency,
+        description: t.description,
+        client: t.clientId ? (clientMap.get(t.clientId) ?? null) : null,
+      }));
+
+    return {
+      success: true,
+      period: { startDate, endDate },
+      totals,
+      transactionCount: inRange.length,
+      pendingCount: inRange.filter((t) => t.status === "pending").length,
+      topExpenses,
+    };
   }
 
   return { error: `أداة غير معروفة: ${name}` };
@@ -814,6 +978,11 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 - لا تنفّذ أكثر من عملية واحدة لكل رسالة ما لم يطلب المستخدم صراحةً عدة عمليات في نفس الرسالة.
 - ⚠️ ممنوع منعاً باتاً أن تقول "تم إضافة/تعديل/حذف..." أو أي صيغة توحي بأن عملية حصلت فعلياً، إلا إذا استدعيت الأداة (function call) فعلياً وحصلت على نتيجة success من نتيجتها. لا تفترض النجاح أبداً ولا تتظاهر بالتنفيذ اعتماداً على الحوار فقط.
 
+--- أدوات إضافية ---
+- get_overdue_clients: استخدمها إذا سأل المستخدم عن الزبائن المتأخرين، أو إذا لاحظت من البيانات وجود ذمم معلّقة قديمة وتريد تنبيهه استباقياً في بداية المحادثة.
+- prepare_whatsapp_reminder: لا تستدعِها إلا بعد موافقة صريحة من المستخدم على إرسال تذكير لزبون بعينه. النتيجة تحتوي رابط واتساب (whatsappLink) — اعرضه للمستخدم كرابط واضح ليضغط عليه، ولا تدّعِ أن الرسالة أُرسلت فعلياً؛ فقط الرابط جاهز، والمستخدم هو من يضغط إرسال.
+- generate_report: استخدمها لأي طلب تقرير/ملخص مالي عن فترة محددة (بدل حساب الأرقام يدوياً من السياق النصي) لضمان دقة الأرقام. إذا لم يحدد المستخدم فترة، افترض الشهر الحالي.
+
 البيانات المالية الحالية:
 ${context}`;
 
@@ -823,6 +992,9 @@ ${context}`;
           createTransactionDeclaration,
           updateTransactionDeclaration,
           deleteTransactionDeclaration,
+          getOverdueClientsDeclaration,
+          prepareWhatsappReminderDeclaration,
+          generateReportDeclaration,
         ],
       },
     ];

@@ -23,6 +23,7 @@ import { useColors } from "@/hooks/useColors";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTr } from "@/lib/i18n";
 import { HelpOverlay } from "@/components/HelpOverlay";
+import { FloatingAssistant } from "@/components/FloatingAssistant";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded, getToken } = useAuth();
@@ -287,6 +288,7 @@ export default function TabLayout() {
       <AuthGate>
         <NativeTabLayout />
         <HelpOverlay />
+        <FloatingAssistant />
       </AuthGate>
     );
   }
@@ -294,6 +296,7 @@ export default function TabLayout() {
     <AuthGate>
       <ClassicTabLayout />
       <HelpOverlay />
+      <FloatingAssistant />
     </AuthGate>
   );
 }
