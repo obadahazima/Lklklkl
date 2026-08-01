@@ -1,4 +1,4 @@
-const CACHE_NAME = 'billy-bills-v1';
+const CACHE_NAME = 'billy-bills-v2';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -47,7 +47,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For navigation and static assets, try cache first then network
+  // For page navigations, always prefer the network so users get the latest
+  // build instead of a stale cached HTML shell (fall back to cache offline).
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          const resClone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, resClone));
+          return res;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // For other static assets, try cache first then network
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).catch(() => caches.match('/index.html')))
   );
