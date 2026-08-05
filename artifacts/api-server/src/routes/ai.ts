@@ -10,7 +10,7 @@ import {
 } from "@workspace/db";
 import { ParseVoiceInputBody, AiQueryBody, TranscribeVoiceBody } from "@workspace/api-zod";
 import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration } from "@google/generative-ai";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = Router();
@@ -241,7 +241,7 @@ type TxRow = {
 type ClientRow = { id: number; name: string; phone: string | null };
 type TripRow   = { id: number; name: string; status: string; isShared: boolean };
 type StudioRow = { id: number; name: string };
-type ExpenseRow = { studioId: number; category: string; amount: string; currency: string; date: string; notes: string | null };
+type ExpenseRow = { id: number; studioId: number; category: string; amount: string; currency: string; date: string; notes: string | null };
 
 function buildFinancialContext(
   txs: TxRow[],
@@ -270,7 +270,7 @@ function buildFinancialContext(
       const paid     = curTxs.filter((t) => t.type === "expense" || t.type === "payment").reduce((s, t) => s + Number(t.amount), 0);
       return { cur, received, paid, open: received - paid };
     }).filter((c) => c.received !== 0 || c.paid !== 0);
-    return { name: client.name, phone: client.phone, perCur, txCount: cTxs.length };
+    return { id: client.id, name: client.name, phone: client.phone, perCur, txCount: cTxs.length };
   });
 
   const tripSummaries = trips.map((trip) => {
@@ -283,7 +283,7 @@ function buildFinancialContext(
       const myShare  = trip.isShared ? net / 2 : net;
       return { cur, income, spending, net, myShare };
     }).filter((c) => c.income !== 0 || c.spending !== 0);
-    return { name: trip.name, status: trip.status, isShared: trip.isShared, perCur, txCount: tTxs.length };
+    return { id: trip.id, name: trip.name, status: trip.status, isShared: trip.isShared, perCur, txCount: tTxs.length };
   });
 
   const studioSummaries = studios.map((studio) => {
@@ -292,8 +292,8 @@ function buildFinancialContext(
       const total = sExp.filter((e) => e.currency === cur).reduce((s, e) => s + Number(e.amount), 0);
       return { cur, total };
     }).filter((c) => c.total !== 0);
-    const details = sExp.map((e) => `${e.date} ${e.category} ${Number(e.amount).toFixed(2)} ${e.currency}${e.notes ? ` (${e.notes})` : ""}`);
-    return { name: studio.name, perCur, details };
+    const details = sExp.map((e) => `#${e.id} ${e.date} ${e.category} ${Number(e.amount).toFixed(2)} ${e.currency}${e.notes ? ` (${e.notes})` : ""}`);
+    return { id: studio.id, name: studio.name, perCur, details };
   });
 
   const lines: string[] = [];
@@ -317,7 +317,7 @@ function buildFinancialContext(
     const balStr = c.perCur.length > 0
       ? c.perCur.map((b) => `${b.cur}: مستحق ${b.open >= 0 ? "لك" : "عليك"} ${Math.abs(b.open).toFixed(2)} (مقبوض ${b.received.toFixed(2)}, مدفوع ${b.paid.toFixed(2)})`).join(" | ")
       : "لا توجد معاملات";
-    lines.push(`• ${c.name}${c.phone ? ` [${c.phone}]` : ""}: ${balStr} — ${c.txCount} معاملة`);
+    lines.push(`• #${c.id} ${c.name}${c.phone ? ` [${c.phone}]` : ""}: ${balStr} — ${c.txCount} معاملة`);
   });
   if (clients.length === 0) lines.push("لا يوجد زبائن");
   lines.push("");
@@ -326,7 +326,7 @@ function buildFinancialContext(
   tripSummaries.forEach((t) => {
     const status = t.status === "active" ? "نشطة" : "مغلقة";
     const shared = t.isShared ? " مشتركة (الربح ÷ 2)" : "";
-    lines.push(`• ${t.name} [${status}${shared}]:`);
+    lines.push(`• #${t.id} ${t.name} [${status}${shared}]:`);
     if (t.perCur.length > 0) {
       t.perCur.forEach((c) => {
         lines.push(`  ${c.cur}: دخل ${c.income.toFixed(2)}, مصاريف ${c.spending.toFixed(2)}, صافي ${c.net.toFixed(2)}${t.isShared ? `, حصتي ${c.myShare.toFixed(2)}` : ""}`);
@@ -341,7 +341,7 @@ function buildFinancialContext(
   lines.push(`=== الاستديوهات (${studios.length}) ===`);
   studioSummaries.forEach((s) => {
     const totals = s.perCur.map((c) => `${c.cur}: ${c.total.toFixed(2)}`).join(", ");
-    lines.push(`• ${s.name}: ${totals || "لا توجد مصاريف"}`);
+    lines.push(`• #${s.id} ${s.name}: ${totals || "لا توجد مصاريف"}`);
     s.details.forEach((d) => lines.push(`  - ${d}`));
   });
   if (studios.length === 0) lines.push("لا توجد استديوهات");
@@ -351,7 +351,7 @@ function buildFinancialContext(
   lines.push(`=== سجل المعاملات (${sorted.length} من ${txs.length}) ===`);
   sorted.forEach((t) => {
     const typeAr = t.type === "income" ? "دخل" : t.type === "expense" ? "مصروف" : t.type === "payment" ? "دفعة" : "قبض";
-    const parts: string[] = [`[${t.date}]`, typeAr, `${Number(t.amount).toFixed(2)} ${t.currency}`];
+    const parts: string[] = [`#${t.id}`, `[${t.date}]`, typeAr, `${Number(t.amount).toFixed(2)} ${t.currency}`];
     if (t.clientId && clientMap.has(t.clientId)) parts.push(`زبون:${clientMap.get(t.clientId)}`);
     if (t.tripId   && tripMap.has(t.tripId))     parts.push(`رحلة:${tripMap.get(t.tripId)}`);
     if (t.description) parts.push(`"${t.description}"`);
@@ -706,6 +706,186 @@ const generateReportDeclaration: FunctionDeclaration = {
   },
 };
 
+// --- Client tools ---
+
+const createClientDeclaration: FunctionDeclaration = {
+  name: "create_client",
+  description:
+    "أضف زبوناً جديداً. استخدمها فقط إذا طلب المستخدم صراحةً إضافة زبون جديد، أو إذا وافق صراحةً بعد أن سألتَه هل يريد إضافة زبون غير موجود بالبيانات (كخطوة لإكمال إضافة معاملة له).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      name: { type: SchemaType.STRING, description: "اسم الزبون" },
+      phone: { type: SchemaType.STRING, description: "رقم هاتف الزبون (اختياري)، يفضَّل بصيغة دولية مثل 971501234567" },
+      notes: { type: SchemaType.STRING, description: "ملاحظات عن الزبون (اختياري)" },
+    },
+    required: ["name"],
+  },
+};
+
+const updateClientDeclaration: FunctionDeclaration = {
+  name: "update_client",
+  description: "عدّل بيانات زبون موجود (الاسم، الهاتف، أو الملاحظات).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      id: { type: SchemaType.NUMBER, description: "معرّف الزبون (id)" },
+      name: { type: SchemaType.STRING },
+      phone: { type: SchemaType.STRING },
+      notes: { type: SchemaType.STRING },
+    },
+    required: ["id"],
+  },
+};
+
+const deleteClientDeclaration: FunctionDeclaration = {
+  name: "delete_client",
+  description:
+    "احذف زبوناً نهائياً. إجراء لا رجعة فيه (معاملاته السابقة تبقى لكن تفقد ربطها بالزبون). استخدمها فقط بعد تأكيد صريح جداً من المستخدم لعملية الحذف تحديداً.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الزبون (id)" } },
+    required: ["id"],
+  },
+};
+
+// --- Trip tools ---
+
+const createTripDeclaration: FunctionDeclaration = {
+  name: "create_trip",
+  description:
+    "أضف رحلة جديدة. استخدمها فقط إذا طلب المستخدم صراحةً إضافة رحلة جديدة، أو إذا وافق صراحةً بعد أن سألتَه هل يريد إضافة رحلة غير موجودة بالبيانات (كخطوة لإكمال إضافة معاملة مرتبطة بها).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      name: { type: SchemaType.STRING, description: "اسم الرحلة" },
+      isShared: { type: SchemaType.BOOLEAN, description: "هل الرحلة مشتركة (الربح ÷ 2)؟ افتراضياً false" },
+      status: { type: SchemaType.STRING, format: "enum", enum: ["active", "closed"], description: "حالة الرحلة، افتراضياً active" },
+      notes: { type: SchemaType.STRING, description: "ملاحظات (اختياري)" },
+    },
+    required: ["name"],
+  },
+};
+
+const updateTripDeclaration: FunctionDeclaration = {
+  name: "update_trip",
+  description: "عدّل بيانات رحلة موجودة (الاسم، الحالة، هل هي مشتركة، أو الملاحظات).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      id: { type: SchemaType.NUMBER, description: "معرّف الرحلة (id)" },
+      name: { type: SchemaType.STRING },
+      isShared: { type: SchemaType.BOOLEAN },
+      status: { type: SchemaType.STRING, format: "enum", enum: ["active", "closed"] },
+      notes: { type: SchemaType.STRING },
+    },
+    required: ["id"],
+  },
+};
+
+const deleteTripDeclaration: FunctionDeclaration = {
+  name: "delete_trip",
+  description:
+    "احذف رحلة نهائياً. إجراء لا رجعة فيه (معاملاتها السابقة تبقى لكن تفقد ربطها بالرحلة). استخدمها فقط بعد تأكيد صريح جداً من المستخدم لعملية الحذف تحديداً.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الرحلة (id)" } },
+    required: ["id"],
+  },
+};
+
+// --- Studio tools ---
+
+const createStudioDeclaration: FunctionDeclaration = {
+  name: "create_studio",
+  description: "أضف استديو جديد. استخدمها إذا طلب المستخدم صراحةً إضافة استديو جديد، أو وافق على إضافة استديو غير موجود بالبيانات.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      name: { type: SchemaType.STRING, description: "اسم الاستديو" },
+      address: { type: SchemaType.STRING, description: "العنوان (اختياري)" },
+      notes: { type: SchemaType.STRING, description: "ملاحظات (اختياري)" },
+    },
+    required: ["name"],
+  },
+};
+
+const updateStudioDeclaration: FunctionDeclaration = {
+  name: "update_studio",
+  description: "عدّل بيانات استديو موجود (الاسم، العنوان، أو الملاحظات).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      id: { type: SchemaType.NUMBER, description: "معرّف الاستديو (id)" },
+      name: { type: SchemaType.STRING },
+      address: { type: SchemaType.STRING },
+      notes: { type: SchemaType.STRING },
+    },
+    required: ["id"],
+  },
+};
+
+const deleteStudioDeclaration: FunctionDeclaration = {
+  name: "delete_studio",
+  description:
+    "احذف استديو نهائياً — يحذف معه تلقائياً كل مصاريف هذا الاستديو المسجّلة (إجراء لا رجعة فيه). استخدمها فقط بعد تأكيد صريح جداً من المستخدم.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الاستديو (id)" } },
+    required: ["id"],
+  },
+};
+
+const createStudioExpenseDeclaration: FunctionDeclaration = {
+  name: "create_studio_expense",
+  description: "سجّل مصروف استديو جديد (إيجار، صيانة، معدات، إلخ) على استديو موجود.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      studioId: { type: SchemaType.NUMBER, description: "معرّف الاستديو (id)" },
+      category: { type: SchemaType.STRING, description: "تصنيف المصروف (مثلاً: إيجار، صيانة، معدات، كهرباء)" },
+      amount: { type: SchemaType.NUMBER, description: "المبلغ (رقم موجب)" },
+      currency: { type: SchemaType.STRING, description: "كود العملة ISO مثل AED أو USD" },
+      date: { type: SchemaType.STRING, description: "تاريخ المصروف بصيغة YYYY-MM-DD. إذا لم يُذكر استخدم تاريخ اليوم." },
+      notes: { type: SchemaType.STRING, description: "ملاحظات (اختياري)" },
+    },
+    required: ["studioId", "category", "amount", "currency", "date"],
+  },
+};
+
+const deleteStudioExpenseDeclaration: FunctionDeclaration = {
+  name: "delete_studio_expense",
+  description: "احذف مصروف استديو معيّن نهائياً بالاعتماد على معرّفه (id) كما يظهر في سجل مصاريف الاستديو بالبيانات أعلاه.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: { id: { type: SchemaType.NUMBER, description: "معرّف مصروف الاستديو (id)" } },
+    required: ["id"],
+  },
+};
+
+// --- Search tool (precise, non-hallucinated lookup for edit/delete/explain requests) ---
+
+const searchTransactionsDeclaration: FunctionDeclaration = {
+  name: "search_transactions",
+  description:
+    "ابحث في كامل سجل المعاملات (ليس فقط آخر 150 المعروضة أعلاه بالبيانات) بأي مزيج من: اسم الزبون، اسم الرحلة، نطاق تاريخ، مبلغ تقريبي، كلمة من الوصف، النوع، أو الحالة. استخدمها دائماً قبل تعديل أو حذف معاملة وصفها المستخدم بالكلام بدل رقمها (id)، أو قبل الإجابة عن سؤال 'شو دفعت وليش' لمعاملة معينة، بدل أن تخمّن من السياق النصي.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      clientName: { type: SchemaType.STRING, description: "اسم الزبون كاملاً أو جزءاً منه (اختياري)" },
+      tripName: { type: SchemaType.STRING, description: "اسم الرحلة كاملاً أو جزءاً منه (اختياري)" },
+      dateFrom: { type: SchemaType.STRING, description: "بداية نطاق التاريخ YYYY-MM-DD (اختياري)" },
+      dateTo: { type: SchemaType.STRING, description: "نهاية نطاق التاريخ YYYY-MM-DD شامل (اختياري)" },
+      minAmount: { type: SchemaType.NUMBER, description: "أقل مبلغ (اختياري)" },
+      maxAmount: { type: SchemaType.NUMBER, description: "أعلى مبلغ (اختياري)" },
+      descriptionContains: { type: SchemaType.STRING, description: "كلمة أو جزء من وصف المعاملة (اختياري)" },
+      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt"], description: "نوع المعاملة (اختياري)" },
+      status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"], description: "حالة المعاملة (اختياري)" },
+    },
+    required: [],
+  },
+};
+
 type ExecutedAction = { name: string; success: boolean; result: Record<string, unknown> };
 
 async function executeTool(
@@ -899,6 +1079,237 @@ async function executeTool(
     };
   }
 
+  // --- Clients ---
+
+  if (name === "create_client") {
+    const clientName = typeof args.name === "string" ? args.name.trim() : "";
+    if (!clientName) return { error: "اسم الزبون مفقود" };
+    const [client] = await db
+      .insert(clientsTable)
+      .values({
+        userId,
+        name: clientName,
+        phone: typeof args.phone === "string" && args.phone.trim() ? args.phone.trim() : null,
+        notes: typeof args.notes === "string" && args.notes.trim() ? args.notes.trim() : null,
+      })
+      .returning();
+    return { success: true, client };
+  }
+
+  if (name === "update_client") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const updateData: Record<string, unknown> = {};
+    if (typeof args.name === "string" && args.name.trim()) updateData.name = args.name.trim();
+    if (typeof args.phone === "string") updateData.phone = args.phone.trim() || null;
+    if (typeof args.notes === "string") updateData.notes = args.notes.trim() || null;
+    const [client] = await db
+      .update(clientsTable)
+      .set(updateData)
+      .where(and(eq(clientsTable.id, id), eq(clientsTable.userId, userId)))
+      .returning();
+    if (!client) return { error: "الزبون غير موجود" };
+    return { success: true, client };
+  }
+
+  if (name === "delete_client") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const deleted = await db
+      .delete(clientsTable)
+      .where(and(eq(clientsTable.id, id), eq(clientsTable.userId, userId)))
+      .returning();
+    if (deleted.length === 0) return { error: "الزبون غير موجود" };
+    return { success: true, deletedId: id };
+  }
+
+  // --- Trips ---
+
+  if (name === "create_trip") {
+    const tripName = typeof args.name === "string" ? args.name.trim() : "";
+    if (!tripName) return { error: "اسم الرحلة مفقود" };
+    const [trip] = await db
+      .insert(tripsTable)
+      .values({
+        userId,
+        name: tripName,
+        isShared: typeof args.isShared === "boolean" ? args.isShared : false,
+        status: (args.status as string) || "active",
+        notes: typeof args.notes === "string" && args.notes.trim() ? args.notes.trim() : null,
+      })
+      .returning();
+    return { success: true, trip };
+  }
+
+  if (name === "update_trip") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const updateData: Record<string, unknown> = {};
+    if (typeof args.name === "string" && args.name.trim()) updateData.name = args.name.trim();
+    if (typeof args.isShared === "boolean") updateData.isShared = args.isShared;
+    if (typeof args.status === "string") updateData.status = args.status;
+    if (typeof args.notes === "string") updateData.notes = args.notes.trim() || null;
+    const [trip] = await db
+      .update(tripsTable)
+      .set(updateData)
+      .where(and(eq(tripsTable.id, id), eq(tripsTable.userId, userId)))
+      .returning();
+    if (!trip) return { error: "الرحلة غير موجودة" };
+    return { success: true, trip };
+  }
+
+  if (name === "delete_trip") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const deleted = await db
+      .delete(tripsTable)
+      .where(and(eq(tripsTable.id, id), eq(tripsTable.userId, userId)))
+      .returning();
+    if (deleted.length === 0) return { error: "الرحلة غير موجودة" };
+    return { success: true, deletedId: id };
+  }
+
+  // --- Studios ---
+
+  if (name === "create_studio") {
+    const studioName = typeof args.name === "string" ? args.name.trim() : "";
+    if (!studioName) return { error: "اسم الاستديو مفقود" };
+    const [studio] = await db
+      .insert(studiosTable)
+      .values({
+        userId,
+        name: studioName,
+        address: typeof args.address === "string" && args.address.trim() ? args.address.trim() : null,
+        notes: typeof args.notes === "string" && args.notes.trim() ? args.notes.trim() : null,
+      })
+      .returning();
+    return { success: true, studio };
+  }
+
+  if (name === "update_studio") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const updateData: Record<string, unknown> = {};
+    if (typeof args.name === "string" && args.name.trim()) updateData.name = args.name.trim();
+    if (typeof args.address === "string") updateData.address = args.address.trim() || null;
+    if (typeof args.notes === "string") updateData.notes = args.notes.trim() || null;
+    const [studio] = await db
+      .update(studiosTable)
+      .set(updateData)
+      .where(and(eq(studiosTable.id, id), eq(studiosTable.userId, userId)))
+      .returning();
+    if (!studio) return { error: "الاستديو غير موجود" };
+    return { success: true, studio };
+  }
+
+  if (name === "delete_studio") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const deleted = await db
+      .delete(studiosTable)
+      .where(and(eq(studiosTable.id, id), eq(studiosTable.userId, userId)))
+      .returning();
+    if (deleted.length === 0) return { error: "الاستديو غير موجود" };
+    return { success: true, deletedId: id };
+  }
+
+  if (name === "create_studio_expense") {
+    const studioId = num(args.studioId);
+    const amount = num(args.amount);
+    if (!studioId) return { error: "studioId مفقود" };
+    if (!amount || amount <= 0) return { error: "amount غير صالح" };
+    if (typeof args.category !== "string" || typeof args.currency !== "string" || typeof args.date !== "string") {
+      return { error: "حقول ناقصة (category/currency/date)" };
+    }
+    const [studio] = await db
+      .select()
+      .from(studiosTable)
+      .where(and(eq(studiosTable.id, studioId), eq(studiosTable.userId, userId)));
+    if (!studio) return { error: "الاستديو غير موجود" };
+    const [expense] = await db
+      .insert(studioExpensesTable)
+      .values({
+        userId,
+        studioId,
+        category: args.category,
+        amount: String(amount),
+        currency: args.currency.toUpperCase(),
+        date: args.date,
+        notes: (args.notes as string) ?? null,
+      })
+      .returning();
+    return { success: true, expense: { ...expense, amount: Number(expense.amount) } };
+  }
+
+  if (name === "delete_studio_expense") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const deleted = await db
+      .delete(studioExpensesTable)
+      .where(and(eq(studioExpensesTable.id, id), eq(studioExpensesTable.userId, userId)))
+      .returning();
+    if (deleted.length === 0) return { error: "مصروف الاستديو غير موجود" };
+    return { success: true, deletedId: id };
+  }
+
+  // --- Search (precise lookup across the full transaction history) ---
+
+  if (name === "search_transactions") {
+    const [allTxs, clients, trips] = await Promise.all([
+      db.select().from(transactionsTable).where(eq(transactionsTable.userId, userId)),
+      db.select().from(clientsTable).where(eq(clientsTable.userId, userId)),
+      db.select().from(tripsTable).where(eq(tripsTable.userId, userId)),
+    ]);
+    const clientMap = new Map((clients as ClientRow[]).map((c) => [c.id, c.name]));
+    const tripMap = new Map((trips as TripRow[]).map((t) => [t.id, t.name]));
+
+    const norm = (s: string) => s.trim().toLowerCase();
+    const clientNameQuery = typeof args.clientName === "string" && args.clientName.trim() ? norm(args.clientName) : null;
+    const tripNameQuery = typeof args.tripName === "string" && args.tripName.trim() ? norm(args.tripName) : null;
+    const descQuery = typeof args.descriptionContains === "string" && args.descriptionContains.trim() ? norm(args.descriptionContains) : null;
+    const dateFrom = typeof args.dateFrom === "string" ? args.dateFrom : null;
+    const dateTo = typeof args.dateTo === "string" ? args.dateTo : null;
+    const minAmount = num(args.minAmount);
+    const maxAmount = num(args.maxAmount);
+    const typeFilter = typeof args.type === "string" ? args.type : null;
+    const statusFilter = typeof args.status === "string" ? args.status : null;
+
+    let matches = (allTxs as TxRow[]).filter((t) => {
+      if (clientNameQuery) {
+        const cName = t.clientId ? clientMap.get(t.clientId) : null;
+        if (!cName || !norm(cName).includes(clientNameQuery)) return false;
+      }
+      if (tripNameQuery) {
+        const tName = t.tripId ? tripMap.get(t.tripId) : null;
+        if (!tName || !norm(tName).includes(tripNameQuery)) return false;
+      }
+      if (descQuery && !(t.description && norm(t.description).includes(descQuery))) return false;
+      if (dateFrom && t.date < dateFrom) return false;
+      if (dateTo && t.date > dateTo) return false;
+      if (minAmount !== undefined && Number(t.amount) < minAmount) return false;
+      if (maxAmount !== undefined && Number(t.amount) > maxAmount) return false;
+      if (typeFilter && t.type !== typeFilter) return false;
+      if (statusFilter && t.status !== statusFilter) return false;
+      return true;
+    });
+
+    matches = matches.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
+
+    const results = matches.map((t) => ({
+      id: t.id,
+      date: t.date,
+      type: t.type,
+      amount: Number(t.amount),
+      currency: t.currency,
+      clientName: t.clientId ? (clientMap.get(t.clientId) ?? null) : null,
+      tripName: t.tripId ? (tripMap.get(t.tripId) ?? null) : null,
+      description: t.description,
+      status: t.status,
+    }));
+
+    return { success: true, count: results.length, transactions: results };
+  }
+
   return { error: `أداة غير معروفة: ${name}` };
 }
 
@@ -961,22 +1372,41 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 
     const todayISO = new Date().toISOString().split("T")[0];
 
-    const systemInstruction = `أنت مساعد مالي ذكي لتاجر يعمل بين الإمارات والولايات المتحدة وسوريا.
-مهمتك الإجابة على الأسئلة المالية بدقة بناءً على البيانات الحالية المقدمة، وأيضاً تنفيذ عمليات فعلية على المعاملات (إضافة/تعديل/حذف) عند الطلب.
+    const systemInstruction = `أنت "بيلي" 🤖 — المساعد المالي الذكي الشخصي داخل هذا التطبيق، لتاجر يعمل بين الإمارات والولايات المتحدة وسوريا. أسلوبك ودود ومباشر وواثق، وتحكي عربي طبيعي مفهوم (فصحى ميسّرة مع لمسة لهجة شامية عند الحاجة). إذا سألك أحد عن اسمك، قل إنك "بيلي".
+مهمتك: الإجابة على الأسئلة المالية بدقة بناءً على البيانات الحالية المقدمة أدناه، وأيضاً تنفيذ عمليات فعلية (إضافة/تعديل/حذف) على المعاملات والزبائن والرحلات والاستديوهات عند الطلب — عندك صلاحية كاملة على بيانات هذا الحساب عبر الأدوات المتوفرة لك.
 تاريخ اليوم: ${todayISO}
 
 - أجب دائماً بالعربية بشكل موجز وواضح
 - استخدم الأرقام الفعلية من البيانات دون تقريب كبير
 - إذا كان السؤال عن معلومة غير موجودة، قل ذلك بوضوح
 - يمكنك الإجابة على أسئلة مثل: الأرصدة، ذمم الزبائن، أرباح الرحلات، مصاريف الاستديوهات، المعاملات المعلقة، مقارنات، وأي تحليل مالي
+- كل بند في البيانات أدناه (معاملة، زبون، رحلة، استديو، مصروف استديو) يبدأ برقم مثل #123 — هذا هو الـ id الحقيقي المطلوب بالضبط عند استدعاء أي أداة تعديل أو حذف. لا تخترع أرقام id أبداً.
 
---- الصلاحيات التنفيذية (مهم جداً) ---
+--- صلاحيات المعاملات (مهم جداً) ---
 - لديك أدوات فعلية لإضافة/تعديل/حذف المعاملات (create_transaction / update_transaction / delete_transaction). استخدمها فقط عندما يطلب المستخدم صراحةً ذلك (مثل: "سجّلي قبضت ٥٠٠ من أحمد اليوم"، "احذف آخر معاملة لسامر"، "عدّل معاملة ٣٠٠ الفاتورة صيرها ٤٠٠").
-- قبل الحذف أو التعديل، تأكد من هوية المعاملة (id) بالاعتماد على سجل المعاملات المتوفر لك أعلاه في البيانات (التاريخ، المبلغ، الزبون، الوصف). إذا كان هناك أكثر من معاملة تطابق الوصف ولم يكن واضحاً أيها يقصد المستخدم، لا تنفّذ أي شيء واسأله ليحدد بدقة (مثلاً بذكر المبلغ أو التاريخ أو رقم المعاملة).
 - إذا لم يُذكر تاريخ عند الإضافة، استخدم تاريخ اليوم (${todayISO}).
 - بعد تنفيذ أي عملية، أكّد للمستخدم بوضوح ماذا تم (النوع، المبلغ، العملة، التاريخ)، وإذا فشلت العملية اشرح السبب بإيجاز.
-- لا تنفّذ أكثر من عملية واحدة لكل رسالة ما لم يطلب المستخدم صراحةً عدة عمليات في نفس الرسالة.
-- ⚠️ ممنوع منعاً باتاً أن تقول "تم إضافة/تعديل/حذف..." أو أي صيغة توحي بأن عملية حصلت فعلياً، إلا إذا استدعيت الأداة (function call) فعلياً وحصلت على نتيجة success من نتيجتها. لا تفترض النجاح أبداً ولا تتظاهر بالتنفيذ اعتماداً على الحوار فقط.
+- لا تنفّذ أكثر من عملية واحدة لكل رسالة ما لم يطلب المستخدم صراحةً عدة عمليات في نفس الرسالة، أو ما لم تكن العملية الثانية استكمالاً مباشراً لموافقته على اقتراح قدّمته أنت بنفس الحوار (راجع قسم "إضافة زبون أو رحلة غير موجودة" أدناه).
+- ⚠️ ممنوع منعاً باتاً أن تقول "تم إضافة/تعديل/حذف..." أو أي صيغة توحي بأن عملية حصلت فعلياً — على معاملة أو زبون أو رحلة أو استديو — إلا إذا استدعيت الأداة (function call) فعلياً وحصلت على نتيجة success من نتيجتها. لا تفترض النجاح أبداً ولا تتظاهر بالتنفيذ اعتماداً على الحوار فقط.
+
+--- إضافة زبون أو رحلة غير موجودة (مهم جداً) ---
+- قبل إنشاء معاملة مرتبطة بزبون أو رحلة، طابق الاسم المذكور مع قائمة الزبائن/الرحلات ببيانات اليوم أدناه بمرونة (تجاهل اختلاف اللغة/الإملاء، مثلاً "رشا" = "Rasha").
+- إذا وجدت تطابقاً واضحاً: استخدم الـ id الموجود مباشرة، دون سؤال.
+- إذا لم تجد أي تطابق: لا تنشئ المعاملة فوراً ولا تخترع id. اسأل المستخدم بوضوح، مثلاً: "ما لقيت [الاسم] بقائمة الزبائن، بدك أضيفه كزبون جديد؟" وانتظر رده.
+- إذا وافق المستخدم (بنفس الرسالة أو برسالة تالية): استدعِ create_client أو create_trip أولاً، ثم استخدم الـ id الجديد الذي رجع من نتيجة الأداة فوراً لاستدعاء create_transaction بنفس الرد لإكمال العملية الأصلية — دون الحاجة لسؤاله مجدداً عن تفاصيل المعاملة التي ذكرها سابقاً.
+- إذا رفض إضافته: أنشئ المعاملة بدون ربطها بزبون/رحلة (اترك الحقل فارغاً)، أو اسأله ماذا يفضّل بدلاً من ذلك.
+
+--- تعديل، حذف، أو استفسار عن معاملة بالوصف الطبيعي (مهم جداً) ---
+- إذا وصف المستخدم معاملة بالكلام بدل رقمها (مثلاً بالتاريخ، الزبون، المبلغ، أو السبب — "بدي عدل الدفعة يلي دفعتها لأحمد أول أمس"، "احذف يلي دفعته لسامر الأسبوع الماضي"، "ليش دفعت ٣٠٠ لسامر بشهر ٧؟")، لا تخمّن ولا تعتمد فقط على السجل النصي المختصر أدناه. استخدم أداة search_transactions بكل ما توفر لديك من معطيات (اسم الزبون/الرحلة، نطاق تاريخ، مبلغ تقريبي، كلمة من الوصف) لإيجاد المعاملة أو المعاملات المطابقة أولاً، ثم تصرّف بناءً على نتيجتها.
+- سجل المعاملات المعروض أدناه هو آخر 150 معاملة فقط من إجمالي الحساب؛ إذا شككت أن المعاملة أقدم من ذلك أو لم تجدها بالسياق، استخدم search_transactions قبل أن تفترض عدم وجودها.
+- إذا رجعت نتيجة واحدة فقط مطابقة: نفّذ طلب التعديل/الحذف مباشرة (باستخدام id الذي رجع)، أو اشرح تفاصيلها إذا كان السؤال استفساراً فقط (ما المبلغ، لمين، ليش، إلخ — بالاعتماد على الوصف والبيانات الفعلية فقط، لا تخترع سبباً غير مذكور).
+- إذا رجع أكثر من نتيجة ولم يكن واضحاً أيها يقصد المستخدم: اعرض له الخيارات باختصار (التاريخ، المبلغ، الوصف) واطلب منه يحدد.
+- إذا لم ترجع أي نتيجة: أخبره بصراحة أنك ما لقيت معاملة مطابقة، بدل الادّعاء أو التخمين.
+
+--- إدارة الزبائن، الرحلات، والاستديوهات (صلاحيات كاملة) ---
+- عندك أدوات كاملة لإدارة الزبائن (create_client / update_client / delete_client)، الرحلات (create_trip / update_trip / delete_trip)، الاستديوهات (create_studio / update_studio / delete_studio)، ومصاريف الاستديوهات (create_studio_expense / delete_studio_expense). استخدمها عندما يطلب المستخدم ذلك صراحةً، أو ضمن سياق إضافة معاملة كما هو موضح أعلاه.
+- ⚠️ حذف زبون أو رحلة أو استديو أو معاملة إجراء لا رجعة فيه. لا تستخدم أي أداة حذف (delete_*) إلا بعد تأكيد صريح وواضح من المستخدم على الحذف تحديداً — مجرد ذكر الاسم أو المعاملة بالحديث لا يُعتبر موافقة على حذفها. إذا لم تكن متأكداً 100% من هوية العنصر (id)، اسأل أو استخدم search_transactions/راجع البيانات أولاً بدل التخمين.
+- حذف استديو يحذف معه تلقائياً كل مصاريفه المسجّلة — نبّه المستخدم لهذا صراحةً قبل التنفيذ إذا كان للاستديو مصاريف مسجّلة.
 
 --- أدوات إضافية ---
 - get_overdue_clients: استخدمها إذا سأل المستخدم عن الزبائن المتأخرين، أو إذا لاحظت من البيانات وجود ذمم معلّقة قديمة وتريد تنبيهه استباقياً في بداية المحادثة.
@@ -992,6 +1422,18 @@ ${context}`;
           createTransactionDeclaration,
           updateTransactionDeclaration,
           deleteTransactionDeclaration,
+          searchTransactionsDeclaration,
+          createClientDeclaration,
+          updateClientDeclaration,
+          deleteClientDeclaration,
+          createTripDeclaration,
+          updateTripDeclaration,
+          deleteTripDeclaration,
+          createStudioDeclaration,
+          updateStudioDeclaration,
+          deleteStudioDeclaration,
+          createStudioExpenseDeclaration,
+          deleteStudioExpenseDeclaration,
           getOverdueClientsDeclaration,
           prepareWhatsappReminderDeclaration,
           generateReportDeclaration,
@@ -1008,11 +1450,16 @@ ${context}`;
 
     // Load the real, persistent conversation from the DB (source of truth — not whatever the
     // client happens to hold in memory), so history survives across sessions/devices/reloads.
-    const storedMessages = await db
+    // Capped to the most recent 60 messages (30 turns) so a long-lived conversation doesn't blow
+    // past the model's context window; the full history is still stored and shown via /ai/history.
+    const HISTORY_LIMIT = 60;
+    const recentMessages = await db
       .select()
       .from(aiMessagesTable)
       .where(eq(aiMessagesTable.userId, req.userId))
-      .orderBy(asc(aiMessagesTable.createdAt));
+      .orderBy(desc(aiMessagesTable.createdAt))
+      .limit(HISTORY_LIMIT);
+    const storedMessages = recentMessages.reverse();
 
     const chatHistory: Content[] = storedMessages
       .filter((m, i) => (i === 0 ? m.role === "user" : true))
@@ -1025,13 +1472,13 @@ ${context}`;
     let result = await withRetry(() => chat.sendMessage(question));
 
     const executedActions: ExecutedAction[] = [];
-    // Allow a short chain of tool calls (model may call a function, see the result, then reply
-    // or call another function), capped to avoid runaway loops.
-    for (let round = 0; round < 4; round++) {
+    // Allow a short chain of tool calls (e.g. create_client then create_transaction, or
+    // search_transactions then update_transaction), capped to avoid runaway loops.
+    for (let round = 0; round < 6; round++) {
       const calls = result.response.functionCalls();
       if (!calls || calls.length === 0) break;
 
-      const responseParts = [];
+      const responseParts: { functionResponse: { name: string; response: Record<string, unknown> } }[] = [];
       for (const call of calls) {
         const toolResult = await executeTool(req.userId, call.name, (call.args ?? {}) as Record<string, unknown>);
         executedActions.push({ name: call.name, success: !!toolResult.success, result: toolResult });

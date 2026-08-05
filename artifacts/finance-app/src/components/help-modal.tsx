@@ -59,9 +59,9 @@ const CONTENT: Record<
       },
       {
         icon: MessageCircle,
-        title: "المساعد الذكي (الدردشة)",
+        title: "بيلي 🤖 (المساعد الذكي)",
         body:
-          "اسأل أي سؤال مالي بلغتك العادية متلاً \"قديش الزبون فلان عليه؟\" أو \"شو أرباح رحلة كذا؟\" وبيجاوبك بالأرقام الفعلية من بياناتك.",
+          "بيلي هو مساعدك المالي الذكي بالتطبيق. اسأله أي سؤال بلغتك العادية متلاً \"قديش الزبون فلان عليه؟\" أو \"شو أرباح رحلة كذا؟\" وبيجاوبك بالأرقام الفعلية من بياناتك. وكمان فيك تخليه يضيفلك أو يعدّللك معاملات، زبائن، رحلات، واستديوهات مباشرة من المحادثة.",
       },
       {
         icon: Sparkles,
@@ -106,9 +106,9 @@ const CONTENT: Record<
       },
       {
         icon: MessageCircle,
-        title: "AI Assistant (Chat)",
+        title: "Billy 🤖 (AI Assistant)",
         body:
-          "Ask any financial question naturally, e.g. \"How much does Ahmad owe?\" or \"What's the profit on trip X?\" and get answers based on your real data.",
+          "Billy is your AI financial assistant. Ask any financial question naturally, e.g. \"How much does Ahmad owe?\" or \"What's the profit on trip X?\" and get answers based on your real data. You can also have Billy add or edit transactions, clients, trips, and studios right from the chat.",
       },
       {
         icon: Sparkles,

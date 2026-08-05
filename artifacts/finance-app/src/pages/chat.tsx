@@ -215,7 +215,7 @@ export default function Chat() {
             <div>
               <h1 className="font-bold text-white">{t("aiAssistantTitle")}</h1>
               <p className="text-xs text-white/90 font-medium">
-                Gemini 2.5 Flash
+                {t("aiAssistantTagline")}
                 {conversationCount > 0 && (
                   <span className="text-white/80 ms-2">
                     · {Math.floor(conversationCount / 2)} {t("questionsCount")}
