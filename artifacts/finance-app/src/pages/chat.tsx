@@ -52,6 +52,8 @@ export default function Chat() {
 
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [summary, setSummary] = useState<{ totalTx: number; pendingCount: number; balances: Record<string, number> } | null>(null);
+  const [historyLoadFailed, setHistoryLoadFailed] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -62,25 +64,46 @@ export default function Chat() {
 
   const QUICK_QUESTIONS = language === "ar" ? QUICK_QUESTIONS_AR : QUICK_QUESTIONS_EN;
 
-  // Load the real, persistent conversation from the server on mount — this is what lets the
-  // person see and continue past conversations instead of losing them on every reload.
+  // Load the real, persistent conversation from the server — this is what lets the person see
+  // and continue past conversations instead of losing them on every reload/navigation.
+  // Retries a few times on transient failures (e.g. an auth token not being ready yet right
+  // after navigating back to this page) instead of silently giving up after one try, and if it
+  // still fails, shows a visible retry option instead of quietly pretending the chat is empty —
+  // that "silent failure" is what previously made a real, still-saved conversation look gone.
+  async function loadHistory() {
+    setHistoryLoading(true);
+    setHistoryLoadFailed(false);
+    const RETRIES = 3;
+    for (let attempt = 1; attempt <= RETRIES; attempt++) {
+      try {
+        const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>(
+          "/ai/history",
+        );
+        if (res.messages.length > 0) {
+          setMessages([
+            INITIAL_MESSAGE,
+            ...res.messages.map((m) => ({
+              id: m.id,
+              role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+              content: m.content,
+            })),
+          ]);
+        }
+        setHistoryLoading(false);
+        return;
+      } catch {
+        if (attempt < RETRIES) await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
+    setHistoryLoading(false);
+    setHistoryLoadFailed(true);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>("/ai/history")
-      .then((res) => {
-        if (cancelled || res.messages.length === 0) return;
-        setMessages([
-          INITIAL_MESSAGE,
-          ...res.messages.map((m) => ({
-            id: m.id,
-            role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
-            content: m.content,
-          })),
-        ]);
-      })
-      .catch(() => {
-        // Non-fatal: just start a fresh visible conversation if history can't be loaded.
-      });
+    loadHistory().catch(() => {
+      if (!cancelled) setHistoryLoadFailed(true);
+    });
 
     // load transactions summary for quick glance
     (async () => {
@@ -241,10 +264,10 @@ export default function Chat() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Summary banner: quick financial snapshot */}
         {summary && (
-          <div className="assistant-summary-card mb-3 px-3 py-2 rounded-lg bg-gradient-to-r from-[var(--hero-from)] via-[var(--hero-via)] to-[var(--hero-to)] text-white">
+          <div className="assistant-hero assistant-card mb-3 px-3 py-2 rounded-lg">
             <div className="flex items-center justify-between text-sm">
-              <div>Transactions: <strong>{summary.totalTx}</strong></div>
-              <div>Pending: <strong>{summary.pendingCount}</strong></div>
+              <div>{t("transactions")}: <strong>{summary.totalTx}</strong></div>
+              <div>{t("pending")}: <strong>{summary.pendingCount}</strong></div>
             </div>
             <div className="flex gap-3 mt-2 text-xs">
               {Object.entries(summary.balances).map(([cur, val]) => (
@@ -253,6 +276,29 @@ export default function Chat() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {historyLoading && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>{language === "ar" ? "يحمّل المحادثة السابقة..." : "Loading previous conversation..."}</span>
+          </div>
+        )}
+
+        {historyLoadFailed && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+            <span>
+              {language === "ar"
+                ? "تعذّر تحميل المحادثة السابقة (مشكلة اتصال مؤقتة). المحادثة القديمة محفوظة بأمان."
+                : "Couldn't load your previous conversation (a temporary connection issue). Your old conversation is safely saved."}
+            </span>
+            <button
+              onClick={() => loadHistory()}
+              className="shrink-0 px-2 py-1 rounded-md bg-destructive/15 hover:bg-destructive/25 font-medium"
+            >
+              {language === "ar" ? "إعادة المحاولة" : "Retry"}
+            </button>
           </div>
         )}
 

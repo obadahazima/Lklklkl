@@ -51,31 +51,50 @@ export default function ChatScreen() {
   const { mutateAsync: askAi, isPending } = useAiQuery();
   const queryClient = useQueryClient();
   const { state: voiceState, startRecording, stopAndTranscribe } = useVoiceRecording();
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyLoadFailed, setHistoryLoadFailed] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const QUICK_QUESTIONS = [t("q1"), t("q2"), t("q3"), t("q4")];
 
-  // Load the real, persistent conversation from the server on mount — so past chats show up
-  // again instead of resetting every time the app is reopened.
+  // Load the real, persistent conversation from the server — so past chats show up again
+  // instead of resetting every time the app is reopened. Retries transient failures a few
+  // times, and — if it still fails — leaves a visible retry state instead of silently
+  // pretending the (still-saved) conversation is gone.
+  async function loadHistory() {
+    setHistoryLoading(true);
+    setHistoryLoadFailed(false);
+    const RETRIES = 3;
+    for (let attempt = 1; attempt <= RETRIES; attempt++) {
+      try {
+        const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>("/ai/history");
+        if (res.messages.length > 0) {
+          setMessages((prev) => [
+            prev[0],
+            ...res.messages.map((m) => ({
+              id: String(m.id),
+              role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+              content: m.content,
+            })),
+          ]);
+        }
+        setHistoryLoading(false);
+        return;
+      } catch {
+        if (attempt < RETRIES) await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
+    setHistoryLoading(false);
+    setHistoryLoadFailed(true);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>("/ai/history")
-      .then((res) => {
-        if (cancelled || res.messages.length === 0) return;
-        setMessages((prev) => [
-          prev[0],
-          ...res.messages.map((m) => ({
-            id: String(m.id),
-            role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
-            content: m.content,
-          })),
-        ]);
-      })
-      .catch(() => {
-        // Non-fatal: just start a fresh visible conversation if history can't be loaded.
-      });
+    loadHistory().catch(() => {
+      if (!cancelled) setHistoryLoadFailed(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -185,6 +204,40 @@ export default function ChatScreen() {
             )}
           </View>
         )}
+        ListHeaderComponent={
+          historyLoadFailed ? (
+            <Pressable
+              onPress={() => loadHistory()}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                backgroundColor: "#fee2e2",
+                borderColor: "#fca5a5",
+                borderWidth: 1,
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: "#b91c1c", fontSize: 12, flex: 1, textAlign: language === "ar" ? "right" : "left" }}>
+                {language === "ar"
+                  ? "تعذّر تحميل المحادثة السابقة (مشكلة اتصال مؤقتة). المحادثة القديمة محفوظة بأمان — إضغط لإعادة المحاولة."
+                  : "Couldn't load your previous conversation (a temporary connection issue). Your old conversation is safely saved — tap to retry."}
+              </Text>
+              <Feather name="refresh-cw" size={14} color="#b91c1c" />
+            </Pressable>
+          ) : historyLoading ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12, paddingHorizontal: 4 }}>
+              <ActivityIndicator size="small" color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                {language === "ar" ? "يحمّل المحادثة السابقة..." : "Loading previous conversation..."}
+              </Text>
+            </View>
+          ) : null
+        }
         ListFooterComponent={
           isPending ? (
             <View style={styles.aiRow}>

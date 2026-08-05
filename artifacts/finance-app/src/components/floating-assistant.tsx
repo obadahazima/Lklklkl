@@ -68,27 +68,33 @@ export function FloatingAssistant() {
     let cancelled = false;
 
     async function loadHistory() {
-      // Try server history first — if user is authenticated the server persists conversations.
-      try {
-        const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string; actions?: any }[] }>(
-          "/ai/history",
-        );
-        if (!cancelled && res.messages && res.messages.length > 0) {
-          const mapped = res.messages.map((m) => ({
-            id: m.id,
-            role: m.role === "user" ? "user" : "assistant",
-            content: m.content,
-            actions: (m as any).actions ?? undefined,
-          })) as Message[];
-          setMessages(mapped.length ? mapped : [{ id: 0, role: "assistant", content: t("chatWelcome") }]);
-          // persist local copy
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ ts: Date.now(), messages: mapped }));
-          } catch {}
-          return;
+      // Try server history first (with a couple of retries for transient failures) — if user is
+      // authenticated the server persists conversations. Only fall back to localStorage if the
+      // server truly can't be reached.
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string; actions?: any }[] }>(
+            "/ai/history",
+          );
+          if (!cancelled && res.messages && res.messages.length > 0) {
+            const mapped = res.messages.map((m) => ({
+              id: m.id,
+              role: m.role === "user" ? "user" : "assistant",
+              content: m.content,
+              actions: (m as any).actions ?? undefined,
+            })) as Message[];
+            setMessages(mapped.length ? mapped : [{ id: 0, role: "assistant", content: t("chatWelcome") }]);
+            // persist local copy
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify({ ts: Date.now(), messages: mapped }));
+            } catch {}
+            return;
+          }
+          break; // succeeded but genuinely empty — no need to retry or fall back
+        } catch {
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 500));
+          // otherwise fall through to localStorage below
         }
-      } catch {
-        // ignore — fall back to localStorage
       }
 
       try {
