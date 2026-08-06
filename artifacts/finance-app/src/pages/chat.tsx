@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
+import { FormattedMessage } from "@/components/formatted-message";
 
 export type ExecutedAction = { name: string; success: boolean; result: Record<string, unknown> };
 
@@ -77,7 +78,7 @@ export default function Chat() {
     for (let attempt = 1; attempt <= RETRIES; attempt++) {
       try {
         const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>(
-          "/ai/history",
+          "/api/ai/history",
         );
         if (res.messages.length > 0) {
           setMessages([
@@ -175,7 +176,7 @@ export default function Chat() {
 
   function clearHistory() {
     setMessages([INITIAL_MESSAGE]);
-    customFetch("/ai/history", { method: "DELETE" }).catch(() => {
+    customFetch("/api/ai/history", { method: "DELETE" }).catch(() => {
       // Non-fatal — the visible chat is already cleared locally either way.
     });
   }
@@ -326,13 +327,13 @@ export default function Chat() {
             <div className="flex flex-col gap-2 max-w-[80%]">
               <div
                 className={cn(
-                  "px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
+                  "px-4 py-3 rounded-2xl text-sm leading-relaxed",
                   msg.role === "assistant"
                     ? "bg-card border border-border text-foreground rounded-tr-sm"
-                    : "bg-primary text-primary-foreground rounded-tl-sm",
+                    : "bg-primary text-primary-foreground rounded-tl-sm whitespace-pre-wrap",
                 )}
               >
-                {msg.content}
+                {msg.role === "assistant" ? <FormattedMessage content={msg.content} /> : msg.content}
               </div>
               {msg.role === "assistant" && msg.actions && msg.actions.length > 0 && (
                 <ActionCards actions={msg.actions} language={language} onAsk={sendMessage} />

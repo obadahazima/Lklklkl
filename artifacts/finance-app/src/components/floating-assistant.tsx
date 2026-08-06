@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 import { ActionCards, type ExecutedAction } from "@/pages/chat";
+import { FormattedMessage } from "@/components/formatted-message";
 
 type Message = {
   id: number;
@@ -74,7 +75,7 @@ export function FloatingAssistant() {
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string; actions?: any }[] }>(
-            "/ai/history",
+            "/api/ai/history",
           );
           if (!cancelled && res.messages && res.messages.length > 0) {
             const mapped = res.messages.map((m) => ({
@@ -131,7 +132,7 @@ export function FloatingAssistant() {
   async function clearHistory() {
     setMessages([{ id: 0, role: "assistant", content: t("chatWelcome") }]);
     try {
-      await customFetch("/ai/history", { method: "DELETE" });
+      await customFetch("/api/ai/history", { method: "DELETE" });
     } catch {
       // ignore
     }
@@ -201,13 +202,13 @@ export function FloatingAssistant() {
                 <div className="flex flex-col gap-1.5 max-w-[85%]">
                   <div
                     className={cn(
-                      "px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap",
+                      "px-3 py-2 rounded-xl text-xs leading-relaxed",
                       msg.role === "assistant"
                         ? "bg-muted text-foreground rounded-tr-sm"
-                        : "bg-primary text-primary-foreground rounded-tl-sm ms-auto",
+                        : "bg-primary text-primary-foreground rounded-tl-sm ms-auto whitespace-pre-wrap",
                     )}
                   >
-                    {msg.content}
+                    {msg.role === "assistant" ? <FormattedMessage content={msg.content} /> : msg.content}
                   </div>
                   {msg.role === "assistant" && msg.actions && msg.actions.length > 0 && (
                     <ActionCards actions={msg.actions} language={language} onAsk={sendMessage} />

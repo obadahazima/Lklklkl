@@ -69,7 +69,7 @@ export default function ChatScreen() {
     const RETRIES = 3;
     for (let attempt = 1; attempt <= RETRIES; attempt++) {
       try {
-        const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>("/ai/history");
+        const res = await customFetch<{ messages: { id: number; role: "user" | "model"; content: string }[] }>("/api/ai/history");
         if (res.messages.length > 0) {
           setMessages((prev) => [
             prev[0],
@@ -191,12 +191,20 @@ export default function ChatScreen() {
                   ? [styles.userBubble, { backgroundColor: colors.primary }]
                   : [styles.aiBubble, { backgroundColor: colors.card, borderColor: colors.border }],
               ]}>
-                <Text style={[
-                  styles.bubbleText,
-                  { color: item.role === "user" ? "#fff" : colors.foreground, textAlign: language === "ar" ? "right" : "left" },
-                ]}>
-                  {item.content}
-                </Text>
+                {item.role === "assistant" ? (
+                  <FormattedMessageRN
+                    content={item.content}
+                    textColor={colors.foreground}
+                    align={language === "ar" ? "right" : "left"}
+                  />
+                ) : (
+                  <Text style={[
+                    styles.bubbleText,
+                    { color: "#fff", textAlign: language === "ar" ? "right" : "left" },
+                  ]}>
+                    {item.content}
+                  </Text>
+                )}
               </View>
             </View>
             {item.role === "assistant" && item.actions && item.actions.length > 0 && (
@@ -329,6 +337,85 @@ export default function ChatScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+// Renders assistant message text with light formatting: **bold** segments and
+// "- item" / "1. item" lines grouped into visually distinct lists — mirrors the
+// web app's formatted-message component, adapted to nested <Text>/<View> since
+// React Native has no HTML/markdown rendering.
+function FormattedMessageRN({ content, textColor, align }: { content: string; textColor: string; align: "left" | "right" }) {
+  const renderInline = (text: string, keyPrefix: string) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((p) => p !== "");
+    return parts.map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+        <Text key={`${keyPrefix}-${i}`} style={{ fontWeight: "700" }}>
+          {part.slice(2, -2)}
+        </Text>
+      ) : (
+        <Text key={`${keyPrefix}-${i}`}>{part}</Text>
+      ),
+    );
+  };
+
+  type Block = { type: "bullets" | "numbered"; items: string[] } | { type: "paragraph"; text: string };
+  const lines = content.split("\n");
+  const blocks: Block[] = [];
+  let buf: string[] = [];
+  const flush = () => {
+    if (buf.length > 0) {
+      blocks.push({ type: "paragraph", text: buf.join("\n") });
+      buf = [];
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    const bullet = /^[-•]\s+(.*)/.exec(line);
+    const numbered = /^\d+[.)]\s+(.*)/.exec(line);
+    if (bullet) {
+      flush();
+      const last = blocks[blocks.length - 1];
+      if (last && last.type === "bullets") last.items.push(bullet[1]);
+      else blocks.push({ type: "bullets", items: [bullet[1]] });
+    } else if (numbered) {
+      flush();
+      const last = blocks[blocks.length - 1];
+      if (last && last.type === "numbered") last.items.push(numbered[1]);
+      else blocks.push({ type: "numbered", items: [numbered[1]] });
+    } else if (line === "") {
+      flush();
+    } else {
+      buf.push(raw);
+    }
+  }
+  flush();
+
+  return (
+    <View style={{ gap: 6 }}>
+      {blocks.map((block, i) => {
+        if (block.type === "paragraph") {
+          return (
+            <Text key={i} style={{ color: textColor, fontSize: 14, lineHeight: 20, textAlign: align }}>
+              {renderInline(block.text, `${i}`)}
+            </Text>
+          );
+        }
+        return (
+          <View key={i} style={{ gap: 3 }}>
+            {block.items.map((item, j) => (
+              <View key={j} style={{ flexDirection: "row", gap: 6, alignItems: "flex-start" }}>
+                <Text style={{ color: textColor, fontSize: 13 }}>
+                  {block.type === "numbered" ? `${j + 1}.` : "•"}
+                </Text>
+                <Text style={{ color: textColor, fontSize: 14, lineHeight: 20, flex: 1 }}>
+                  {renderInline(item, `${i}-${j}`)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        );
+      })}
     </View>
   );
 }
