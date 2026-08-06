@@ -10,10 +10,16 @@ import {
 } from "@workspace/db";
 import { ParseVoiceInputBody, AiQueryBody, TranscribeVoiceBody } from "@workspace/api-zod";
 import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration } from "@google/generative-ai";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = Router();
+
+// The conversation is kept to a rolling window of this many stored messages per user (user +
+// model turns combined) — once it grows past this, the oldest messages are dropped (FIFO) after
+// each exchange. Keeps both the DB row count and the model's context window bounded for
+// long-running users, while still preserving a generous, ~30-turn recent history.
+const MAX_STORED_MESSAGES = 60;
 
 function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -1392,10 +1398,12 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 
 --- إضافة زبون أو رحلة غير موجودة (مهم جداً) ---
 - قبل إنشاء معاملة مرتبطة بزبون أو رحلة، طابق الاسم المذكور مع قائمة الزبائن/الرحلات ببيانات اليوم أدناه بمرونة (تجاهل اختلاف اللغة/الإملاء، مثلاً "رشا" = "Rasha").
-- إذا وجدت تطابقاً واضحاً: استخدم الـ id الموجود مباشرة، دون سؤال.
+- إذا وجدت تطابقاً واضحاً ووحيداً: استخدم الـ id الموجود مباشرة، دون سؤال.
+- إذا وجدت أكثر من زبون أو رحلة بنفس الاسم أو بأسماء متشابهة جداً: لا تختر واحداً عشوائياً ولا تفترض. اعرض له كل الخيارات المتطابقة بوضوح (رقم الهاتف إن وجد، والرصيد الحالي كما هو بالبيانات أدناه لكل واحد) واسأله أي واحد يقصد، مثلاً: "في عندي أكتر من زبون اسمه أحمد: (1) أحمد [0501234567] رصيده 200 AED له، (2) أحمد [0559876543] رصيده 500 USD عليه. مين تقصد؟" وانتظر رده قبل ما تكمل.
 - إذا لم تجد أي تطابق: لا تنشئ المعاملة فوراً ولا تخترع id. اسأل المستخدم بوضوح، مثلاً: "ما لقيت [الاسم] بقائمة الزبائن، بدك أضيفه كزبون جديد؟" وانتظر رده.
 - إذا وافق المستخدم (بنفس الرسالة أو برسالة تالية): استدعِ create_client أو create_trip أولاً، ثم استخدم الـ id الجديد الذي رجع من نتيجة الأداة فوراً لاستدعاء create_transaction بنفس الرد لإكمال العملية الأصلية — دون الحاجة لسؤاله مجدداً عن تفاصيل المعاملة التي ذكرها سابقاً.
 - إذا رفض إضافته: أنشئ المعاملة بدون ربطها بزبون/رحلة (اترك الحقل فارغاً)، أو اسأله ماذا يفضّل بدلاً من ذلك.
+- نفس منطق التمييز عند تعدد الأسماء ينطبق أيضاً على أي طلب آخر يذكر اسم زبون أو رحلة (استفسار عن رصيد، تعديل، حذف، إلخ) — لا تفترض أبداً أيهم يقصد المستخدم إذا كان الاسم غير حاسم.
 
 --- تعديل، حذف، أو استفسار عن معاملة بالوصف الطبيعي (مهم جداً) ---
 - إذا وصف المستخدم معاملة بالكلام بدل رقمها (مثلاً بالتاريخ، الزبون، المبلغ، أو السبب — "بدي عدل الدفعة يلي دفعتها لأحمد أول أمس"، "احذف يلي دفعته لسامر الأسبوع الماضي"، "ليش دفعت ٣٠٠ لسامر بشهر ٧؟")، لا تخمّن ولا تعتمد فقط على السجل النصي المختصر أدناه. استخدم أداة search_transactions بكل ما توفر لديك من معطيات (اسم الزبون/الرحلة، نطاق تاريخ، مبلغ تقريبي، كلمة من الوصف) لإيجاد المعاملة أو المعاملات المطابقة أولاً، ثم تصرّف بناءً على نتيجتها.
@@ -1451,15 +1459,14 @@ ${context}`;
 
     // Load the real, persistent conversation from the DB (source of truth — not whatever the
     // client happens to hold in memory), so history survives across sessions/devices/reloads.
-    // Capped to the most recent 60 messages (30 turns) so a long-lived conversation doesn't blow
-    // past the model's context window; the full history is still stored and shown via /ai/history.
-    const HISTORY_LIMIT = 60;
+    // The stored history itself is capped at MAX_STORED_MESSAGES (see trimming below), so this
+    // just loads all of it — never more than that cap.
     const recentMessages = await db
       .select()
       .from(aiMessagesTable)
       .where(eq(aiMessagesTable.userId, req.userId))
       .orderBy(desc(aiMessagesTable.createdAt))
-      .limit(HISTORY_LIMIT);
+      .limit(MAX_STORED_MESSAGES);
     const storedMessages = recentMessages.reverse();
 
     const chatHistory: Content[] = storedMessages
@@ -1505,6 +1512,26 @@ ${context}`;
       { userId: req.userId, role: "user", content: question, actions: null },
       { userId: req.userId, role: "model", content: answer, actions: executedActions.length ? executedActions : null },
     ]);
+
+    // Cap the stored conversation at MAX_STORED_MESSAGES — once it grows past that, drop the
+    // oldest messages (FIFO) so history never grows unbounded for long-running users.
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(aiMessagesTable)
+      .where(eq(aiMessagesTable.userId, req.userId));
+    if (total > MAX_STORED_MESSAGES) {
+      const oldest = await db
+        .select({ id: aiMessagesTable.id })
+        .from(aiMessagesTable)
+        .where(eq(aiMessagesTable.userId, req.userId))
+        .orderBy(asc(aiMessagesTable.createdAt))
+        .limit(total - MAX_STORED_MESSAGES);
+      if (oldest.length > 0) {
+        await db.delete(aiMessagesTable).where(
+          and(eq(aiMessagesTable.userId, req.userId), inArray(aiMessagesTable.id, oldest.map((r) => r.id))),
+        );
+      }
+    }
 
     res.json({
       answer,
