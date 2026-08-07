@@ -1,10 +1,19 @@
-import { useGetDashboardSummary, useGetRecentTransactions } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetRecentTransactions, customFetch } from "@workspace/api-client-react";
 import { formatAmount, currencyClass, typeLabel, typeClass, statusLabel, statusClass, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Wallet, Users, Route, Clock, ArrowLeftRight, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Users, Route, Clock, ArrowLeftRight, RefreshCw, AlertTriangle, X } from "lucide-react";
 import { Link } from "wouter";
+import { useEffect, useState } from "react";
 import { useSettings, convertToPrimary, toAedFrontend, getRateUnit, rateToDisplay } from "@/contexts/settings-context";
 import { tr, getCurrencySymbol } from "@/lib/i18n";
+
+type OverdueClient = {
+  clientId: number;
+  clientName: string;
+  phone: string | null;
+  daysOverdue: number;
+  amounts: Record<string, number>;
+};
 
 export default function Dashboard() {
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary();
@@ -12,6 +21,25 @@ export default function Dashboard() {
   const { settings, effectiveRates } = useSettings();
   const { language, currencies: activeCurrencies, primaryCurrency, exchangeRateMode } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
+
+  // Proactively check for clients overdue by a month or more the moment the dashboard loads —
+  // instead of only surfacing this when someone thinks to ask the AI assistant about it.
+  const [overdueClients, setOverdueClients] = useState<OverdueClient[]>([]);
+  const [overdueDismissed, setOverdueDismissed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    customFetch<{ overdueClients: OverdueClient[]; minDays: number }>("/api/dashboard/overdue-clients")
+      .then((res) => {
+        if (!cancelled) setOverdueClients(res.overdueClients ?? []);
+      })
+      .catch(() => {
+        // Non-fatal — the dashboard still works fine without this proactive check.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const totalInAED = summary
     ? (summary.currencies ?? []).reduce((sum, c) => sum + toAedFrontend(c.balance, c.currency, effectiveRates), 0)
@@ -34,6 +62,38 @@ export default function Dashboard() {
           {language === "ar" ? "نظرة عامة على حساباتك" : "Overview of your accounts"}
         </p>
       </div>
+
+      {/* ── Overdue clients alert (proactive, shown on open) ── */}
+      {overdueClients.length > 0 && !overdueDismissed && (
+        <Link href="/chat">
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                {language === "ar"
+                  ? `${overdueClients.length} ${overdueClients.length === 1 ? "زبون متأخر" : "زبائن متأخرين"} بالدفع من شهر أو أكثر`
+                  : `${overdueClients.length} client${overdueClients.length === 1 ? "" : "s"} overdue for a month or more`}
+              </p>
+              <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5 truncate">
+                {overdueClients.slice(0, 3).map((c) => c.clientName).join("، ")}
+                {overdueClients.length > 3 ? (language === "ar" ? ` +${overdueClients.length - 3} غيرهم` : ` +${overdueClients.length - 3} more`) : ""}
+                {" — "}
+                {language === "ar" ? "اسأل بيلي عنهم" : "ask Billy about them"}
+              </p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOverdueDismissed(true);
+              }}
+              className="p-1 rounded-md hover:bg-amber-200/50 dark:hover:bg-amber-900/50 shrink-0"
+            >
+              <X className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+            </button>
+          </div>
+        </Link>
+      )}
 
       {/* ── Total Wallet Card ── */}
       {loadingSummary ? (

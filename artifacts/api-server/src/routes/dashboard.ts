@@ -3,11 +3,26 @@ import { db } from "@workspace/db";
 import { transactionsTable, clientsTable, tripsTable } from "@workspace/db";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { getExchangeRates, toAed } from "../utils/exchange-rates.js";
+import { getOverdueClients, DEFAULT_OVERDUE_DAYS } from "../utils/overdue-clients.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = Router();
 
 router.use(requireAuth);
+
+// GET /dashboard/overdue-clients — clients with pending balances a month (or longer) old, so the
+// app can surface this proactively the moment someone opens it, instead of only when they think
+// to ask the AI assistant about it.
+router.get("/dashboard/overdue-clients", async (req, res): Promise<void> => {
+  try {
+    const minDays = Number(req.query.minDays) || DEFAULT_OVERDUE_DAYS;
+    const overdueClients = await getOverdueClients(req.userId, minDays);
+    res.json({ overdueClients, minDays });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get overdue clients");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
   try {

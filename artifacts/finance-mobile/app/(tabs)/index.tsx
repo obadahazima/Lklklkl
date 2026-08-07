@@ -1,6 +1,6 @@
-import { useGetDashboardSummary, useGetRecentTransactions } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetRecentTransactions, customFetch } from "@workspace/api-client-react";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -69,6 +69,25 @@ export default function DashboardScreen() {
 
   const isLoading = sumLoading || txLoading;
 
+  // Proactively check for clients overdue by a month or more the moment the dashboard opens.
+  const [overdueClients, setOverdueClients] = useState<
+    { clientId: number; clientName: string; phone: string | null; daysOverdue: number; amounts: Record<string, number> }[]
+  >([]);
+  const [overdueDismissed, setOverdueDismissed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    customFetch<{ overdueClients: typeof overdueClients; minDays: number }>("/api/dashboard/overdue-clients")
+      .then((res) => {
+        if (!cancelled) setOverdueClients(res.overdueClients ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -130,6 +149,41 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
       </View>
+
+      {overdueClients.length > 0 && !overdueDismissed && (
+        <Pressable
+          onPress={() => router.push("/(tabs)/chat")}
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: 10,
+            backgroundColor: "#fffbeb",
+            borderColor: "#fde68a",
+            borderWidth: 1,
+            borderRadius: 14,
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          <Feather name="alert-triangle" size={18} color="#b45309" style={{ marginTop: 2 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: "#92400e", fontSize: 13, fontWeight: "600", textAlign: language === "ar" ? "right" : "left" }}>
+              {language === "ar"
+                ? `${overdueClients.length} ${overdueClients.length === 1 ? "زبون متأخر" : "زبائن متأخرين"} بالدفع من شهر أو أكثر`
+                : `${overdueClients.length} client${overdueClients.length === 1 ? "" : "s"} overdue for a month+`}
+            </Text>
+            <Text style={{ color: "#b45309", fontSize: 12, marginTop: 2, textAlign: language === "ar" ? "right" : "left" }} numberOfLines={1}>
+              {overdueClients.slice(0, 3).map((c) => c.clientName).join("، ")}
+              {overdueClients.length > 3 ? ` +${overdueClients.length - 3}` : ""}
+              {" — "}
+              {language === "ar" ? "اسأل بيلي عنهم" : "ask Billy"}
+            </Text>
+          </View>
+          <Pressable hitSlop={10} onPress={() => setOverdueDismissed(true)}>
+            <Feather name="x" size={16} color="#b45309" />
+          </Pressable>
+        </Pressable>
+      )}
 
       {isLoading ? (
         <View style={styles.center}>

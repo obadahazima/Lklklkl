@@ -12,6 +12,7 @@ import { ParseVoiceInputBody, AiQueryBody, TranscribeVoiceBody } from "@workspac
 import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration } from "@google/generative-ai";
 import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { getOverdueClients, DEFAULT_OVERDUE_DAYS } from "../utils/overdue-clients.js";
 
 const router = Router();
 
@@ -678,7 +679,7 @@ const getOverdueClientsDeclaration: FunctionDeclaration = {
     properties: {
       minDaysOverdue: {
         type: SchemaType.NUMBER,
-        description: "أقل عدد أيام تأخير لاعتبار الزبون متأخراً (افتراضياً 7)",
+        description: "أقل عدد أيام تأخير لاعتبار الزبون متأخراً (افتراضياً 30 — شهر كامل)",
       },
     },
     required: [],
@@ -965,40 +966,8 @@ async function executeTool(
   }
 
   if (name === "get_overdue_clients") {
-    const minDays = num(args.minDaysOverdue) ?? 7;
-    const today = new Date();
-    const pending = await db
-      .select()
-      .from(transactionsTable)
-      .where(and(eq(transactionsTable.userId, userId), eq(transactionsTable.status, "pending")));
-    const clients = await db.select().from(clientsTable).where(eq(clientsTable.userId, userId));
-    const clientMap = new Map((clients as ClientRow[]).map((c) => [c.id, c]));
-
-    const byClient = new Map<number, { amounts: Map<string, number>; oldestDate: string }>();
-    for (const t of pending as TxRow[]) {
-      if (!t.clientId) continue;
-      const entry = byClient.get(t.clientId) ?? { amounts: new Map<string, number>(), oldestDate: t.date };
-      entry.amounts.set(t.currency, (entry.amounts.get(t.currency) ?? 0) + Number(t.amount));
-      if (t.date < entry.oldestDate) entry.oldestDate = t.date;
-      byClient.set(t.clientId, entry);
-    }
-
-    const overdueClients = [...byClient.entries()]
-      .map(([clientId, entry]) => {
-        const client = clientMap.get(clientId);
-        if (!client) return null;
-        const days = Math.floor((today.getTime() - new Date(entry.oldestDate).getTime()) / 86_400_000);
-        return {
-          clientId,
-          clientName: client.name,
-          phone: client.phone,
-          daysOverdue: days,
-          amounts: Object.fromEntries(entry.amounts),
-        };
-      })
-      .filter((c): c is NonNullable<typeof c> => c !== null && c.daysOverdue >= minDays)
-      .sort((a, b) => b.daysOverdue - a.daysOverdue);
-
+    const minDays = num(args.minDaysOverdue) ?? DEFAULT_OVERDUE_DAYS;
+    const overdueClients = await getOverdueClients(userId, minDays);
     return { success: true, overdueClients };
   }
 
