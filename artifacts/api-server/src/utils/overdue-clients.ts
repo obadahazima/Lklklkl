@@ -16,9 +16,12 @@ export type OverdueClient = {
 };
 
 /**
- * Clients with pending (unsettled) transactions whose oldest pending transaction is at least
- * `minDays` old. Shared by the AI's get_overdue_clients tool and the dashboard's proactive
- * overdue-clients check so both use one calculation.
+ * Clients who owe the business money (pending income/receipt transactions — money coming IN
+ * that hasn't been collected yet) where the oldest such pending transaction is at least `minDays`
+ * old. Deliberately excludes pending expense/payment transactions (money the business owes the
+ * client) — that's the business being late, not the client, so it shouldn't show up here.
+ * Shared by the AI's get_overdue_clients tool and the dashboard's proactive check so both use one
+ * calculation.
  */
 export async function getOverdueClients(userId: string, minDays: number = DEFAULT_OVERDUE_DAYS): Promise<OverdueClient[]> {
   const today = new Date();
@@ -34,6 +37,8 @@ export async function getOverdueClients(userId: string, minDays: number = DEFAUL
   const byClient = new Map<number, { amounts: Map<string, number>; oldestDate: string }>();
   for (const t of pending) {
     if (!t.clientId) continue;
+    // Only money the client owes the business — not pending payments the business owes them.
+    if (t.type !== "income" && t.type !== "receipt") continue;
     const entry = byClient.get(t.clientId) ?? { amounts: new Map<string, number>(), oldestDate: t.date };
     entry.amounts.set(t.currency, (entry.amounts.get(t.currency) ?? 0) + Number(t.amount));
     if (t.date < entry.oldestDate) entry.oldestDate = t.date;
