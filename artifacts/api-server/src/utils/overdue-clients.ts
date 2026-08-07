@@ -16,12 +16,13 @@ export type OverdueClient = {
 };
 
 /**
- * Clients who owe the business money (pending income/receipt transactions — money coming IN
- * that hasn't been collected yet) where the oldest such pending transaction is at least `minDays`
- * old. Deliberately excludes pending expense/payment transactions (money the business owes the
- * client) — that's the business being late, not the client, so it shouldn't show up here.
- * Shared by the AI's get_overdue_clients tool and the dashboard's proactive check so both use one
- * calculation.
+ * Clients the business owes money to — pending payment/expense transactions (money going OUT
+ * that hasn't actually been paid out yet) where the oldest such pending transaction is at least
+ * `minDays` old. This matches the app's own balance-color convention: a client's balance shows
+ * red when received - paid < 0, i.e. the business owes them. Deliberately excludes pending
+ * income/receipt transactions (money the client owes the business) — that's the client being
+ * late, not the business, so it's a different concern. Shared by the AI's get_overdue_clients
+ * tool and the dashboard's proactive check so both use one calculation.
  */
 export async function getOverdueClients(userId: string, minDays: number = DEFAULT_OVERDUE_DAYS): Promise<OverdueClient[]> {
   const today = new Date();
@@ -37,8 +38,8 @@ export async function getOverdueClients(userId: string, minDays: number = DEFAUL
   const byClient = new Map<number, { amounts: Map<string, number>; oldestDate: string }>();
   for (const t of pending) {
     if (!t.clientId) continue;
-    // Only money the client owes the business — not pending payments the business owes them.
-    if (t.type !== "income" && t.type !== "receipt") continue;
+    // Only money the business still owes the client — not money the client owes the business.
+    if (t.type !== "payment" && t.type !== "expense") continue;
     const entry = byClient.get(t.clientId) ?? { amounts: new Map<string, number>(), oldestDate: t.date };
     entry.amounts.set(t.currency, (entry.amounts.get(t.currency) ?? 0) + Number(t.amount));
     if (t.date < entry.oldestDate) entry.oldestDate = t.date;

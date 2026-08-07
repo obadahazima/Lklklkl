@@ -63,7 +63,7 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* ── Overdue clients alert (proactive, shown on open) ── */}
+      {/* ── Overdue outgoing payments alert (proactive, shown on open) ── */}
       {overdueClients.length > 0 && !overdueDismissed && (
         <Link href="/chat">
           <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors">
@@ -71,8 +71,8 @@ export default function Dashboard() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
                 {language === "ar"
-                  ? `${overdueClients.length} ${overdueClients.length === 1 ? "زبون متأخر" : "زبائن متأخرين"} بالدفع من شهر أو أكثر`
-                  : `${overdueClients.length} client${overdueClients.length === 1 ? "" : "s"} overdue for a month or more`}
+                  ? `عندك دفعات متأخرة لـ ${overdueClients.length} ${overdueClients.length === 1 ? "زبون" : "زبائن"} من شهر أو أكثر`
+                  : `You have overdue payments to ${overdueClients.length} client${overdueClients.length === 1 ? "" : "s"} (a month or more)`}
               </p>
               <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5 truncate">
                 {overdueClients.slice(0, 3).map((c) => c.clientName).join("، ")}

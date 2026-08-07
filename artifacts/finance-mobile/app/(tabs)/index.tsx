@@ -169,8 +169,8 @@ export default function DashboardScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: "#92400e", fontSize: 13, fontWeight: "600", textAlign: language === "ar" ? "right" : "left" }}>
               {language === "ar"
-                ? `${overdueClients.length} ${overdueClients.length === 1 ? "زبون متأخر" : "زبائن متأخرين"} بالدفع من شهر أو أكثر`
-                : `${overdueClients.length} client${overdueClients.length === 1 ? "" : "s"} overdue for a month+`}
+                ? `عندك دفعات متأخرة لـ ${overdueClients.length} ${overdueClients.length === 1 ? "زبون" : "زبائن"} من شهر أو أكثر`
+                : `You owe ${overdueClients.length} client${overdueClients.length === 1 ? "" : "s"} overdue payments (a month+)`}
             </Text>
             <Text style={{ color: "#b45309", fontSize: 12, marginTop: 2, textAlign: language === "ar" ? "right" : "left" }} numberOfLines={1}>
               {overdueClients.slice(0, 3).map((c) => c.clientName).join("، ")}
