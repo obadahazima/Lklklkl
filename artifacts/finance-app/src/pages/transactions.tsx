@@ -9,6 +9,9 @@ import {
   getListTransactionsQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetRecentTransactionsQueryKey,
+  getListClientsQueryKey,
+  getListTripsQueryKey,
+  getListStudiosQueryKey,
 } from "@workspace/api-client-react";
 import type { Transaction } from "@workspace/api-zod";
 import { formatAmount, typeLabel, typeClass, statusLabel, statusClass, currencyClass, formatDate, cn } from "@/lib/utils";
@@ -33,9 +36,9 @@ export default function Transactions() {
   const { language, currencies, primaryCurrency, manualRates, showClients, showTrips, showStudios } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
-  const { data: clients } = useListClients({ query: { enabled: showClients } });
-  const { data: trips } = useListTrips({ query: { enabled: showTrips } });
-  const { data: studios } = useListStudios({ query: { enabled: showStudios } });
+  const { data: clients } = useListClients({ query: { queryKey: getListClientsQueryKey(), enabled: showClients } });
+  const { data: trips } = useListTrips({ query: { queryKey: getListTripsQueryKey(), enabled: showTrips } });
+  const { data: studios } = useListStudios({ query: { queryKey: getListStudiosQueryKey(), enabled: showStudios } });
 
   function toEquivalent(amount: number, currency: string): number {
     const inAed = currency === "AED" ? amount : amount * (manualRates[currency] ?? 1);

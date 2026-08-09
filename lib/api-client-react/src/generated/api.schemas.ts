@@ -30,6 +30,10 @@ export interface Transaction {
   /** @nullable */
   studioName?: string | null;
   /** @nullable */
+  accountId?: number | null;
+  /** @nullable */
+  accountName?: string | null;
+  /** @nullable */
   description?: string | null;
   /** pending | settled */
   status: string;
@@ -47,6 +51,8 @@ export interface TransactionInput {
   tripId?: number | null;
   /** @nullable */
   studioId?: number | null;
+  /** Required — which cash/debit/credit account this transaction moved through */
+  accountId: number;
   /** @nullable */
   description?: string | null;
   status: string;
@@ -63,6 +69,8 @@ export interface TransactionUpdate {
   tripId?: number | null;
   /** @nullable */
   studioId?: number | null;
+  /** @nullable */
+  accountId?: number | null;
   /** @nullable */
   description?: string | null;
   status?: string;
@@ -203,10 +211,52 @@ export interface StudioExpenseInput {
   notes?: string | null;
 }
 
+export interface Account {
+  id: number;
+  name: string;
+  /** cash | debit | credit */
+  type: string;
+  currency: string;
+  initialBalance: number;
+  /** initialBalance + income/receipt through this account - expense/payment through this account */
+  currentBalance: number;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface AccountInput {
+  name: string;
+  /** cash | debit | credit */
+  type: string;
+  currency: string;
+  /** Starting balance when the account was added, defaults to 0 */
+  initialBalance?: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface AccountUpdate {
+  name?: string;
+  type?: string;
+  currency?: string;
+  initialBalance?: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
 export interface VoiceParseInput {
   text: string;
-  currencies?: string[];
-  primaryCurrency?: string;
+  /**
+     * User's active currency list, used to prefer a matching currency over the raw detected one
+     * @nullable
+     */
+  currencies?: string[] | null;
+  /**
+     * User's preferred default currency, used as a fallback when no currency is detected/matched
+     * @nullable
+     */
+  primaryCurrency?: string | null;
 }
 
 export interface VoiceParseResult {
@@ -330,6 +380,10 @@ tripId?: number | null;
 /**
  * @nullable
  */
+accountId?: number | null;
+/**
+ * @nullable
+ */
 currency?: string | null;
 /**
  * @nullable
@@ -340,3 +394,4 @@ type?: string | null;
  */
 status?: string | null;
 };
+

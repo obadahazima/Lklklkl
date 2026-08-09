@@ -51,6 +51,10 @@ paths:
           in: query
           schema:
             type: ["integer", "null"]
+        - name: accountId
+          in: query
+          schema:
+            type: ["integer", "null"]
         - name: currency
           in: query
           schema:
@@ -477,6 +481,90 @@ paths:
         "204":
           description: Deleted
 
+  # ─── ACCOUNTS (cash / debit / credit payment sources) ─────────────
+  /accounts:
+    get:
+      operationId: listAccounts
+      tags: [accounts]
+      summary: List all accounts with computed current balance
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+    post:
+      operationId: createAccount
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+
+  /accounts/{id}:
+    get:
+      operationId: getAccount
+      tags: [accounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+    patch:
+      operationId: updateAccount
+      tags: [accounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+    delete:
+      operationId: deleteAccount
+      tags: [accounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
   # ─── AI ─────────────────────────────────────────────────────────
   /ai/parse-voice:
     post:
@@ -602,6 +690,10 @@ components:
           type: ["integer", "null"]
         studioName:
           type: ["string", "null"]
+        accountId:
+          type: ["integer", "null"]
+        accountName:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         status:
@@ -612,7 +704,7 @@ components:
 
     TransactionInput:
       type: object
-      required: [date, type, amount, currency, status]
+      required: [date, type, amount, currency, status, accountId]
       properties:
         date:
           type: string
@@ -628,6 +720,9 @@ components:
           type: ["integer", "null"]
         studioId:
           type: ["integer", "null"]
+        accountId:
+          type: integer
+          description: "Required — which cash/debit/credit account this transaction moved through"
         description:
           type: ["string", "null"]
         status:
@@ -649,6 +744,8 @@ components:
         tripId:
           type: ["integer", "null"]
         studioId:
+          type: ["integer", "null"]
+        accountId:
           type: ["integer", "null"]
         description:
           type: ["string", "null"]
@@ -869,6 +966,61 @@ components:
         notes:
           type: ["string", "null"]
 
+    # ─── ACCOUNT (cash / debit / credit payment source) ────────────
+    Account:
+      type: object
+      required: [id, name, type, currency, initialBalance, currentBalance, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          description: "cash | debit | credit"
+        currency:
+          type: string
+        initialBalance:
+          type: number
+        currentBalance:
+          type: number
+          description: "initialBalance + income/receipt through this account - expense/payment through this account"
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    AccountInput:
+      type: object
+      required: [name, type, currency]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          description: "cash | debit | credit"
+        currency:
+          type: string
+        initialBalance:
+          type: number
+          description: "Starting balance when the account was added, defaults to 0"
+        notes:
+          type: ["string", "null"]
+
+    AccountUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        currency:
+          type: string
+        initialBalance:
+          type: number
+        notes:
+          type: ["string", "null"]
+
     # ─── AI ───────────────────────────────────────────────────────
     VoiceParseInput:
       type: object
@@ -876,6 +1028,14 @@ components:
       properties:
         text:
           type: string
+        currencies:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: "User's active currency list, used to prefer a matching currency over the raw detected one"
+        primaryCurrency:
+          type: ["string", "null"]
+          description: "User's preferred default currency, used as a fallback when no currency is detected/matched"
 
     VoiceParseResult:
       type: object

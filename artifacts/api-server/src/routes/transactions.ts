@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { transactionsTable, clientsTable, tripsTable, studiosTable } from "@workspace/db";
+import { transactionsTable, clientsTable, tripsTable, studiosTable, accountsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import {
   CreateTransactionBody,
@@ -20,6 +20,7 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
   let clientName: string | null = null;
   let tripName: string | null = null;
   let studioName: string | null = null;
+  let accountName: string | null = null;
 
   if (t.clientId) {
     const [c] = await db.select({ name: clientsTable.name }).from(clientsTable).where(eq(clientsTable.id, t.clientId));
@@ -33,6 +34,10 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
     const [s] = await db.select({ name: studiosTable.name }).from(studiosTable).where(eq(studiosTable.id, t.studioId));
     studioName = s?.name ?? null;
   }
+  if (t.accountId) {
+    const [a] = await db.select({ name: accountsTable.name }).from(accountsTable).where(eq(accountsTable.id, t.accountId));
+    accountName = a?.name ?? null;
+  }
 
   return {
     ...t,
@@ -40,6 +45,7 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
     clientName,
     tripName,
     studioName,
+    accountName,
     createdAt: t.createdAt.toISOString(),
   };
 }
@@ -48,6 +54,7 @@ router.get("/transactions", async (req, res): Promise<void> => {
   const parsed = ListTransactionsQueryParams.safeParse({
     clientId: req.query.clientId ? Number(req.query.clientId) : undefined,
     tripId: req.query.tripId ? Number(req.query.tripId) : undefined,
+    accountId: req.query.accountId ? Number(req.query.accountId) : undefined,
     currency: req.query.currency,
     type: req.query.type,
     status: req.query.status,
@@ -58,6 +65,7 @@ router.get("/transactions", async (req, res): Promise<void> => {
     if (parsed.success) {
       if (parsed.data.clientId != null) conditions.push(eq(transactionsTable.clientId, parsed.data.clientId));
       if (parsed.data.tripId != null) conditions.push(eq(transactionsTable.tripId, parsed.data.tripId));
+      if (parsed.data.accountId != null) conditions.push(eq(transactionsTable.accountId, parsed.data.accountId));
       if (parsed.data.currency != null) conditions.push(eq(transactionsTable.currency, parsed.data.currency));
       if (parsed.data.type != null) conditions.push(eq(transactionsTable.type, parsed.data.type));
       if (parsed.data.status != null) conditions.push(eq(transactionsTable.status, parsed.data.status));
@@ -101,6 +109,7 @@ router.post("/transactions", async (req, res): Promise<void> => {
         clientId: parsed.data.clientId ?? null,
         tripId: parsed.data.tripId ?? null,
         studioId: parsed.data.studioId ?? null,
+        accountId: parsed.data.accountId,
       })
       .returning();
     res.status(201).json(await enrichTransaction(tx));
@@ -157,6 +166,7 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
     if (bodyParsed.data.description !== undefined) updateData.description = bodyParsed.data.description;
     if (bodyParsed.data.clientId !== undefined) updateData.clientId = bodyParsed.data.clientId;
     if (bodyParsed.data.tripId !== undefined) updateData.tripId = bodyParsed.data.tripId;
+    if (bodyParsed.data.accountId !== undefined) updateData.accountId = bodyParsed.data.accountId;
 
     const [tx] = await db
       .update(transactionsTable)

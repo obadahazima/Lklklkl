@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   useParseVoiceInput,
   useCreateTransaction,
@@ -8,12 +8,15 @@ import {
   useListClients,
   useListTrips,
   useListStudios,
+  useListAccounts,
+  useCreateAccount,
   getListTransactionsQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetRecentTransactionsQueryKey,
   getListClientsQueryKey,
   getListTripsQueryKey,
   getListStudiosQueryKey,
+  getListAccountsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -68,6 +71,7 @@ type PendingTx = {
   clientId: number | null | undefined;
   tripId: number | null | undefined;
   studioId: number | null | undefined;
+  accountId: number | null | undefined;
 };
 
 export default function NewTransaction() {
@@ -97,16 +101,48 @@ export default function NewTransaction() {
     clientId: "",
     tripId: "",
     studioId: "",
+    accountId: "",
     description: "",
     status: "pending",
     date: new Date().toISOString().split("T")[0],
   });
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountType, setNewAccountType] = useState("cash");
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const { data: clients } = useListClients();
   const { data: trips } = useListTrips();
   const { data: studios } = useListStudios();
+  const { data: accounts } = useListAccounts();
+
+  // If there's exactly one account, default to it so most users never have to touch this field.
+  useEffect(() => {
+    if (accounts && accounts.length === 1 && !manualForm.accountId) {
+      setManualForm((f) => ({ ...f, accountId: String(accounts[0].id) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts]);
+
+  const createAccountMutation = useCreateAccount({
+    mutation: {
+      onSuccess: (newAccount) => {
+        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+        setManualForm((f) => ({ ...f, accountId: String(newAccount.id) }));
+        setShowAddAccount(false);
+        setNewAccountName("");
+        toast({ title: language === "ar" ? "تمت إضافة الحساب" : "Account added", description: newAccount.name });
+      },
+    },
+  });
+
+  function handleAddAccount() {
+    if (!newAccountName.trim()) return;
+    createAccountMutation.mutate({
+      data: { name: newAccountName.trim(), type: newAccountType, currency: manualForm.currency },
+    });
+  }
 
   const parseMutation = useParseVoiceInput({
     mutation: {
@@ -296,6 +332,14 @@ export default function NewTransaction() {
   function savePendingTransaction() {
     const p = pendingTxRef.current;
     if (!p) return;
+    if (!p.accountId) {
+      toast({
+        title: language === "ar" ? "لازم تحدد الحساب" : "Account required",
+        description: language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
+        variant: "destructive",
+      });
+      return;
+    }
     createMutation.mutate({
       data: {
         type: p.type,
@@ -304,6 +348,7 @@ export default function NewTransaction() {
         clientId: p.clientId ?? null,
         tripId: p.tripId ?? null,
         studioId: p.studioId ?? null,
+        accountId: p.accountId,
         description: p.description,
         status: p.status,
         date: p.date,
@@ -384,6 +429,7 @@ export default function NewTransaction() {
       clientId: undefined,
       tripId: undefined,
       studioId: undefined,
+      accountId: manualForm.accountId ? parseInt(manualForm.accountId) : null,
     };
     advanceResolutionChain();
   }
@@ -449,6 +495,14 @@ export default function NewTransaction() {
       toast({ title: language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", description: language === "ar" ? "أدخل مبلغاً أكبر من الصفر" : "Enter an amount greater than zero", variant: "destructive" });
       return;
     }
+    if (!manualForm.accountId) {
+      toast({
+        title: language === "ar" ? "لازم تحدد الحساب" : "Account required",
+        description: language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
+        variant: "destructive",
+      });
+      return;
+    }
     createMutation.mutate({
       data: {
         type: manualForm.type,
@@ -457,6 +511,7 @@ export default function NewTransaction() {
         clientId: manualForm.clientId ? parseInt(manualForm.clientId) : null,
         tripId: manualForm.tripId ? parseInt(manualForm.tripId) : null,
         studioId: manualForm.studioId ? parseInt(manualForm.studioId) : null,
+        accountId: parseInt(manualForm.accountId),
         description: manualForm.description || null,
         status: manualForm.status,
         date: manualForm.date,
@@ -464,7 +519,7 @@ export default function NewTransaction() {
     });
   }
 
-  const isLoading = createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createStudioMutation.isPending;
+  const isLoading = createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createStudioMutation.isPending || createAccountMutation.isPending;
   const ChevronBack = language === "ar" ? ChevronRight : ChevronLeft;
 
   return (
@@ -859,6 +914,70 @@ export default function NewTransaction() {
                 required
               />
             </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} <span className="text-destructive">*</span>
+              </label>
+              {!showAddAccount ? (
+                <div className="flex gap-2">
+                  <select
+                    value={manualForm.accountId}
+                    onChange={(e) => setManualForm({ ...manualForm, accountId: e.target.value })}
+                    className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background"
+                    data-testid="select-account"
+                    required
+                  >
+                    <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
+                    {accounts?.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAccount(true)}
+                    className="shrink-0 px-3 py-2 rounded-lg border border-border text-sm hover:bg-muted"
+                  >
+                    + {language === "ar" ? "جديد" : "New"}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2 items-center flex-wrap p-2 border border-border rounded-lg bg-muted/40">
+                  <input
+                    autoFocus
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                    placeholder={language === "ar" ? "اسم الحساب (مثلاً: فيزا الشغل)" : "Account name (e.g. Visa)"}
+                    className="flex-1 min-w-[140px] border border-border rounded-md px-2 py-1.5 text-sm bg-background"
+                  />
+                  <select
+                    value={newAccountType}
+                    onChange={(e) => setNewAccountType(e.target.value)}
+                    className="border border-border rounded-md px-2 py-1.5 text-sm bg-background"
+                  >
+                    <option value="cash">{language === "ar" ? "كاش" : "Cash"}</option>
+                    <option value="debit">{language === "ar" ? "بطاقة ديبت" : "Debit card"}</option>
+                    <option value="credit">{language === "ar" ? "بطاقة ائتمان" : "Credit card"}</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleAddAccount}
+                    disabled={!newAccountName.trim() || createAccountMutation.isPending}
+                    className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm disabled:opacity-50"
+                  >
+                    {language === "ar" ? "إضافة" : "Add"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAccount(false)}
+                    className="px-2 py-1.5 rounded-md text-sm text-muted-foreground hover:bg-muted"
+                  >
+                    {language === "ar" ? "إلغاء" : "Cancel"}
+                  </button>
+                </div>
+              )}
+            </div>
             {(showClients || showTrips || showStudios) && (
               <div className="grid grid-cols-2 gap-3">
                 {showClients && (
@@ -1082,6 +1201,26 @@ export default function NewTransaction() {
             )}
           </div>
 
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={manualForm.accountId}
+              onChange={(e) => setManualForm({ ...manualForm, accountId: e.target.value })}
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
+              data-testid="select-account-confirm"
+              required
+            >
+              <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
+              {accounts?.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => {
@@ -1096,7 +1235,17 @@ export default function NewTransaction() {
               {t("cancel")}
             </button>
             <button
-              onClick={handleConfirm}
+              onClick={() => {
+                if (!manualForm.accountId) {
+                  toast({
+                    title: language === "ar" ? "لازم تحدد الحساب" : "Account required",
+                    description: language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                handleConfirm();
+              }}
               disabled={isLoading}
               className="flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
               data-testid="btn-confirm-transaction"

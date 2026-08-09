@@ -6,6 +6,7 @@ import {
   tripsTable,
   studiosTable,
   studioExpensesTable,
+  accountsTable,
   aiMessagesTable,
 } from "@workspace/db";
 import { ParseVoiceInputBody, AiQueryBody, TranscribeVoiceBody } from "@workspace/api-zod";
@@ -241,6 +242,7 @@ type TxRow = {
   currency: string;
   clientId: number | null;
   tripId: number | null;
+  accountId: number | null;
   description: string | null;
   status: string;
 };
@@ -249,6 +251,7 @@ type ClientRow = { id: number; name: string; phone: string | null };
 type TripRow   = { id: number; name: string; status: string; isShared: boolean };
 type StudioRow = { id: number; name: string };
 type ExpenseRow = { id: number; studioId: number; category: string; amount: string; currency: string; date: string; notes: string | null };
+type AccountRow = { id: number; name: string; type: string; currency: string; initialBalance: string };
 
 function buildFinancialContext(
   txs: TxRow[],
@@ -256,9 +259,11 @@ function buildFinancialContext(
   trips: TripRow[],
   studios: StudioRow[],
   expenses: ExpenseRow[],
+  accounts: AccountRow[],
 ): string {
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
   const tripMap   = new Map(trips.map((t) => [t.id, t.name]));
+  const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
 
   const currencies = [...new Set(["AED", "USD", "SYP", ...txs.map((t) => t.currency)])];
 
@@ -302,6 +307,22 @@ function buildFinancialContext(
     const details = sExp.map((e) => `#${e.id} ${e.date} ${e.category} ${Number(e.amount).toFixed(2)} ${e.currency}${e.notes ? ` (${e.notes})` : ""}`);
     return { id: studio.id, name: studio.name, perCur, details };
   });
+
+  const accountSummaries = accounts.map((account) => {
+    const aTxs = txs.filter((t) => t.accountId === account.id);
+    const income   = aTxs.filter((t) => t.type === "income"  || t.type === "receipt").reduce((s, t) => s + Number(t.amount), 0);
+    const spending = aTxs.filter((t) => t.type === "expense" || t.type === "payment").reduce((s, t) => s + Number(t.amount), 0);
+    const currentBalance = Number(account.initialBalance) + income - spending;
+    const typeAr = account.type === "cash" ? "كاش" : account.type === "credit" ? "بطاقة ائتمان" : "بطاقة دفع";
+    return { id: account.id, name: account.name, typeAr, currency: account.currency, currentBalance, txCount: aTxs.length };
+  });
+  const overallAccountsBalance = accounts.length > 0
+    ? [...new Set(accounts.map((a) => a.currency))].map((cur) => {
+        const total = accountSummaries.filter((a) => accounts.find((acc) => acc.id === a.id)?.currency === cur)
+          .reduce((s, a) => s + a.currentBalance, 0);
+        return { cur, total };
+      })
+    : [];
 
   const lines: string[] = [];
   const today = new Date().toLocaleDateString("ar-AE", { dateStyle: "full" });
@@ -354,6 +375,16 @@ function buildFinancialContext(
   if (studios.length === 0) lines.push("لا توجد استديوهات");
   lines.push("");
 
+  lines.push(`=== الحسابات/بطاقات الدفع (${accounts.length}) ===`);
+  if (overallAccountsBalance.length > 0) {
+    lines.push(`الإجمالي عبر كل الحسابات: ${overallAccountsBalance.map((b) => `${b.cur} ${b.total.toFixed(2)}`).join(" | ")}`);
+  }
+  accountSummaries.forEach((a) => {
+    lines.push(`• #${a.id} ${a.name} [${a.typeAr}] (${a.currency}): الرصيد الحالي ${a.currentBalance.toFixed(2)} — ${a.txCount} معاملة`);
+  });
+  if (accounts.length === 0) lines.push("لا توجد حسابات بعد — لازم تُنشأ واحدة (كاش أو بطاقة) قبل أول معاملة");
+  lines.push("");
+
   const sorted = [...txs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 150);
   lines.push(`=== سجل المعاملات (${sorted.length} من ${txs.length}) ===`);
   sorted.forEach((t) => {
@@ -361,6 +392,7 @@ function buildFinancialContext(
     const parts: string[] = [`#${t.id}`, `[${t.date}]`, typeAr, `${Number(t.amount).toFixed(2)} ${t.currency}`];
     if (t.clientId && clientMap.has(t.clientId)) parts.push(`زبون:${clientMap.get(t.clientId)}`);
     if (t.tripId   && tripMap.has(t.tripId))     parts.push(`رحلة:${tripMap.get(t.tripId)}`);
+    if (t.accountId && accountMap.has(t.accountId)) parts.push(`حساب:${accountMap.get(t.accountId)}`);
     if (t.description) parts.push(`"${t.description}"`);
     parts.push(t.status === "pending" ? "[معلّق]" : "[مسدّد]");
     lines.push(parts.join(" "));
@@ -618,7 +650,7 @@ router.post("/ai/transcribe-voice", requireAuth, async (req, res): Promise<void>
 const createTransactionDeclaration: FunctionDeclaration = {
   name: "create_transaction",
   description:
-    "أضف معاملة مالية جديدة (دخل، مصروف، دفعة لزبون، أو قبض من زبون). استخدمها فقط عندما يطلب المستخدم صراحةً إضافة/تسجيل معاملة.",
+    "أضف معاملة مالية جديدة (دخل، مصروف، دفعة لزبون، أو قبض من زبون). استخدمها فقط عندما يطلب المستخدم صراحةً إضافة/تسجيل معاملة. accountId إلزامي دائماً — كل معاملة لازم ترتبط بحساب/بطاقة دفع (كاش أو بطاقة). لا تستدعِ هذه الأداة قبل ما تحدد accountId (راجع قسم الحسابات بالتعليمات).",
   parameters: {
     type: SchemaType.OBJECT,
     properties: {
@@ -626,20 +658,21 @@ const createTransactionDeclaration: FunctionDeclaration = {
       amount: { type: SchemaType.NUMBER, description: "المبلغ (رقم موجب)" },
       currency: { type: SchemaType.STRING, description: "كود العملة ISO مثل AED أو USD أو SYP" },
       date: { type: SchemaType.STRING, description: "تاريخ المعاملة بصيغة YYYY-MM-DD. إذا لم يُذكر تاريخ استخدم تاريخ اليوم." },
+      accountId: { type: SchemaType.NUMBER, description: "معرّف الحساب/البطاقة اللي طلعت أو دخلت منه المصاري — إلزامي دائماً، لا قيمة افتراضية" },
       clientId: { type: SchemaType.NUMBER, description: "معرّف الزبون إذا كانت المعاملة مرتبطة بزبون موجود (اختياري)" },
       tripId: { type: SchemaType.NUMBER, description: "معرّف الرحلة إذا كانت مرتبطة برحلة (اختياري)" },
       studioId: { type: SchemaType.NUMBER, description: "معرّف الاستديو إذا كانت مصروف استديو (اختياري)" },
       description: { type: SchemaType.STRING, description: "وصف موجز للمعاملة (اختياري)" },
       status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"], description: "حالة المعاملة، افتراضياً pending" },
     },
-    required: ["type", "amount", "currency", "date"],
+    required: ["type", "amount", "currency", "date", "accountId"],
   },
 };
 
 const updateTransactionDeclaration: FunctionDeclaration = {
   name: "update_transaction",
   description:
-    "عدّل معاملة موجودة بالفعل (غيّر المبلغ، التاريخ، الحالة، الوصف، إلخ). استخدمها فقط عندما يحدد المستخدم أي معاملة يقصد (برقمها id أو بوصف واضح يطابق سجل معاملات واحد بعينه من البيانات المتوفرة لك).",
+    "عدّل معاملة موجودة بالفعل (غيّر المبلغ، التاريخ، الحالة، الوصف، الحساب، إلخ). استخدمها فقط عندما يحدد المستخدم أي معاملة يقصد (برقمها id أو بوصف واضح يطابق سجل معاملات واحد بعينه من البيانات المتوفرة لك).",
   parameters: {
     type: SchemaType.OBJECT,
     properties: {
@@ -650,6 +683,7 @@ const updateTransactionDeclaration: FunctionDeclaration = {
       date: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
       clientId: { type: SchemaType.NUMBER },
       tripId: { type: SchemaType.NUMBER },
+      accountId: { type: SchemaType.NUMBER, description: "معرّف الحساب/البطاقة الجديد إذا بدك تنقل المعاملة لحساب تاني" },
       description: { type: SchemaType.STRING },
       status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"] },
     },
@@ -870,6 +904,53 @@ const deleteStudioExpenseDeclaration: FunctionDeclaration = {
   },
 };
 
+// --- Accounts (cash / debit / credit payment sources) ---
+
+const createAccountDeclaration: FunctionDeclaration = {
+  name: "create_account",
+  description:
+    "أضف حساب/بطاقة دفع جديدة (كاش، بطاقة ديبت، أو بطاقة ائتمان). استخدمها إذا طلب المستخدم صراحةً إضافة حساب جديد، أو تلقائياً لما يذكر اسم حساب/بطاقة بمعاملة ولا يوجد أي تطابق أو تشابه له بالبيانات الحالية (نفس منطق الزبائن والرحلات — بدون سؤال إذن للاسم الجديد كلياً، واسأل فقط لو كان في التباس).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      name: { type: SchemaType.STRING, description: "اسم الحساب/البطاقة (مثلاً: فيزا الشغل، كاش، ماستركارد الشخصي)" },
+      type: { type: SchemaType.STRING, format: "enum", enum: ["cash", "debit", "credit"], description: "نوع الحساب" },
+      currency: { type: SchemaType.STRING, description: "عملة الحساب الأساسية، كود ISO مثل AED أو USD" },
+      initialBalance: { type: SchemaType.NUMBER, description: "الرصيد الابتدائي وقت إضافة الحساب (اختياري، افتراضياً 0)" },
+      notes: { type: SchemaType.STRING, description: "ملاحظات (اختياري)" },
+    },
+    required: ["name", "type", "currency"],
+  },
+};
+
+const updateAccountDeclaration: FunctionDeclaration = {
+  name: "update_account",
+  description: "عدّل بيانات حساب/بطاقة موجودة (الاسم، النوع، العملة، الرصيد الابتدائي، أو الملاحظات).",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      id: { type: SchemaType.NUMBER, description: "معرّف الحساب (id)" },
+      name: { type: SchemaType.STRING },
+      type: { type: SchemaType.STRING, format: "enum", enum: ["cash", "debit", "credit"] },
+      currency: { type: SchemaType.STRING },
+      initialBalance: { type: SchemaType.NUMBER },
+      notes: { type: SchemaType.STRING },
+    },
+    required: ["id"],
+  },
+};
+
+const deleteAccountDeclaration: FunctionDeclaration = {
+  name: "delete_account",
+  description:
+    "احذف حساب/بطاقة نهائياً. إجراء لا رجعة فيه (معاملاته السابقة تبقى لكن تفقد ربطها بالحساب). استخدمها فقط بعد تأكيد صريح جداً من المستخدم لعملية الحذف تحديداً.",
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الحساب (id)" } },
+    required: ["id"],
+  },
+};
+
 // --- Search tool (precise, non-hallucinated lookup for edit/delete/explain requests) ---
 
 const searchTransactionsDeclaration: FunctionDeclaration = {
@@ -881,6 +962,7 @@ const searchTransactionsDeclaration: FunctionDeclaration = {
     properties: {
       clientName: { type: SchemaType.STRING, description: "اسم الزبون كاملاً أو جزءاً منه (اختياري)" },
       tripName: { type: SchemaType.STRING, description: "اسم الرحلة كاملاً أو جزءاً منه (اختياري)" },
+      accountName: { type: SchemaType.STRING, description: "اسم الحساب/البطاقة كاملاً أو جزءاً منه (اختياري)" },
       dateFrom: { type: SchemaType.STRING, description: "بداية نطاق التاريخ YYYY-MM-DD (اختياري)" },
       dateTo: { type: SchemaType.STRING, description: "نهاية نطاق التاريخ YYYY-MM-DD شامل (اختياري)" },
       minAmount: { type: SchemaType.NUMBER, description: "أقل مبلغ (اختياري)" },
@@ -908,6 +990,13 @@ async function executeTool(
     if (typeof args.type !== "string" || typeof args.currency !== "string" || typeof args.date !== "string") {
       return { error: "حقول ناقصة (type/currency/date)" };
     }
+    const accountId = num(args.accountId);
+    if (!accountId) return { error: "accountId إلزامي — كل معاملة لازم ترتبط بحساب/بطاقة دفع" };
+    const [account] = await db
+      .select()
+      .from(accountsTable)
+      .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, userId)));
+    if (!account) return { error: "الحساب غير موجود" };
     const [tx] = await db
       .insert(transactionsTable)
       .values({
@@ -921,6 +1010,7 @@ async function executeTool(
         clientId: num(args.clientId) ?? null,
         tripId: num(args.tripId) ?? null,
         studioId: num(args.studioId) ?? null,
+        accountId,
       })
       .returning();
     return { success: true, transaction: { ...tx, amount: Number(tx.amount) } };
@@ -944,6 +1034,15 @@ async function executeTool(
     if (clientId !== undefined) updateData.clientId = clientId;
     const tripId = num(args.tripId);
     if (tripId !== undefined) updateData.tripId = tripId;
+    const accountId = num(args.accountId);
+    if (accountId !== undefined) {
+      const [account] = await db
+        .select()
+        .from(accountsTable)
+        .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, userId)));
+      if (!account) return { error: "الحساب غير موجود" };
+      updateData.accountId = accountId;
+    }
 
     const [tx] = await db
       .update(transactionsTable)
@@ -1232,20 +1331,76 @@ async function executeTool(
     return { success: true, deletedId: id };
   }
 
+  // --- Accounts (cash / debit / credit payment sources) ---
+
+  if (name === "create_account") {
+    const accountName = typeof args.name === "string" ? args.name.trim() : "";
+    if (!accountName) return { error: "اسم الحساب مفقود" };
+    if (typeof args.type !== "string" || typeof args.currency !== "string") {
+      return { error: "حقول ناقصة (type/currency)" };
+    }
+    const initialBalance = num(args.initialBalance) ?? 0;
+    const [account] = await db
+      .insert(accountsTable)
+      .values({
+        userId,
+        name: accountName,
+        type: args.type,
+        currency: args.currency.toUpperCase(),
+        initialBalance: String(initialBalance),
+        notes: (args.notes as string) ?? null,
+      })
+      .returning();
+    return { success: true, account: { ...account, initialBalance: Number(account.initialBalance), currentBalance: initialBalance } };
+  }
+
+  if (name === "update_account") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const updateData: Record<string, unknown> = {};
+    if (typeof args.name === "string" && args.name.trim()) updateData.name = args.name.trim();
+    if (typeof args.type === "string") updateData.type = args.type;
+    if (typeof args.currency === "string") updateData.currency = args.currency.toUpperCase();
+    const initialBalance = num(args.initialBalance);
+    if (initialBalance !== undefined) updateData.initialBalance = String(initialBalance);
+    if (typeof args.notes === "string") updateData.notes = args.notes.trim() || null;
+    const [account] = await db
+      .update(accountsTable)
+      .set(updateData)
+      .where(and(eq(accountsTable.id, id), eq(accountsTable.userId, userId)))
+      .returning();
+    if (!account) return { error: "الحساب غير موجود" };
+    return { success: true, account: { ...account, initialBalance: Number(account.initialBalance) } };
+  }
+
+  if (name === "delete_account") {
+    const id = num(args.id);
+    if (!id) return { error: "id مفقود" };
+    const deleted = await db
+      .delete(accountsTable)
+      .where(and(eq(accountsTable.id, id), eq(accountsTable.userId, userId)))
+      .returning();
+    if (deleted.length === 0) return { error: "الحساب غير موجود" };
+    return { success: true, deletedId: id };
+  }
+
   // --- Search (precise lookup across the full transaction history) ---
 
   if (name === "search_transactions") {
-    const [allTxs, clients, trips] = await Promise.all([
+    const [allTxs, clients, trips, accounts] = await Promise.all([
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, userId)),
       db.select().from(clientsTable).where(eq(clientsTable.userId, userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, userId)),
+      db.select().from(accountsTable).where(eq(accountsTable.userId, userId)),
     ]);
     const clientMap = new Map((clients as ClientRow[]).map((c) => [c.id, c.name]));
     const tripMap = new Map((trips as TripRow[]).map((t) => [t.id, t.name]));
+    const accountMap = new Map((accounts as AccountRow[]).map((a) => [a.id, a.name]));
 
     const norm = (s: string) => s.trim().toLowerCase();
     const clientNameQuery = typeof args.clientName === "string" && args.clientName.trim() ? norm(args.clientName) : null;
     const tripNameQuery = typeof args.tripName === "string" && args.tripName.trim() ? norm(args.tripName) : null;
+    const accountNameQuery = typeof args.accountName === "string" && args.accountName.trim() ? norm(args.accountName) : null;
     const descQuery = typeof args.descriptionContains === "string" && args.descriptionContains.trim() ? norm(args.descriptionContains) : null;
     const dateFrom = typeof args.dateFrom === "string" ? args.dateFrom : null;
     const dateTo = typeof args.dateTo === "string" ? args.dateTo : null;
@@ -1262,6 +1417,10 @@ async function executeTool(
       if (tripNameQuery) {
         const tName = t.tripId ? tripMap.get(t.tripId) : null;
         if (!tName || !norm(tName).includes(tripNameQuery)) return false;
+      }
+      if (accountNameQuery) {
+        const aName = t.accountId ? accountMap.get(t.accountId) : null;
+        if (!aName || !norm(aName).includes(accountNameQuery)) return false;
       }
       if (descQuery && !(t.description && norm(t.description).includes(descQuery))) return false;
       if (dateFrom && t.date < dateFrom) return false;
@@ -1283,6 +1442,7 @@ async function executeTool(
       currency: t.currency,
       clientName: t.clientId ? (clientMap.get(t.clientId) ?? null) : null,
       tripName: t.tripId ? (tripMap.get(t.tripId) ?? null) : null,
+      accountName: t.accountId ? (accountMap.get(t.accountId) ?? null) : null,
       description: t.description,
       status: t.status,
     }));
@@ -1334,12 +1494,13 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
   const { question } = parsed.data;
 
   try {
-    const [txs, clients, trips, studios, expenses] = await Promise.all([
+    const [txs, clients, trips, studios, expenses, accounts] = await Promise.all([
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, req.userId)),
       db.select().from(clientsTable).where(eq(clientsTable.userId, req.userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, req.userId)),
       db.select().from(studiosTable).where(eq(studiosTable.userId, req.userId)),
       db.select().from(studioExpensesTable).where(eq(studioExpensesTable.userId, req.userId)),
+      db.select().from(accountsTable).where(eq(accountsTable.userId, req.userId)),
     ]);
 
     const context = buildFinancialContext(
@@ -1348,6 +1509,7 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
       trips as TripRow[],
       studios as StudioRow[],
       expenses as ExpenseRow[],
+      accounts as AccountRow[],
     );
 
     const todayISO = new Date().toISOString().split("T")[0];
@@ -1379,8 +1541,15 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 - بعد ما تضيف الزبون/الرحلة تلقائياً وتسجّل المعاملة، أخبر المستخدم بوضوح بالنتيجتين معاً بنفس الرد (مثلاً: "ضفت أحمد كزبون جديد وسجّلت المعاملة...")، عشان يعرف شو صار بالضبط.
 - نفس منطق التمييز عند تعدد الأسماء أو تشابهها ينطبق أيضاً على أي طلب آخر يذكر اسم زبون أو رحلة (استفسار عن رصيد، تعديل، حذف، إلخ) — لا تفترض أبداً أيهم يقصد المستخدم إذا كان الاسم غير حاسم.
 
+--- الحساب/البطاقة إلزامي بكل معاملة (مهم جداً) ---
+- كل معاملة لازم ترتبط بحساب/بطاقة دفع (accountId) — هاد إلزامي، بلا استثناء، ولا يوجد قيمة افتراضية.
+- طابق أي اسم حساب/بطاقة يذكره المستخدم مع قائمة "الحسابات/بطاقات الدفع" ببيانات اليوم أدناه بنفس منطق مطابقة الزبائن (مرن، متسامح مع الإملاء): تطابق واضح ووحيد → استخدم id مباشرة. أكثر من نتيجة أو اسم متشابه → اسأله يحدد (اعرض الرصيد الحالي لكل خيار). اسم جديد كلياً → أضِفه تلقائياً (create_account) بدون سؤال إذن، بنفس الرد، ثم أكمل create_transaction فوراً.
+- إذا ذكر المستخدم معاملة بدون ما يقول من أي حساب/بطاقة، ولم يكن هناك حساب واحد واضح (مثلاً عنده حساب وحيد فقط)، **لا تكمل create_transaction قبل ما تسأله**: "من أي حساب أو بطاقة؟" واعرض له الخيارات الموجودة أدناه إذا كانت أكثر من واحد. إذا كان عنده حساب واحد بس مسجّل، فيك تستخدمه مباشرة بدون سؤال (ما في لبس).
+- إذا ما عنده ولا حساب واحد بعد (القائمة فاضية): لازم تنشئ حساب أول (اسأله شو نوعه — كاش أو بطاقة، وشو اسمه، وشو عملته، وإذا بدو يحدد رصيد ابتدائي) قبل أول معاملة.
+- لما يسأل عن "التوتال يلي معي بكل الكروت" أو أرصدة حساباته، استخدم قسم "الحسابات/بطاقات الدفع" بالبيانات أدناه (فيه الإجمالي عبر كل الحسابات جاهز محسوب).
+
 --- تعديل، حذف، أو استفسار عن معاملة بالوصف الطبيعي (مهم جداً) ---
-- إذا وصف المستخدم معاملة بالكلام بدل رقمها (مثلاً بالتاريخ، الزبون، المبلغ، أو السبب — "بدي عدل الدفعة يلي دفعتها لأحمد أول أمس"، "احذف يلي دفعته لسامر الأسبوع الماضي"، "ليش دفعت ٣٠٠ لسامر بشهر ٧؟")، لا تخمّن ولا تعتمد فقط على السجل النصي المختصر أدناه. استخدم أداة search_transactions بكل ما توفر لديك من معطيات (اسم الزبون/الرحلة، نطاق تاريخ، مبلغ تقريبي، كلمة من الوصف) لإيجاد المعاملة أو المعاملات المطابقة أولاً، ثم تصرّف بناءً على نتيجتها.
+- إذا وصف المستخدم معاملة بالكلام بدل رقمها (مثلاً بالتاريخ، الزبون، المبلغ، أو السبب — "بدي عدل الدفعة يلي دفعتها لأحمد أول أمس"، "احذف يلي دفعته لسامر الأسبوع الماضي"، "ليش دفعت ٣٠٠ لسامر بشهر ٧؟")، لا تخمّن ولا تعتمد فقط على السجل النصي المختصر أدناه. استخدم أداة search_transactions بكل ما توفر لديك من معطيات (اسم الزبون/الرحلة/الحساب، نطاق تاريخ، مبلغ تقريبي، كلمة من الوصف) لإيجاد المعاملة أو المعاملات المطابقة أولاً، ثم تصرّف بناءً على نتيجتها.
 - سجل المعاملات المعروض أدناه هو آخر 150 معاملة فقط من إجمالي الحساب؛ إذا شككت أن المعاملة أقدم من ذلك أو لم تجدها بالسياق، استخدم search_transactions قبل أن تفترض عدم وجودها.
 - إذا رجعت نتيجة واحدة فقط مطابقة: نفّذ طلب التعديل/الحذف مباشرة (باستخدام id الذي رجع)، أو اشرح تفاصيلها إذا كان السؤال استفساراً فقط (ما المبلغ، لمين، ليش، إلخ — بالاعتماد على الوصف والبيانات الفعلية فقط، لا تخترع سبباً غير مذكور).
 - إذا رجع أكثر من نتيجة ولم يكن واضحاً أيها يقصد المستخدم: اعرض له الخيارات باختصار (التاريخ، المبلغ، الوصف) واطلب منه يحدد.
@@ -1388,7 +1557,7 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 
 --- إدارة الزبائن، الرحلات، والاستديوهات (صلاحيات كاملة) ---
 - عندك أدوات كاملة لإدارة الزبائن (create_client / update_client / delete_client)، الرحلات (create_trip / update_trip / delete_trip)، الاستديوهات (create_studio / update_studio / delete_studio)، ومصاريف الاستديوهات (create_studio_expense / delete_studio_expense). استخدمها عندما يطلب المستخدم ذلك صراحةً، أو ضمن سياق إضافة معاملة كما هو موضح أعلاه.
-- ⚠️ حذف زبون أو رحلة أو استديو أو معاملة إجراء لا رجعة فيه. لا تستخدم أي أداة حذف (delete_*) إلا بعد تأكيد صريح وواضح من المستخدم على الحذف تحديداً — مجرد ذكر الاسم أو المعاملة بالحديث لا يُعتبر موافقة على حذفها. إذا لم تكن متأكداً 100% من هوية العنصر (id)، اسأل أو استخدم search_transactions/راجع البيانات أولاً بدل التخمين.
+- ⚠️ حذف زبون أو رحلة أو استديو أو حساب أو معاملة إجراء لا رجعة فيه. لا تستخدم أي أداة حذف (delete_*) إلا بعد تأكيد صريح وواضح من المستخدم على الحذف تحديداً — مجرد ذكر الاسم أو المعاملة بالحديث لا يُعتبر موافقة على حذفها. إذا لم تكن متأكداً 100% من هوية العنصر (id)، اسأل أو استخدم search_transactions/راجع البيانات أولاً بدل التخمين.
 - حذف استديو يحذف معه تلقائياً كل مصاريفه المسجّلة — نبّه المستخدم لهذا صراحةً قبل التنفيذ إذا كان للاستديو مصاريف مسجّلة.
 
 --- أدوات إضافية ---
@@ -1417,6 +1586,9 @@ ${context}`;
           deleteStudioDeclaration,
           createStudioExpenseDeclaration,
           deleteStudioExpenseDeclaration,
+          createAccountDeclaration,
+          updateAccountDeclaration,
+          deleteAccountDeclaration,
           getOverdueClientsDeclaration,
           prepareWhatsappReminderDeclaration,
           generateReportDeclaration,

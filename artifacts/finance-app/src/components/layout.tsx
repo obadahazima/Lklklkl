@@ -5,6 +5,7 @@ import {
   Users,
   Route,
   Building2,
+  Wallet,
   MessageCircle,
   Plus,
   Menu,
@@ -52,6 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     ...(showClients ? [{ href: "/clients", icon: Users, labelKey: "clients" as const }] : []),
     ...(showTrips ? [{ href: "/trips", icon: Route, labelKey: "trips" as const }] : []),
     ...(showStudios ? [{ href: "/studios", icon: Building2, labelKey: "studios" as const }] : []),
+    { href: "/accounts", icon: Wallet, labelKey: "accounts" as const },
     { href: "/chat", icon: MessageCircle, labelKey: "chat" as const },
     { href: "/settings", icon: Settings, labelKey: "settings" as const },
   ];

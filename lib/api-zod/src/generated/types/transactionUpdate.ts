@@ -18,6 +18,8 @@ export interface TransactionUpdate {
   /** @nullable */
   studioId?: number | null;
   /** @nullable */
+  accountId?: number | null;
+  /** @nullable */
   description?: string | null;
   status?: string;
 }

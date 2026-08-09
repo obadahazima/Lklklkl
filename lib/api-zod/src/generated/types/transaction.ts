@@ -27,6 +27,10 @@ export interface Transaction {
   /** @nullable */
   studioName?: string | null;
   /** @nullable */
+  accountId?: number | null;
+  /** @nullable */
+  accountName?: string | null;
+  /** @nullable */
   description?: string | null;
   /** pending | settled */
   status: string;

@@ -6,6 +6,8 @@ import {
   useListClients,
   useListTrips,
   useListStudios,
+  useListAccounts,
+  useCreateAccount,
   useCreateClient,
   useCreateTrip,
   useCreateStudio,
@@ -13,6 +15,7 @@ import {
   getListClientsQueryKey,
   getListTripsQueryKey,
   getListStudiosQueryKey,
+  getListAccountsQueryKey,
   getListTransactionsQueryKey,
   getGetDashboardSummaryQueryKey,
 } from "@workspace/api-client-react";
@@ -93,6 +96,7 @@ type FormState = {
   clientId: string;
   tripId: string;
   studioId: string;
+  accountId: string;
   description: string;
   status: "pending" | "settled";
   date: string;
@@ -106,6 +110,7 @@ function emptyForm(primaryCurrency = "AED"): FormState {
     clientId: "",
     tripId: "",
     studioId: "",
+    accountId: "",
     description: "",
     status: "pending",
     date: new Date().toISOString().slice(0, 10),
@@ -168,9 +173,18 @@ export default function TransactionsScreen() {
   const { data: clients } = useListClients();
   const { data: trips } = useListTrips();
   const { data: studios } = useListStudios();
+  const { data: accounts } = useListAccounts();
   const { mutateAsync: createTx, isPending: creating } = useCreateTransaction();
   const { mutateAsync: deleteTx } = useDeleteTransaction();
   const { mutateAsync: updateTx, isPending: updating } = useUpdateTransaction();
+
+  // If there's exactly one account, default new transactions to it so most users never touch this field.
+  useEffect(() => {
+    if (accounts && accounts.length === 1) {
+      setForm((f) => (f.accountId ? f : { ...f, accountId: String(accounts[0].id) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts]);
 
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<FormState>(() => emptyForm(primaryCurrency));
@@ -190,6 +204,7 @@ export default function TransactionsScreen() {
       clientId: item.clientId != null ? String(item.clientId) : "",
       tripId: item.tripId != null ? String(item.tripId) : "",
       studioId: item.studioId != null ? String(item.studioId) : "",
+      accountId: item.accountId != null ? String(item.accountId) : "",
       description: item.description ?? "",
       status: item.status,
       date: String(item.date).slice(0, 10),
@@ -213,6 +228,7 @@ export default function TransactionsScreen() {
           clientId: editForm.clientId ? parseInt(editForm.clientId, 10) : null,
           tripId: editForm.tripId ? parseInt(editForm.tripId, 10) : null,
           studioId: editForm.studioId ? parseInt(editForm.studioId, 10) : null,
+          accountId: editForm.accountId ? parseInt(editForm.accountId, 10) : null,
           description: editForm.description || null,
           status: editForm.status,
           date: editForm.date,
@@ -272,9 +288,18 @@ export default function TransactionsScreen() {
       onSelect: (v) => setEditForm((f) => ({ ...f, studioId: v })),
     });
 
+  const openEditAccountPicker = () =>
+    setEditPicker({
+      title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
+      selected: editForm.accountId,
+      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      onSelect: (v) => setEditForm((f) => ({ ...f, accountId: v })),
+    });
+
   const editClientName = clients?.find((c) => String(c.id) === editForm.clientId)?.name;
   const editTripName = trips?.find((tp) => String(tp.id) === editForm.tripId)?.name;
   const editStudioName = studios?.find((s) => String(s.id) === editForm.studioId)?.name;
+  const editAccountName = accounts?.find((a) => String(a.id) === editForm.accountId)?.name;
 
   const parseMutation = useParseVoiceInput({
     mutation: {
@@ -301,6 +326,20 @@ export default function TransactionsScreen() {
         setClientResolution({ kind: "idle" });
         setNewClientPhone("");
         advanceResolutionChain();
+      },
+    },
+  });
+
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountType, setNewAccountType] = useState("cash");
+  const createAccountMutation = useCreateAccount({
+    mutation: {
+      onSuccess: (newAccount) => {
+        qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+        setForm((f) => ({ ...f, accountId: String(newAccount.id) }));
+        setShowAddAccount(false);
+        setNewAccountName("");
       },
     },
   });
@@ -543,6 +582,13 @@ export default function TransactionsScreen() {
       Alert.alert(language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", language === "ar" ? "الرجاء إدخال مبلغ أكبر من الصفر" : "Please enter an amount greater than zero");
       return;
     }
+    if (!form.accountId) {
+      Alert.alert(
+        language === "ar" ? "لازم تحدد الحساب" : "Account required",
+        language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
+      );
+      return;
+    }
     try {
       const payload: TransactionInput = {
         type: form.type,
@@ -551,6 +597,7 @@ export default function TransactionsScreen() {
         clientId: form.clientId ? parseInt(form.clientId, 10) : null,
         tripId: form.tripId ? parseInt(form.tripId, 10) : null,
         studioId: form.studioId ? parseInt(form.studioId, 10) : null,
+        accountId: parseInt(form.accountId, 10),
         description: form.description || null,
         status: form.status,
         date: form.date,
@@ -625,9 +672,18 @@ export default function TransactionsScreen() {
       onSelect: (v) => setForm((f) => ({ ...f, studioId: v })),
     });
 
+  const openAccountPicker = () =>
+    setPicker({
+      title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
+      selected: form.accountId,
+      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      onSelect: (v) => setForm((f) => ({ ...f, accountId: v })),
+    });
+
   const clientName = clients?.find((c) => String(c.id) === form.clientId)?.name;
   const tripName = trips?.find((tp) => String(tp.id) === form.tripId)?.name;
   const studioName = studios?.find((s) => String(s.id) === form.studioId)?.name;
+  const accountName = accounts?.find((a) => String(a.id) === form.accountId)?.name;
 
   const renderResolution = (
     state: ResolutionState,
@@ -1216,6 +1272,65 @@ export default function TransactionsScreen() {
                   </Text>
                 </Pressable>
 
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                  {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} *
+                </Text>
+                {!showAddAccount ? (
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Pressable onPress={openAccountPicker} style={[styles.selectBtn, { borderColor: colors.border, flex: 1 }]}>
+                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                      <Text style={[styles.selectText, { color: accountName ? colors.foreground : colors.mutedForeground }]}>
+                        {accountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setShowAddAccount(true)}
+                      style={[styles.selectBtn, { borderColor: colors.border, paddingHorizontal: 14 }]}
+                    >
+                      <Text style={{ color: colors.primary, fontWeight: "600" }}>+ {language === "ar" ? "جديد" : "New"}</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+                    <TextInput
+                      autoFocus
+                      value={newAccountName}
+                      onChangeText={setNewAccountName}
+                      placeholder={language === "ar" ? "اسم الحساب (مثلاً: فيزا الشغل)" : "Account name (e.g. Visa)"}
+                      placeholderTextColor={colors.mutedForeground}
+                      style={[styles.selectBtn, { borderColor: colors.border, color: colors.foreground }]}
+                    />
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {(["cash", "debit", "credit"] as const).map((ty) => (
+                        <Pressable
+                          key={ty}
+                          onPress={() => setNewAccountType(ty)}
+                          style={[
+                            styles.selectBtn,
+                            { flex: 1, justifyContent: "center", borderColor: newAccountType === ty ? colors.primary : colors.border },
+                          ]}
+                        >
+                          <Text style={{ color: newAccountType === ty ? colors.primary : colors.foreground, fontWeight: "600" }}>
+                            {ty === "cash" ? (language === "ar" ? "كاش" : "Cash") : ty === "debit" ? (language === "ar" ? "ديبت" : "Debit") : (language === "ar" ? "ائتمان" : "Credit")}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Pressable
+                        onPress={() => createAccountMutation.mutate({ data: { name: newAccountName.trim(), type: newAccountType, currency: form.currency } })}
+                        disabled={!newAccountName.trim() || createAccountMutation.isPending}
+                        style={{ flex: 1, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center", opacity: !newAccountName.trim() ? 0.5 : 1 }}
+                      >
+                        <Text style={{ color: "#fff", fontWeight: "700" }}>{language === "ar" ? "إضافة" : "Add"}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => setShowAddAccount(false)} style={{ paddingHorizontal: 14, justifyContent: "center" }}>
+                        <Text style={{ color: colors.mutedForeground }}>{language === "ar" ? "إلغاء" : "Cancel"}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
                 {showClients && (
                   <>
                     <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("clientLabel")}</Text>
@@ -1368,6 +1483,16 @@ export default function TransactionsScreen() {
                   <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
                   <Text style={[styles.selectText, { color: colors.foreground }]}>
                     {getCurrencyName(editForm.currency, language)} ({editForm.currency})
+                  </Text>
+                </Pressable>
+
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                  {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} *
+                </Text>
+                <Pressable onPress={openEditAccountPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
+                  <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.selectText, { color: editAccountName ? colors.foreground : colors.mutedForeground }]}>
+                    {editAccountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
                   </Text>
                 </Pressable>
 

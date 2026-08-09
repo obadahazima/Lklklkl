@@ -18,6 +18,10 @@ tripId?: number | null;
 /**
  * @nullable
  */
+accountId?: number | null;
+/**
+ * @nullable
+ */
 currency?: string | null;
 /**
  * @nullable

@@ -17,6 +17,8 @@ export interface TransactionInput {
   tripId?: number | null;
   /** @nullable */
   studioId?: number | null;
+  /** Required — which cash/debit/credit account this transaction moved through */
+  accountId: number;
   /** @nullable */
   description?: string | null;
   status: string;

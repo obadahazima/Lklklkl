@@ -8,5 +8,14 @@
 
 export interface VoiceParseInput {
   text: string;
-  currencies?: string[];
+  /**
+     * User's active currency list, used to prefer a matching currency over the raw detected one
+     * @nullable
+     */
+  currencies?: string[] | null;
+  /**
+     * User's preferred default currency, used as a fallback when no currency is detected/matched
+     * @nullable
+     */
+  primaryCurrency?: string | null;
 }
