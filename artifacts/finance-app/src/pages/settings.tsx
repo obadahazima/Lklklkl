@@ -497,8 +497,8 @@ const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.
             </span>
             <p className="text-xs text-muted-foreground">
               {language === "ar"
-                ? "ارفع ملف نسخة احتياطية سابقة لاستعادة بياناتك"
-                : "Upload a previous backup file to restore your data"}
+                ? "⚠️ سيتم استبدال كل بياناتك الحالية ببيانات الملف — إجراء لا رجعة فيه"
+                : "⚠️ This will replace all your current data with the file's data — this cannot be undone"}
             </p>
           </div>
         </div>
@@ -510,7 +510,14 @@ const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleRestore(file);
+              if (file) {
+                const confirmed = window.confirm(
+                  language === "ar"
+                    ? "سيتم حذف كل بياناتك الحالية (زبائن، رحلات، حسابات، معاملات) واستبدالها ببيانات هذا الملف. هذا الإجراء لا رجعة فيه. متابعة؟"
+                    : "This will delete all your current data (clients, trips, accounts, transactions) and replace it with this file's data. This cannot be undone. Continue?"
+                );
+                if (confirmed) handleRestore(file);
+              }
               e.target.value = "";
             }}
           />

@@ -8,6 +8,7 @@ import {
   accountsTable,
   transactionsTable,
 } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { SHEET_NAMES, TX_COLUMNS, CLIENT_COLUMNS, TRIP_COLUMNS, ACCOUNT_COLUMNS } from "../lib/backup-columns.js";
 
@@ -35,92 +36,102 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
     const accountRows = getSheet(SHEET_NAMES.accounts);
     const txRows = getSheet(SHEET_NAMES.transactions);
 
-    const oldClientIdToNew = new Map<number, number>();
-    const oldTripIdToNew = new Map<number, number>();
-    const oldAccountIdToNew = new Map<number, number>();
+    // The client apps explicitly warn the user this *replaces* their current data — so it needs
+    // to actually delete their existing rows first, not just insert on top (which silently
+    // duplicated everything on every restore). Scoped to this user's own rows only, and wrapped
+    // in one transaction so a failure partway through can't leave the account half-wiped.
+    const restored = await db.transaction(async (tx) => {
+      await tx.delete(transactionsTable).where(eq(transactionsTable.userId, uid));
+      await tx.delete(clientsTable).where(eq(clientsTable.userId, uid));
+      await tx.delete(tripsTable).where(eq(tripsTable.userId, uid));
+      await tx.delete(accountsTable).where(eq(accountsTable.userId, uid));
 
-    for (const row of clientRows) {
-      const name = String(row[CLIENT_COLUMNS.name] ?? "").trim();
-      if (!name) continue;
-      const [inserted] = await db.insert(clientsTable).values({
-        userId: uid,
-        name,
-        phone: row[CLIENT_COLUMNS.phone] ? String(row[CLIENT_COLUMNS.phone]) : null,
-        notes: row[CLIENT_COLUMNS.notes] ? String(row[CLIENT_COLUMNS.notes]) : null,
-      }).returning({ id: clientsTable.id });
-      if (row[CLIENT_COLUMNS.id] != null && inserted) {
-        oldClientIdToNew.set(Number(row[CLIENT_COLUMNS.id]), inserted.id);
+      const oldClientIdToNew = new Map<number, number>();
+      const oldTripIdToNew = new Map<number, number>();
+      const oldAccountIdToNew = new Map<number, number>();
+
+      for (const row of clientRows) {
+        const name = String(row[CLIENT_COLUMNS.name] ?? "").trim();
+        if (!name) continue;
+        const [inserted] = await tx.insert(clientsTable).values({
+          userId: uid,
+          name,
+          phone: row[CLIENT_COLUMNS.phone] ? String(row[CLIENT_COLUMNS.phone]) : null,
+          notes: row[CLIENT_COLUMNS.notes] ? String(row[CLIENT_COLUMNS.notes]) : null,
+        }).returning({ id: clientsTable.id });
+        if (row[CLIENT_COLUMNS.id] != null && inserted) {
+          oldClientIdToNew.set(Number(row[CLIENT_COLUMNS.id]), inserted.id);
+        }
       }
-    }
 
-    for (const row of tripRows) {
-      const name = String(row[TRIP_COLUMNS.name] ?? "").trim();
-      if (!name) continue;
-      const [inserted] = await db.insert(tripsTable).values({
-        userId: uid,
-        name,
-        isShared: row[TRIP_COLUMNS.shared] === "نعم",
-        status: String(row[TRIP_COLUMNS.status] ?? "active"),
-        notes: row[TRIP_COLUMNS.notes] ? String(row[TRIP_COLUMNS.notes]) : null,
-      }).returning({ id: tripsTable.id });
-      if (row[TRIP_COLUMNS.id] != null && inserted) {
-        oldTripIdToNew.set(Number(row[TRIP_COLUMNS.id]), inserted.id);
+      for (const row of tripRows) {
+        const name = String(row[TRIP_COLUMNS.name] ?? "").trim();
+        if (!name) continue;
+        const [inserted] = await tx.insert(tripsTable).values({
+          userId: uid,
+          name,
+          isShared: row[TRIP_COLUMNS.shared] === "نعم",
+          status: String(row[TRIP_COLUMNS.status] ?? "active"),
+          notes: row[TRIP_COLUMNS.notes] ? String(row[TRIP_COLUMNS.notes]) : null,
+        }).returning({ id: tripsTable.id });
+        if (row[TRIP_COLUMNS.id] != null && inserted) {
+          oldTripIdToNew.set(Number(row[TRIP_COLUMNS.id]), inserted.id);
+        }
       }
-    }
 
-    for (const row of accountRows) {
-      const name = String(row[ACCOUNT_COLUMNS.name] ?? "").trim();
-      const currency = String(row[ACCOUNT_COLUMNS.currency] ?? "").trim();
-      if (!name || !currency) continue;
-      const [inserted] = await db.insert(accountsTable).values({
-        userId: uid,
-        name,
-        type: String(row[ACCOUNT_COLUMNS.type] ?? "cash"),
-        currency,
-        initialBalance: String(Number(row[ACCOUNT_COLUMNS.initialBalance] ?? 0)),
-        notes: row[ACCOUNT_COLUMNS.notes] ? String(row[ACCOUNT_COLUMNS.notes]) : null,
-      }).returning({ id: accountsTable.id });
-      if (row[ACCOUNT_COLUMNS.id] != null && inserted) {
-        oldAccountIdToNew.set(Number(row[ACCOUNT_COLUMNS.id]), inserted.id);
+      for (const row of accountRows) {
+        const name = String(row[ACCOUNT_COLUMNS.name] ?? "").trim();
+        const currency = String(row[ACCOUNT_COLUMNS.currency] ?? "").trim();
+        if (!name || !currency) continue;
+        const [inserted] = await tx.insert(accountsTable).values({
+          userId: uid,
+          name,
+          type: String(row[ACCOUNT_COLUMNS.type] ?? "cash"),
+          currency,
+          initialBalance: String(Number(row[ACCOUNT_COLUMNS.initialBalance] ?? 0)),
+          notes: row[ACCOUNT_COLUMNS.notes] ? String(row[ACCOUNT_COLUMNS.notes]) : null,
+        }).returning({ id: accountsTable.id });
+        if (row[ACCOUNT_COLUMNS.id] != null && inserted) {
+          oldAccountIdToNew.set(Number(row[ACCOUNT_COLUMNS.id]), inserted.id);
+        }
       }
-    }
 
-    let txCount = 0;
-    for (const row of txRows) {
-      const date = String(row[TX_COLUMNS.date] ?? "").trim();
-      const type = String(row[TX_COLUMNS.type] ?? "").trim();
-      const amount = Number(row[TX_COLUMNS.amount] ?? 0);
-      const currency = String(row[TX_COLUMNS.currency] ?? "AED").trim();
-      if (!date || !type || !currency) continue;
+      let txCount = 0;
+      for (const row of txRows) {
+        const date = String(row[TX_COLUMNS.date] ?? "").trim();
+        const type = String(row[TX_COLUMNS.type] ?? "").trim();
+        const amount = Number(row[TX_COLUMNS.amount] ?? 0);
+        const currency = String(row[TX_COLUMNS.currency] ?? "AED").trim();
+        if (!date || !type || !currency) continue;
 
-      const oldClientId = row[TX_COLUMNS.clientId] ? Number(row[TX_COLUMNS.clientId]) : null;
-      const oldTripId = row[TX_COLUMNS.tripId] ? Number(row[TX_COLUMNS.tripId]) : null;
-      const oldAccountId = row[TX_COLUMNS.accountId] ? Number(row[TX_COLUMNS.accountId]) : null;
+        const oldClientId = row[TX_COLUMNS.clientId] ? Number(row[TX_COLUMNS.clientId]) : null;
+        const oldTripId = row[TX_COLUMNS.tripId] ? Number(row[TX_COLUMNS.tripId]) : null;
+        const oldAccountId = row[TX_COLUMNS.accountId] ? Number(row[TX_COLUMNS.accountId]) : null;
 
-      await db.insert(transactionsTable).values({
-        userId: uid,
-        date,
-        type,
-        amount: String(amount),
-        currency,
-        clientId: oldClientId ? (oldClientIdToNew.get(oldClientId) ?? null) : null,
-        tripId: oldTripId ? (oldTripIdToNew.get(oldTripId) ?? null) : null,
-        accountId: oldAccountId ? (oldAccountIdToNew.get(oldAccountId) ?? null) : null,
-        description: row[TX_COLUMNS.description] ? String(row[TX_COLUMNS.description]) : null,
-        status: String(row[TX_COLUMNS.status] ?? "pending"),
-      });
-      txCount++;
-    }
+        await tx.insert(transactionsTable).values({
+          userId: uid,
+          date,
+          type,
+          amount: String(amount),
+          currency,
+          clientId: oldClientId ? (oldClientIdToNew.get(oldClientId) ?? null) : null,
+          tripId: oldTripId ? (oldTripIdToNew.get(oldTripId) ?? null) : null,
+          accountId: oldAccountId ? (oldAccountIdToNew.get(oldAccountId) ?? null) : null,
+          description: row[TX_COLUMNS.description] ? String(row[TX_COLUMNS.description]) : null,
+          status: String(row[TX_COLUMNS.status] ?? "pending"),
+        });
+        txCount++;
+      }
 
-    res.json({
-      success: true,
-      restored: {
+      return {
         clients: oldClientIdToNew.size,
         trips: oldTripIdToNew.size,
         accounts: oldAccountIdToNew.size,
         transactions: txCount,
-      },
+      };
     });
+
+    res.json({ success: true, restored });
   } catch (err) {
     req.log.error({ err }, "Failed to restore backup");
     res.status(500).json({ error: "فشل استعادة النسخة الاحتياطية" });

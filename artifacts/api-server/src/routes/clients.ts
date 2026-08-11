@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { clientsTable, transactionsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { clientsTable, transactionsTable, tripsTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   CreateClientBody,
   UpdateClientBody,
@@ -180,11 +180,17 @@ router.get("/clients/:id/statement", async (req, res): Promise<void> => {
       balances.reduce((sum, b) => sum + toAed(b.openBalance, b.currency, rates), 0) * 100,
     ) / 100;
 
+    const tripIds = [...new Set(txs.map((t) => t.tripId).filter((id): id is number => id != null))];
+    const tripRows = tripIds.length
+      ? await db.select({ id: tripsTable.id, name: tripsTable.name }).from(tripsTable).where(inArray(tripsTable.id, tripIds))
+      : [];
+    const tripNameById = new Map(tripRows.map((t) => [t.id, t.name]));
+
     const enrichedTxs = txs.map((t) => ({
       ...t,
       amount: Number(t.amount),
       clientName: client.name,
-      tripName: null as string | null,
+      tripName: t.tripId != null ? (tripNameById.get(t.tripId) ?? null) : null,
       createdAt: t.createdAt.toISOString(),
     }));
 
