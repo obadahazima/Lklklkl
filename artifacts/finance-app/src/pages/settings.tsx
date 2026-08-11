@@ -1,5 +1,4 @@
 import { useAuth } from "@clerk/react";
-import { customFetch } from "@workspace/api-client-react";
 import { useState, useEffect, useRef } from "react";
 import { useSettings } from "@/contexts/settings-context";
 import { tr, AVAILABLE_CURRENCIES, getCurrencyName } from "@/lib/i18n";
@@ -14,7 +13,7 @@ const MAX_CURRENCIES = 5;
 
 export default function Settings() {
   const { settings, updateSettings } = useSettings();
-  const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, showStudios, theme } = settings;
+  const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, theme } = settings;
   const { toast } = useToast();
   const { getToken } = useAuth();
   const t = (k: Parameters<typeof tr>[1], vars?: Record<string, string>) => tr(language, k, vars);
@@ -91,8 +90,8 @@ const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.
       const data = await res.json() as { restored: Record<string, number> };
       const r = data.restored;
       const msg = language === "ar"
-        ? `تمت الاستعادة ✓ — ${r.clients} زبون، ${r.trips} رحلة، ${r.studios} استديو، ${r.transactions} معاملة`
-        : `Restored ✓ — ${r.clients} clients, ${r.trips} trips, ${r.studios} studios, ${r.transactions} transactions`;
+        ? `تمت الاستعادة ✓ — ${r.clients} زبون، ${r.trips} رحلة، ${r.accounts} حساب، ${r.transactions} معاملة`
+        : `Restored ✓ — ${r.clients} clients, ${r.trips} trips, ${r.accounts} accounts, ${r.transactions} transactions`;
       toast({ title: msg });
       setTimeout(() => window.location.reload(), 1500);
     } catch {
@@ -312,7 +311,6 @@ const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.
           {[
             { key: "showClients" as const, value: showClients, labelAr: "الزبائن", labelEn: "Clients" },
             { key: "showTrips" as const, value: showTrips, labelAr: "الرحلات", labelEn: "Trips" },
-            { key: "showStudios" as const, value: showStudios, labelAr: "الاستديوهات", labelEn: "Studios" },
           ].map(({ key, value, labelAr, labelEn }) => (
             <div key={key} className="flex items-center justify-between px-4 py-3">
               <span className="text-sm font-medium text-foreground">
@@ -483,8 +481,8 @@ const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.
           </button>
           <p className="text-xs text-muted-foreground text-center">
             {language === "ar"
-              ? "يشمل: المعاملات، الزبائن، الرحلات، الاستديوهات"
-              : "Includes: Transactions, Clients, Trips, Studios"}
+              ? "يشمل: المعاملات، الزبائن، الرحلات، الحسابات"
+              : "Includes: Transactions, Clients, Trips, Accounts"}
           </p>
         </div>
       </section>

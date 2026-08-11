@@ -5,11 +5,11 @@ import { db } from "@workspace/db";
 import {
   clientsTable,
   tripsTable,
-  studiosTable,
+  accountsTable,
   transactionsTable,
-  studioExpensesTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { SHEET_NAMES, TX_COLUMNS, CLIENT_COLUMNS, TRIP_COLUMNS, ACCOUNT_COLUMNS } from "../lib/backup-columns.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -30,70 +30,72 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
       return XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
     };
 
-    const clientRows = getSheet("الزبائن");
-    const tripRows = getSheet("الرحلات");
-    const studioRows = getSheet("الاستديوهات");
-    const txRows = getSheet("المعاملات");
-    const expenseRows = getSheet("مصاريف الاستديوهات");
+    const clientRows = getSheet(SHEET_NAMES.clients);
+    const tripRows = getSheet(SHEET_NAMES.trips);
+    const accountRows = getSheet(SHEET_NAMES.accounts);
+    const txRows = getSheet(SHEET_NAMES.transactions);
 
     const oldClientIdToNew = new Map<number, number>();
     const oldTripIdToNew = new Map<number, number>();
-    const oldStudioIdToNew = new Map<number, number>();
+    const oldAccountIdToNew = new Map<number, number>();
 
     for (const row of clientRows) {
-      const name = String(row["الاسم"] ?? "").trim();
+      const name = String(row[CLIENT_COLUMNS.name] ?? "").trim();
       if (!name) continue;
       const [inserted] = await db.insert(clientsTable).values({
         userId: uid,
         name,
-        phone: row["الهاتف"] ? String(row["الهاتف"]) : null,
-        notes: row["ملاحظات"] ? String(row["ملاحظات"]) : null,
+        phone: row[CLIENT_COLUMNS.phone] ? String(row[CLIENT_COLUMNS.phone]) : null,
+        notes: row[CLIENT_COLUMNS.notes] ? String(row[CLIENT_COLUMNS.notes]) : null,
       }).returning({ id: clientsTable.id });
-      if (row["رقم"] != null && inserted) {
-        oldClientIdToNew.set(Number(row["رقم"]), inserted.id);
+      if (row[CLIENT_COLUMNS.id] != null && inserted) {
+        oldClientIdToNew.set(Number(row[CLIENT_COLUMNS.id]), inserted.id);
       }
     }
 
     for (const row of tripRows) {
-      const name = String(row["الاسم"] ?? "").trim();
+      const name = String(row[TRIP_COLUMNS.name] ?? "").trim();
       if (!name) continue;
       const [inserted] = await db.insert(tripsTable).values({
         userId: uid,
         name,
-        isShared: row["مشترك"] === "نعم",
-        status: String(row["الحالة"] ?? "active"),
-        notes: row["ملاحظات"] ? String(row["ملاحظات"]) : null,
+        isShared: row[TRIP_COLUMNS.shared] === "نعم",
+        status: String(row[TRIP_COLUMNS.status] ?? "active"),
+        notes: row[TRIP_COLUMNS.notes] ? String(row[TRIP_COLUMNS.notes]) : null,
       }).returning({ id: tripsTable.id });
-      if (row["رقم"] != null && inserted) {
-        oldTripIdToNew.set(Number(row["رقم"]), inserted.id);
+      if (row[TRIP_COLUMNS.id] != null && inserted) {
+        oldTripIdToNew.set(Number(row[TRIP_COLUMNS.id]), inserted.id);
       }
     }
 
-    for (const row of studioRows) {
-      const name = String(row["الاسم"] ?? "").trim();
-      if (!name) continue;
-      const [inserted] = await db.insert(studiosTable).values({
+    for (const row of accountRows) {
+      const name = String(row[ACCOUNT_COLUMNS.name] ?? "").trim();
+      const currency = String(row[ACCOUNT_COLUMNS.currency] ?? "").trim();
+      if (!name || !currency) continue;
+      const [inserted] = await db.insert(accountsTable).values({
         userId: uid,
         name,
-        address: row["العنوان"] ? String(row["العنوان"]) : null,
-        notes: row["ملاحظات"] ? String(row["ملاحظات"]) : null,
-      }).returning({ id: studiosTable.id });
-      if (row["رقم"] != null && inserted) {
-        oldStudioIdToNew.set(Number(row["رقم"]), inserted.id);
+        type: String(row[ACCOUNT_COLUMNS.type] ?? "cash"),
+        currency,
+        initialBalance: String(Number(row[ACCOUNT_COLUMNS.initialBalance] ?? 0)),
+        notes: row[ACCOUNT_COLUMNS.notes] ? String(row[ACCOUNT_COLUMNS.notes]) : null,
+      }).returning({ id: accountsTable.id });
+      if (row[ACCOUNT_COLUMNS.id] != null && inserted) {
+        oldAccountIdToNew.set(Number(row[ACCOUNT_COLUMNS.id]), inserted.id);
       }
     }
 
     let txCount = 0;
     for (const row of txRows) {
-      const date = String(row["التاريخ"] ?? "").trim();
-      const type = String(row["النوع"] ?? "").trim();
-      const amount = Number(row["المبلغ"] ?? 0);
-      const currency = String(row["العملة"] ?? "AED").trim();
+      const date = String(row[TX_COLUMNS.date] ?? "").trim();
+      const type = String(row[TX_COLUMNS.type] ?? "").trim();
+      const amount = Number(row[TX_COLUMNS.amount] ?? 0);
+      const currency = String(row[TX_COLUMNS.currency] ?? "AED").trim();
       if (!date || !type || !currency) continue;
 
-      const oldClientId = row["رقم الزبون"] ? Number(row["رقم الزبون"]) : null;
-      const oldTripId = row["رقم الرحلة"] ? Number(row["رقم الرحلة"]) : null;
-      const oldStudioId = row["رقم الاستديو"] ? Number(row["رقم الاستديو"]) : null;
+      const oldClientId = row[TX_COLUMNS.clientId] ? Number(row[TX_COLUMNS.clientId]) : null;
+      const oldTripId = row[TX_COLUMNS.tripId] ? Number(row[TX_COLUMNS.tripId]) : null;
+      const oldAccountId = row[TX_COLUMNS.accountId] ? Number(row[TX_COLUMNS.accountId]) : null;
 
       await db.insert(transactionsTable).values({
         userId: uid,
@@ -103,29 +105,11 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
         currency,
         clientId: oldClientId ? (oldClientIdToNew.get(oldClientId) ?? null) : null,
         tripId: oldTripId ? (oldTripIdToNew.get(oldTripId) ?? null) : null,
-        studioId: oldStudioId ? (oldStudioIdToNew.get(oldStudioId) ?? null) : null,
-        description: row["الوصف"] ? String(row["الوصف"]) : null,
-        status: String(row["الحالة"] ?? "pending"),
+        accountId: oldAccountId ? (oldAccountIdToNew.get(oldAccountId) ?? null) : null,
+        description: row[TX_COLUMNS.description] ? String(row[TX_COLUMNS.description]) : null,
+        status: String(row[TX_COLUMNS.status] ?? "pending"),
       });
       txCount++;
-    }
-
-    for (const row of expenseRows) {
-      const oldStudioId = row["رقم الاستديو"] ? Number(row["رقم الاستديو"]) : null;
-      const newStudioId = oldStudioId ? oldStudioIdToNew.get(oldStudioId) : null;
-      if (!newStudioId) continue;
-      const category = String(row["الفئة"] ?? "").trim();
-      const date = String(row["التاريخ"] ?? "").trim();
-      if (!category || !date) continue;
-      await db.insert(studioExpensesTable).values({
-        userId: uid,
-        studioId: newStudioId,
-        category,
-        amount: String(Number(row["المبلغ"] ?? 0)),
-        currency: String(row["العملة"] ?? "AED"),
-        date,
-        notes: row["ملاحظات"] ? String(row["ملاحظات"]) : null,
-      });
     }
 
     res.json({
@@ -133,9 +117,8 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
       restored: {
         clients: oldClientIdToNew.size,
         trips: oldTripIdToNew.size,
-        studios: oldStudioIdToNew.size,
+        accounts: oldAccountIdToNew.size,
         transactions: txCount,
-        expenses: expenseRows.length,
       },
     });
   } catch (err) {

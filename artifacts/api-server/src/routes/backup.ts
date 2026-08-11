@@ -5,11 +5,11 @@ import {
   transactionsTable,
   clientsTable,
   tripsTable,
-  studiosTable,
-  studioExpensesTable,
+  accountsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { SHEET_NAMES, TX_COLUMNS, CLIENT_COLUMNS, TRIP_COLUMNS, ACCOUNT_COLUMNS } from "../lib/backup-columns.js";
 
 const router = Router();
 
@@ -17,69 +17,59 @@ router.get("/backup", requireAuth, async (req, res): Promise<void> => {
   try {
     const uid = req.userId;
 
-    const [transactions, clients, trips, studios, expenses] = await Promise.all([
+    const [transactions, clients, trips, accounts] = await Promise.all([
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, uid)),
       db.select().from(clientsTable).where(eq(clientsTable.userId, uid)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, uid)),
-      db.select().from(studiosTable).where(eq(studiosTable.userId, uid)),
-      db.select().from(studioExpensesTable).where(eq(studioExpensesTable.userId, uid)),
+      db.select().from(accountsTable).where(eq(accountsTable.userId, uid)),
     ]);
 
     const clientMap = new Map(clients.map((c) => [c.id, c.name]));
     const tripMap = new Map(trips.map((t) => [t.id, t.name]));
-    const studioMap = new Map(studios.map((s) => [s.id, s.name]));
+    const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
 
     const txRows = transactions.map((t) => ({
-      "رقم": t.id,
-      "التاريخ": t.date,
-      "النوع": t.type,
-      "المبلغ": Number(t.amount),
-      "العملة": t.currency,
-      "الزبون": t.clientId ? (clientMap.get(t.clientId) ?? "") : "",
-      "رقم الزبون": t.clientId ?? "",
-      "الرحلة": t.tripId ? (tripMap.get(t.tripId) ?? "") : "",
-      "رقم الرحلة": t.tripId ?? "",
-      "الاستديو": t.studioId ? (studioMap.get(t.studioId) ?? "") : "",
-      "رقم الاستديو": t.studioId ?? "",
-      "الوصف": t.description ?? "",
-      "الحالة": t.status,
-      "تاريخ الإنشاء": t.createdAt.toISOString(),
+      [TX_COLUMNS.id]: t.id,
+      [TX_COLUMNS.date]: t.date,
+      [TX_COLUMNS.type]: t.type,
+      [TX_COLUMNS.amount]: Number(t.amount),
+      [TX_COLUMNS.currency]: t.currency,
+      [TX_COLUMNS.clientName]: t.clientId ? (clientMap.get(t.clientId) ?? "") : "",
+      [TX_COLUMNS.clientId]: t.clientId ?? "",
+      [TX_COLUMNS.tripName]: t.tripId ? (tripMap.get(t.tripId) ?? "") : "",
+      [TX_COLUMNS.tripId]: t.tripId ?? "",
+      [TX_COLUMNS.accountName]: t.accountId ? (accountMap.get(t.accountId) ?? "") : "",
+      [TX_COLUMNS.accountId]: t.accountId ?? "",
+      [TX_COLUMNS.description]: t.description ?? "",
+      [TX_COLUMNS.status]: t.status,
+      [TX_COLUMNS.createdAt]: t.createdAt.toISOString(),
     }));
 
     const clientRows = clients.map((c) => ({
-      "رقم": c.id,
-      "الاسم": c.name,
-      "الهاتف": c.phone ?? "",
-      "ملاحظات": c.notes ?? "",
-      "تاريخ الإنشاء": c.createdAt.toISOString(),
+      [CLIENT_COLUMNS.id]: c.id,
+      [CLIENT_COLUMNS.name]: c.name,
+      [CLIENT_COLUMNS.phone]: c.phone ?? "",
+      [CLIENT_COLUMNS.notes]: c.notes ?? "",
+      [CLIENT_COLUMNS.createdAt]: c.createdAt.toISOString(),
     }));
 
     const tripRows = trips.map((t) => ({
-      "رقم": t.id,
-      "الاسم": t.name,
-      "مشترك": t.isShared ? "نعم" : "لا",
-      "الحالة": t.status,
-      "ملاحظات": t.notes ?? "",
-      "تاريخ الإنشاء": t.createdAt.toISOString(),
+      [TRIP_COLUMNS.id]: t.id,
+      [TRIP_COLUMNS.name]: t.name,
+      [TRIP_COLUMNS.shared]: t.isShared ? "نعم" : "لا",
+      [TRIP_COLUMNS.status]: t.status,
+      [TRIP_COLUMNS.notes]: t.notes ?? "",
+      [TRIP_COLUMNS.createdAt]: t.createdAt.toISOString(),
     }));
 
-    const studioRows = studios.map((s) => ({
-      "رقم": s.id,
-      "الاسم": s.name,
-      "العنوان": s.address ?? "",
-      "ملاحظات": s.notes ?? "",
-      "تاريخ الإنشاء": s.createdAt.toISOString(),
-    }));
-
-    const expenseRows = expenses.map((e) => ({
-      "رقم": e.id,
-      "الاستديو": studioMap.get(e.studioId) ?? "",
-      "الفئة": e.category,
-      "المبلغ": Number(e.amount),
-      "العملة": e.currency,
-      "التاريخ": e.date,
-      "ملاحظات": e.notes ?? "",
-      "تاريخ الإنشاء": e.createdAt.toISOString(),
+    const accountRows = accounts.map((a) => ({
+      [ACCOUNT_COLUMNS.id]: a.id,
+      [ACCOUNT_COLUMNS.name]: a.name,
+      [ACCOUNT_COLUMNS.type]: a.type,
+      [ACCOUNT_COLUMNS.currency]: a.currency,
+      [ACCOUNT_COLUMNS.initialBalance]: Number(a.initialBalance),
+      [ACCOUNT_COLUMNS.notes]: a.notes ?? "",
+      [ACCOUNT_COLUMNS.createdAt]: a.createdAt.toISOString(),
     }));
 
     const wb = XLSX.utils.book_new();
@@ -91,11 +81,10 @@ router.get("/backup", requireAuth, async (req, res): Promise<void> => {
       XLSX.utils.book_append_sheet(wb, ws, name);
     };
 
-    addSheet("المعاملات", txRows);
-    addSheet("الزبائن", clientRows);
-    addSheet("الرحلات", tripRows);
-    addSheet("الاستديوهات", studioRows);
-    addSheet("مصاريف الاستديوهات", expenseRows);
+    addSheet(SHEET_NAMES.transactions, txRows);
+    addSheet(SHEET_NAMES.clients, clientRows);
+    addSheet(SHEET_NAMES.trips, tripRows);
+    addSheet(SHEET_NAMES.accounts, accountRows);
 
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 

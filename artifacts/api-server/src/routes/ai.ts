@@ -4,8 +4,6 @@ import {
   transactionsTable,
   clientsTable,
   tripsTable,
-  studiosTable,
-  studioExpensesTable,
   accountsTable,
   aiMessagesTable,
 } from "@workspace/db";
@@ -249,16 +247,12 @@ type TxRow = {
 
 type ClientRow = { id: number; name: string; phone: string | null };
 type TripRow   = { id: number; name: string; status: string; isShared: boolean };
-type StudioRow = { id: number; name: string };
-type ExpenseRow = { id: number; studioId: number; category: string; amount: string; currency: string; date: string; notes: string | null };
 type AccountRow = { id: number; name: string; type: string; currency: string; initialBalance: string };
 
 function buildFinancialContext(
   txs: TxRow[],
   clients: ClientRow[],
   trips: TripRow[],
-  studios: StudioRow[],
-  expenses: ExpenseRow[],
   accounts: AccountRow[],
 ): string {
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
@@ -296,16 +290,6 @@ function buildFinancialContext(
       return { cur, income, spending, net, myShare };
     }).filter((c) => c.income !== 0 || c.spending !== 0);
     return { id: trip.id, name: trip.name, status: trip.status, isShared: trip.isShared, perCur, txCount: tTxs.length };
-  });
-
-  const studioSummaries = studios.map((studio) => {
-    const sExp = expenses.filter((e) => e.studioId === studio.id);
-    const perCur = currencies.map((cur) => {
-      const total = sExp.filter((e) => e.currency === cur).reduce((s, e) => s + Number(e.amount), 0);
-      return { cur, total };
-    }).filter((c) => c.total !== 0);
-    const details = sExp.map((e) => `#${e.id} ${e.date} ${e.category} ${Number(e.amount).toFixed(2)} ${e.currency}${e.notes ? ` (${e.notes})` : ""}`);
-    return { id: studio.id, name: studio.name, perCur, details };
   });
 
   const accountSummaries = accounts.map((account) => {
@@ -366,15 +350,6 @@ function buildFinancialContext(
   if (trips.length === 0) lines.push("لا توجد رحلات");
   lines.push("");
 
-  lines.push(`=== الاستديوهات (${studios.length}) ===`);
-  studioSummaries.forEach((s) => {
-    const totals = s.perCur.map((c) => `${c.cur}: ${c.total.toFixed(2)}`).join(", ");
-    lines.push(`• #${s.id} ${s.name}: ${totals || "لا توجد مصاريف"}`);
-    s.details.forEach((d) => lines.push(`  - ${d}`));
-  });
-  if (studios.length === 0) lines.push("لا توجد استديوهات");
-  lines.push("");
-
   lines.push(`=== الحسابات/بطاقات الدفع (${accounts.length}) ===`);
   if (overallAccountsBalance.length > 0) {
     lines.push(`الإجمالي عبر كل الحسابات: ${overallAccountsBalance.map((b) => `${b.cur} ${b.total.toFixed(2)}`).join(" | ")}`);
@@ -422,15 +397,13 @@ router.post("/ai/parse-voice", requireAuth, async (req, res): Promise<void> => {
     : activeCurrencies[0];
 
   try {
-    const [clients, trips, studios] = await Promise.all([
+    const [clients, trips] = await Promise.all([
       db.select().from(clientsTable).where(eq(clientsTable.userId, req.userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, req.userId)),
-      db.select().from(studiosTable).where(eq(studiosTable.userId, req.userId)),
     ]);
 
     const clientList = (clients as ClientRow[]).map((c) => `  - id:${c.id} | ${c.name}`).join("\n") || "  (لا يوجد)";
     const tripList = (trips as TripRow[]).map((t) => `  - id:${t.id} | ${t.name}`).join("\n") || "  (لا يوجد)";
-    const studioList = (studios as StudioRow[]).map((s) => `  - id:${s.id} | ${s.name}`).join("\n") || "  (لا يوجد)";
 
     // Build dynamic currency hint lines
     const currencyHints = buildCurrencyHints(activeCurrencies);
@@ -455,12 +428,9 @@ ${clientList}
 === الرحلات الموجودة ===
 ${tripList}
 
-=== الاستديوهات الموجودة ===
-${studioList}
-
 --- قواعد مطابقة الأسماء ---
-- طابق أي اسم مذكور مع القوائم أعلاه حتى لو اختلفت اللغة أو الكتابة (مثلاً "رشا" = "Rasha"، "studio noor" = "استديو النور"، "دبي" = "Dubai"). اعتمد على النطق لا المطابقة الحرفية.
-- عند وجود تطابق: أعِد المعرّف الرقمي في clientId/tripId/studioId والاسم المخزَّن بالضبط في clientName/tripName/studioName.
+- طابق أي اسم مذكور مع القوائم أعلاه حتى لو اختلفت اللغة أو الكتابة (مثلاً "رشا" = "Rasha"، "دبي" = "Dubai"). اعتمد على النطق لا المطابقة الحرفية.
+- عند وجود تطابق: أعِد المعرّف الرقمي في clientId/tripId والاسم المخزَّن بالضبط في clientName/tripName.
 - عند عدم وجود تطابق: المعرّف = null والاسم كما نُطق.
 - إذا لم يُذكر اسم: الاسم والمعرّف = null.
 
@@ -510,7 +480,7 @@ ${currencyHints}
 - لا تخترع تاريخاً أبداً؛ التاريخ يُستخرج فقط إذا كان مذكوراً أو مفهوماً ضمنياً من الجملة بوضوح.
 
 أعِد JSON فقط بدون أي نص خارجه:
-{"type":"...","amount":0,"currency":"${primaryCurrency}","clientName":null,"clientId":null,"tripName":null,"tripId":null,"studioName":null,"studioId":null,"detectedLanguage":"...","description":"...","date":null}
+{"type":"...","amount":0,"currency":"${primaryCurrency}","clientName":null,"clientId":null,"tripName":null,"tripId":null,"detectedLanguage":"...","description":"...","date":null}
 
 أمثلة:
 جملة: "دفعت فاتورة الكهرباء ٣٠٠ درهم" → type: expense (لا يوجد مستلم شخصي)، date: null (لا يوجد ذكر للتاريخ)
@@ -541,7 +511,6 @@ ${currencyHints}
     };
     const clientIds = new Set((clients as ClientRow[]).map((c) => c.id));
     const tripIds = new Set((trips as TripRow[]).map((t) => t.id));
-    const studioIds = new Set((studios as StudioRow[]).map((s) => s.id));
 
     const normalizedCurrency = normalizeCurrency(parsedResult.currency);
     // Prefer a currency in the user's active list; fall back to primary
@@ -573,8 +542,6 @@ ${currencyHints}
       clientId: toId(parsedResult.clientId, clientIds),
       tripName: (parsedResult.tripName as string) || null,
       tripId: toId(parsedResult.tripId, tripIds),
-      studioName: (parsedResult.studioName as string) || null,
-      studioId: toId(parsedResult.studioId, studioIds),
       detectedLanguage: (parsedResult.detectedLanguage as string) || null,
       description: (parsedResult.description as string) || null,
       date: finalDate,
@@ -661,7 +628,6 @@ const createTransactionDeclaration: FunctionDeclaration = {
       accountId: { type: SchemaType.NUMBER, description: "معرّف الحساب/البطاقة اللي طلعت أو دخلت منه المصاري — إلزامي دائماً، لا قيمة افتراضية" },
       clientId: { type: SchemaType.NUMBER, description: "معرّف الزبون إذا كانت المعاملة مرتبطة بزبون موجود (اختياري)" },
       tripId: { type: SchemaType.NUMBER, description: "معرّف الرحلة إذا كانت مرتبطة برحلة (اختياري)" },
-      studioId: { type: SchemaType.NUMBER, description: "معرّف الاستديو إذا كانت مصروف استديو (اختياري)" },
       description: { type: SchemaType.STRING, description: "وصف موجز للمعاملة (اختياري)" },
       status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"], description: "حالة المعاملة، افتراضياً pending" },
     },
@@ -835,75 +801,6 @@ const deleteTripDeclaration: FunctionDeclaration = {
   },
 };
 
-// --- Studio tools ---
-
-const createStudioDeclaration: FunctionDeclaration = {
-  name: "create_studio",
-  description: "أضف استديو جديد. استخدمها إذا طلب المستخدم صراحةً إضافة استديو جديد، أو وافق على إضافة استديو غير موجود بالبيانات.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: {
-      name: { type: SchemaType.STRING, description: "اسم الاستديو" },
-      address: { type: SchemaType.STRING, description: "العنوان (اختياري)" },
-      notes: { type: SchemaType.STRING, description: "ملاحظات (اختياري)" },
-    },
-    required: ["name"],
-  },
-};
-
-const updateStudioDeclaration: FunctionDeclaration = {
-  name: "update_studio",
-  description: "عدّل بيانات استديو موجود (الاسم، العنوان، أو الملاحظات).",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: {
-      id: { type: SchemaType.NUMBER, description: "معرّف الاستديو (id)" },
-      name: { type: SchemaType.STRING },
-      address: { type: SchemaType.STRING },
-      notes: { type: SchemaType.STRING },
-    },
-    required: ["id"],
-  },
-};
-
-const deleteStudioDeclaration: FunctionDeclaration = {
-  name: "delete_studio",
-  description:
-    "احذف استديو نهائياً — يحذف معه تلقائياً كل مصاريف هذا الاستديو المسجّلة (إجراء لا رجعة فيه). استخدمها فقط بعد تأكيد صريح جداً من المستخدم.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الاستديو (id)" } },
-    required: ["id"],
-  },
-};
-
-const createStudioExpenseDeclaration: FunctionDeclaration = {
-  name: "create_studio_expense",
-  description: "سجّل مصروف استديو جديد (إيجار، صيانة، معدات، إلخ) على استديو موجود.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: {
-      studioId: { type: SchemaType.NUMBER, description: "معرّف الاستديو (id)" },
-      category: { type: SchemaType.STRING, description: "تصنيف المصروف (مثلاً: إيجار، صيانة، معدات، كهرباء)" },
-      amount: { type: SchemaType.NUMBER, description: "المبلغ (رقم موجب)" },
-      currency: { type: SchemaType.STRING, description: "كود العملة ISO مثل AED أو USD" },
-      date: { type: SchemaType.STRING, description: "تاريخ المصروف بصيغة YYYY-MM-DD. إذا لم يُذكر استخدم تاريخ اليوم." },
-      notes: { type: SchemaType.STRING, description: "ملاحظات (اختياري)" },
-    },
-    required: ["studioId", "category", "amount", "currency", "date"],
-  },
-};
-
-const deleteStudioExpenseDeclaration: FunctionDeclaration = {
-  name: "delete_studio_expense",
-  description: "احذف مصروف استديو معيّن نهائياً بالاعتماد على معرّفه (id) كما يظهر في سجل مصاريف الاستديو بالبيانات أعلاه.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: { id: { type: SchemaType.NUMBER, description: "معرّف مصروف الاستديو (id)" } },
-    required: ["id"],
-  },
-};
-
 // --- Accounts (cash / debit / credit payment sources) ---
 
 const createAccountDeclaration: FunctionDeclaration = {
@@ -1009,7 +906,6 @@ async function executeTool(
         description: (args.description as string) ?? null,
         clientId: num(args.clientId) ?? null,
         tripId: num(args.tripId) ?? null,
-        studioId: num(args.studioId) ?? null,
         accountId,
       })
       .returning();
@@ -1248,89 +1144,6 @@ async function executeTool(
     return { success: true, deletedId: id };
   }
 
-  // --- Studios ---
-
-  if (name === "create_studio") {
-    const studioName = typeof args.name === "string" ? args.name.trim() : "";
-    if (!studioName) return { error: "اسم الاستديو مفقود" };
-    const [studio] = await db
-      .insert(studiosTable)
-      .values({
-        userId,
-        name: studioName,
-        address: typeof args.address === "string" && args.address.trim() ? args.address.trim() : null,
-        notes: typeof args.notes === "string" && args.notes.trim() ? args.notes.trim() : null,
-      })
-      .returning();
-    return { success: true, studio };
-  }
-
-  if (name === "update_studio") {
-    const id = num(args.id);
-    if (!id) return { error: "id مفقود" };
-    const updateData: Record<string, unknown> = {};
-    if (typeof args.name === "string" && args.name.trim()) updateData.name = args.name.trim();
-    if (typeof args.address === "string") updateData.address = args.address.trim() || null;
-    if (typeof args.notes === "string") updateData.notes = args.notes.trim() || null;
-    const [studio] = await db
-      .update(studiosTable)
-      .set(updateData)
-      .where(and(eq(studiosTable.id, id), eq(studiosTable.userId, userId)))
-      .returning();
-    if (!studio) return { error: "الاستديو غير موجود" };
-    return { success: true, studio };
-  }
-
-  if (name === "delete_studio") {
-    const id = num(args.id);
-    if (!id) return { error: "id مفقود" };
-    const deleted = await db
-      .delete(studiosTable)
-      .where(and(eq(studiosTable.id, id), eq(studiosTable.userId, userId)))
-      .returning();
-    if (deleted.length === 0) return { error: "الاستديو غير موجود" };
-    return { success: true, deletedId: id };
-  }
-
-  if (name === "create_studio_expense") {
-    const studioId = num(args.studioId);
-    const amount = num(args.amount);
-    if (!studioId) return { error: "studioId مفقود" };
-    if (!amount || amount <= 0) return { error: "amount غير صالح" };
-    if (typeof args.category !== "string" || typeof args.currency !== "string" || typeof args.date !== "string") {
-      return { error: "حقول ناقصة (category/currency/date)" };
-    }
-    const [studio] = await db
-      .select()
-      .from(studiosTable)
-      .where(and(eq(studiosTable.id, studioId), eq(studiosTable.userId, userId)));
-    if (!studio) return { error: "الاستديو غير موجود" };
-    const [expense] = await db
-      .insert(studioExpensesTable)
-      .values({
-        userId,
-        studioId,
-        category: args.category,
-        amount: String(amount),
-        currency: args.currency.toUpperCase(),
-        date: args.date,
-        notes: (args.notes as string) ?? null,
-      })
-      .returning();
-    return { success: true, expense: { ...expense, amount: Number(expense.amount) } };
-  }
-
-  if (name === "delete_studio_expense") {
-    const id = num(args.id);
-    if (!id) return { error: "id مفقود" };
-    const deleted = await db
-      .delete(studioExpensesTable)
-      .where(and(eq(studioExpensesTable.id, id), eq(studioExpensesTable.userId, userId)))
-      .returning();
-    if (deleted.length === 0) return { error: "مصروف الاستديو غير موجود" };
-    return { success: true, deletedId: id };
-  }
-
   // --- Accounts (cash / debit / credit payment sources) ---
 
   if (name === "create_account") {
@@ -1494,12 +1307,10 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
   const { question } = parsed.data;
 
   try {
-    const [txs, clients, trips, studios, expenses, accounts] = await Promise.all([
+    const [txs, clients, trips, accounts] = await Promise.all([
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, req.userId)),
       db.select().from(clientsTable).where(eq(clientsTable.userId, req.userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, req.userId)),
-      db.select().from(studiosTable).where(eq(studiosTable.userId, req.userId)),
-      db.select().from(studioExpensesTable).where(eq(studioExpensesTable.userId, req.userId)),
       db.select().from(accountsTable).where(eq(accountsTable.userId, req.userId)),
     ]);
 
@@ -1507,8 +1318,6 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
       txs as TxRow[],
       clients as ClientRow[],
       trips as TripRow[],
-      studios as StudioRow[],
-      expenses as ExpenseRow[],
       accounts as AccountRow[],
     );
 
@@ -1555,10 +1364,9 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 - إذا رجع أكثر من نتيجة ولم يكن واضحاً أيها يقصد المستخدم: اعرض له الخيارات باختصار (التاريخ، المبلغ، الوصف) واطلب منه يحدد.
 - إذا لم ترجع أي نتيجة: أخبره بصراحة أنك ما لقيت معاملة مطابقة، بدل الادّعاء أو التخمين.
 
---- إدارة الزبائن، الرحلات، والاستديوهات (صلاحيات كاملة) ---
-- عندك أدوات كاملة لإدارة الزبائن (create_client / update_client / delete_client)، الرحلات (create_trip / update_trip / delete_trip)، الاستديوهات (create_studio / update_studio / delete_studio)، ومصاريف الاستديوهات (create_studio_expense / delete_studio_expense). استخدمها عندما يطلب المستخدم ذلك صراحةً، أو ضمن سياق إضافة معاملة كما هو موضح أعلاه.
-- ⚠️ حذف زبون أو رحلة أو استديو أو حساب أو معاملة إجراء لا رجعة فيه. لا تستخدم أي أداة حذف (delete_*) إلا بعد تأكيد صريح وواضح من المستخدم على الحذف تحديداً — مجرد ذكر الاسم أو المعاملة بالحديث لا يُعتبر موافقة على حذفها. إذا لم تكن متأكداً 100% من هوية العنصر (id)، اسأل أو استخدم search_transactions/راجع البيانات أولاً بدل التخمين.
-- حذف استديو يحذف معه تلقائياً كل مصاريفه المسجّلة — نبّه المستخدم لهذا صراحةً قبل التنفيذ إذا كان للاستديو مصاريف مسجّلة.
+--- إدارة الزبائن والرحلات (صلاحيات كاملة) ---
+- عندك أدوات كاملة لإدارة الزبائن (create_client / update_client / delete_client) والرحلات (create_trip / update_trip / delete_trip). استخدمها عندما يطلب المستخدم ذلك صراحةً، أو ضمن سياق إضافة معاملة كما هو موضح أعلاه.
+- ⚠️ حذف زبون أو رحلة أو حساب أو معاملة إجراء لا رجعة فيه. لا تستخدم أي أداة حذف (delete_*) إلا بعد تأكيد صريح وواضح من المستخدم على الحذف تحديداً — مجرد ذكر الاسم أو المعاملة بالحديث لا يُعتبر موافقة على حذفها. إذا لم تكن متأكداً 100% من هوية العنصر (id)، اسأل أو استخدم search_transactions/راجع البيانات أولاً بدل التخمين.
 
 --- أدوات إضافية ---
 - get_overdue_clients: تُرجع الزبائن اللي *مدينين لك* من دفعات/مصاريف دفعتها لهم أو لأجلهم (مثلاً اشتريتلهم أغراض) ولسا ما رجّعوها من شهر أو أكثر. استخدمها إذا سأل المستخدم عن الزبائن المدينين له أو المصاري المستحقة له من دفعات قديمة، أو إذا لاحظت من البيانات وجود دفعات معلّقة قديمة لزبون وتريد تنبيهه استباقياً في بداية المحادثة.
@@ -1581,11 +1389,6 @@ ${context}`;
           createTripDeclaration,
           updateTripDeclaration,
           deleteTripDeclaration,
-          createStudioDeclaration,
-          updateStudioDeclaration,
-          deleteStudioDeclaration,
-          createStudioExpenseDeclaration,
-          deleteStudioExpenseDeclaration,
           createAccountDeclaration,
           updateAccountDeclaration,
           deleteAccountDeclaration,

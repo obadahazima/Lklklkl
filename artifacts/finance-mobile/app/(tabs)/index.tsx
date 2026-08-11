@@ -1,4 +1,4 @@
-import { useGetDashboardSummary, useGetRecentTransactions, customFetch } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetRecentTransactions, useListAccounts, customFetch } from "@workspace/api-client-react";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -66,8 +66,14 @@ export default function DashboardScreen() {
     useGetDashboardSummary();
   const { data: recentTxs, isLoading: txLoading, refetch: refetchTx } =
     useGetRecentTransactions();
+  const { data: accounts, isLoading: accLoading } = useListAccounts();
 
   const isLoading = sumLoading || txLoading;
+
+  const totalAccountsInPrimary = (accounts ?? []).reduce(
+    (sum, a) => sum + fromAed(toAed(a.currentBalance, a.currency, effectiveRates), primaryCurrency, effectiveRates),
+    0
+  );
 
   // Proactively check for clients overdue by a month or more the moment the dashboard opens.
   const [overdueClients, setOverdueClients] = useState<
@@ -93,12 +99,6 @@ export default function DashboardScreen() {
 
   const currencies: Array<{ currency: string; balance: number; totalIncome: number; totalExpenses: number }> =
     (summary as any)?.currencies ?? [];
-
-  const totalBalanceAED = currencies.reduce(
-    (sum, c) => sum + toAed(c.balance, c.currency, effectiveRates),
-    0
-  );
-  const totalInPrimary = fromAed(totalBalanceAED, primaryCurrency, effectiveRates);
 
   const totalIncome = currencies.reduce(
     (sum, c) => sum + toAed(c.totalIncome, c.currency, effectiveRates),
@@ -191,39 +191,65 @@ export default function DashboardScreen() {
         </View>
       ) : (
         <>
-          {/* Total Balance Hero Card */}
-          <View style={[
-            styles.heroCard,
-            {
-              backgroundColor: totalInPrimary >= 0 ? colors.primary : "#ef4444",
-            }
-          ]}>
-            <Text style={styles.heroLabel}>إجمالي الرصيد</Text>
-            <Text style={styles.heroAmount}>
-              {Math.abs(totalInPrimary).toLocaleString("ar", { maximumFractionDigits: 0 })}
-            </Text>
-            <Text style={styles.heroCurrency}>{primaryCurrency}</Text>
+          {/* Accounts Hero Card — now the primary total shown on the dashboard */}
+          {accLoading ? (
+            <View style={[styles.heroCard, { backgroundColor: colors.primary }]} />
+          ) : accounts && accounts.length > 0 ? (
+            <View style={[
+              styles.heroCard,
+              { backgroundColor: totalAccountsInPrimary >= 0 ? colors.primary : "#ef4444" }
+            ]}>
+              <Text style={styles.heroLabel}>إجمالي الحسابات</Text>
+              <Text style={styles.heroAmount}>
+                {Math.abs(totalAccountsInPrimary).toLocaleString("ar", { maximumFractionDigits: 0 })}
+              </Text>
+              <Text style={styles.heroCurrency}>{primaryCurrency}</Text>
 
-            <View style={styles.heroStats}>
-              <View style={styles.heroStatItem}>
-                <Feather name="users" size={14} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroStatValue}>{totalClients}</Text>
-                <Text style={styles.heroStatLabel}>عميل</Text>
+              <View style={styles.heroStats}>
+                <View style={styles.heroStatItem}>
+                  <Feather name="users" size={14} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.heroStatValue}>{totalClients}</Text>
+                  <Text style={styles.heroStatLabel}>عميل</Text>
+                </View>
+                <View style={styles.heroStatDivider} />
+                <View style={styles.heroStatItem}>
+                  <Feather name="package" size={14} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.heroStatValue}>{activeTrips}</Text>
+                  <Text style={styles.heroStatLabel}>رحلة نشطة</Text>
+                </View>
+                <View style={styles.heroStatDivider} />
+                <View style={styles.heroStatItem}>
+                  <Feather name="clock" size={14} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.heroStatValue}>{pendingTransactions}</Text>
+                  <Text style={styles.heroStatLabel}>{t("pendingTransactions")}</Text>
+                </View>
               </View>
-              <View style={styles.heroStatDivider} />
-              <View style={styles.heroStatItem}>
-                <Feather name="package" size={14} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroStatValue}>{activeTrips}</Text>
-                <Text style={styles.heroStatLabel}>رحلة نشطة</Text>
-              </View>
-              <View style={styles.heroStatDivider} />
-              <View style={styles.heroStatItem}>
-                <Feather name="clock" size={14} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroStatValue}>{pendingTransactions}</Text>
-                <Text style={styles.heroStatLabel}>{t("pendingTransactions")}</Text>
+
+              <View style={styles.heroAccountsList}>
+                {accounts.map((a) => (
+                  <Pressable
+                    key={a.id}
+                    onPress={() => router.push("/(tabs)/accounts")}
+                    style={styles.heroAccountRow}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                      <View style={[styles.heroAccountDot, { backgroundColor: a.color ?? "#fff" }]} />
+                      <Text style={styles.heroAccountName} numberOfLines={1}>{a.name}</Text>
+                    </View>
+                    <Text style={styles.heroAccountAmount}>
+                      {a.currentBalance < 0 ? "-" : ""}
+                      {Math.abs(a.currentBalance).toLocaleString("ar", { maximumFractionDigits: 0 })} {a.currency}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
-          </View>
+          ) : (
+            <Pressable onPress={() => router.push("/(tabs)/accounts")} style={[styles.emptyBox, { borderColor: colors.border, marginBottom: 16 }]}>
+              <Feather name="credit-card" size={24} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>ما ضفت حسابات بعد — دوس لإضافة أول حساب</Text>
+            </Pressable>
+          )}
 
           {/* Income / Expenses */}
           <View style={styles.statsRow}>
@@ -380,6 +406,39 @@ function BalanceCard({ currency, amount, colors }: { currency: string; amount: n
 }
 
 const styles = StyleSheet.create({
+  heroAccountsList: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.2)",
+    gap: 6,
+  },
+  heroAccountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  heroAccountDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.6)",
+  },
+  heroAccountName: {
+    fontSize: 13,
+    fontWeight: "500" as const,
+    fontFamily: "Inter_500Medium",
+    color: "rgba(255,255,255,0.9)",
+    flexShrink: 1,
+  },
+  heroAccountAmount: {
+    fontSize: 13,
+    fontWeight: "700" as const,
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+  },
   heroCard: {
     borderRadius: 20,
     padding: 20,

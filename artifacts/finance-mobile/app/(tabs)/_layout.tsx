@@ -49,7 +49,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 function NativeTabLayout() {
   const { settings } = useSettings();
-  const { showClients, showTrips, showStudios } = settings;
+  const { showClients, showTrips } = settings;
 
   return (
     <NativeTabs>
@@ -77,12 +77,6 @@ function NativeTabLayout() {
           <Label>الرحلات</Label>
         </NativeTabs.Trigger>
       )}
-      {showStudios && (
-        <NativeTabs.Trigger name="studios">
-          <Icon sf={{ default: "building.2", selected: "building.2.fill" }} />
-          <Label>الاستوديوهات</Label>
-        </NativeTabs.Trigger>
-      )}
       <NativeTabs.Trigger name="chat">
         <Icon sf={{ default: "bubble.left", selected: "bubble.left.fill" }} />
         <Label>المساعد</Label>
@@ -98,7 +92,7 @@ function NativeTabLayout() {
 function TopTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const colors = useColors();
   const { settings } = useSettings();
-  const { showClients, showTrips, showStudios } = settings;
+  const { showClients, showTrips } = settings;
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
@@ -106,7 +100,6 @@ function TopTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const hiddenRoutes = new Set<string>([
     ...(!showClients ? ["clients"] : []),
     ...(!showTrips ? ["trips"] : []),
-    ...(!showStudios ? ["studios"] : []),
   ]);
 
   return (
@@ -187,7 +180,7 @@ function TopTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 function ClassicTabLayout() {
   const isIOS = Platform.OS === "ios";
   const { settings } = useSettings();
-  const { showClients, showTrips, showStudios } = settings;
+  const { showClients, showTrips } = settings;
   const t = useTr(settings.language);
 
   return (
@@ -254,19 +247,6 @@ function ClassicTabLayout() {
               <SymbolView name="shippingbox" tintColor={color} size={22} />
             ) : (
               <Feather name="package" size={20} color={color} />
-            ),
-        }}
-      />
-      <Tabs.Screen
-        name="studios"
-        options={{
-          title: t("studios"),
-          href: showStudios ? undefined : null,
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="building.2" tintColor={color} size={22} />
-            ) : (
-              <Feather name="home" size={20} color={color} />
             ),
         }}
       />

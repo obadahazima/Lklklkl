@@ -23,10 +23,6 @@ export interface Transaction {
   /** @nullable */
   tripName?: string | null;
   /** @nullable */
-  studioId?: number | null;
-  /** @nullable */
-  studioName?: string | null;
-  /** @nullable */
   accountId?: number | null;
   /** @nullable */
   accountName?: string | null;

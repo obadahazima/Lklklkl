@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { transactionsTable, clientsTable, tripsTable } from "@workspace/db";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { getExchangeRates, toAed } from "../utils/exchange-rates.js";
 import { getOverdueClients, DEFAULT_OVERDUE_DAYS } from "../utils/overdue-clients.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
@@ -100,7 +100,6 @@ router.get("/dashboard/recent-transactions", async (req, res): Promise<void> => 
       amount: Number(t.amount),
       clientName: t.clientId ? (clientMap.get(t.clientId) ?? null) : null,
       tripName: t.tripId ? (tripMap.get(t.tripId) ?? null) : null,
-      studioName: null,
       createdAt: t.createdAt.toISOString(),
     }));
 

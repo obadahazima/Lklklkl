@@ -38,8 +38,6 @@ export const ListTransactionsResponseItem = zod.object({
   "clientName": zod.string().nullish(),
   "tripId": zod.number().nullish(),
   "tripName": zod.string().nullish(),
-  "studioId": zod.number().nullish(),
-  "studioName": zod.string().nullish(),
   "accountId": zod.number().nullish(),
   "accountName": zod.string().nullish(),
   "description": zod.string().nullish(),
@@ -59,7 +57,6 @@ export const CreateTransactionBody = zod.object({
   "currency": zod.string(),
   "clientId": zod.number().nullish(),
   "tripId": zod.number().nullish(),
-  "studioId": zod.number().nullish(),
   "accountId": zod.number().describe('Required — which cash\/debit\/credit account this transaction moved through'),
   "description": zod.string().nullish(),
   "status": zod.string()
@@ -80,8 +77,6 @@ export const GetTransactionResponse = zod.object({
   "clientName": zod.string().nullish(),
   "tripId": zod.number().nullish(),
   "tripName": zod.string().nullish(),
-  "studioId": zod.number().nullish(),
-  "studioName": zod.string().nullish(),
   "accountId": zod.number().nullish(),
   "accountName": zod.string().nullish(),
   "description": zod.string().nullish(),
@@ -101,7 +96,6 @@ export const UpdateTransactionBody = zod.object({
   "currency": zod.string().optional(),
   "clientId": zod.number().nullish(),
   "tripId": zod.number().nullish(),
-  "studioId": zod.number().nullish(),
   "accountId": zod.number().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().optional()
@@ -117,8 +111,6 @@ export const UpdateTransactionResponse = zod.object({
   "clientName": zod.string().nullish(),
   "tripId": zod.number().nullish(),
   "tripName": zod.string().nullish(),
-  "studioId": zod.number().nullish(),
-  "studioName": zod.string().nullish(),
   "accountId": zod.number().nullish(),
   "accountName": zod.string().nullish(),
   "description": zod.string().nullish(),
@@ -214,8 +206,6 @@ export const GetClientStatementResponse = zod.object({
   "clientName": zod.string().nullish(),
   "tripId": zod.number().nullish(),
   "tripName": zod.string().nullish(),
-  "studioId": zod.number().nullish(),
-  "studioName": zod.string().nullish(),
   "accountId": zod.number().nullish(),
   "accountName": zod.string().nullish(),
   "description": zod.string().nullish(),
@@ -322,96 +312,6 @@ export const GetTripPnlResponse = zod.object({
 
 
 /**
- * @summary List all studios
- */
-export const ListStudiosResponseItem = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "address": zod.string().nullish(),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-export const ListStudiosResponse = zod.array(ListStudiosResponseItem)
-
-
-export const CreateStudioBody = zod.object({
-  "name": zod.string(),
-  "address": zod.string().nullish(),
-  "notes": zod.string().nullish()
-})
-
-
-export const GetStudioParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const GetStudioResponse = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "address": zod.string().nullish(),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-
-export const UpdateStudioParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const UpdateStudioBody = zod.object({
-  "name": zod.string().optional(),
-  "address": zod.string().nullish(),
-  "notes": zod.string().nullish()
-})
-
-export const UpdateStudioResponse = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "address": zod.string().nullish(),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-
-/**
- * @summary List expenses for a specific studio
- */
-export const ListStudioExpensesParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const ListStudioExpensesResponseItem = zod.object({
-  "id": zod.number(),
-  "studioId": zod.number(),
-  "category": zod.string().describe('rent | electricity | internet | maintenance | other'),
-  "amount": zod.number(),
-  "currency": zod.string(),
-  "date": zod.string(),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-export const ListStudioExpensesResponse = zod.array(ListStudioExpensesResponseItem)
-
-
-export const CreateStudioExpenseParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const CreateStudioExpenseBody = zod.object({
-  "category": zod.string(),
-  "amount": zod.number(),
-  "currency": zod.string(),
-  "date": zod.string(),
-  "notes": zod.string().nullish()
-})
-
-
-export const DeleteStudioExpenseParams = zod.object({
-  "expenseId": zod.coerce.number()
-})
-
-
-/**
  * @summary List all accounts with computed current balance
  */
 export const ListAccountsResponseItem = zod.object({
@@ -419,6 +319,7 @@ export const ListAccountsResponseItem = zod.object({
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
+  "color": zod.string().regex(/^#[0-9A-Fa-f]{6}$/),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
   "notes": zod.string().nullish(),
@@ -431,6 +332,7 @@ export const CreateAccountBody = zod.object({
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
+  "color": zod.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   "initialBalance": zod.number().optional().describe('Starting balance when the account was added, defaults to 0'),
   "notes": zod.string().nullish()
 })
@@ -445,6 +347,7 @@ export const GetAccountResponse = zod.object({
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
+  "color": zod.string().regex(/^#[0-9A-Fa-f]{6}$/),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
   "notes": zod.string().nullish(),
@@ -460,6 +363,7 @@ export const UpdateAccountBody = zod.object({
   "name": zod.string().optional(),
   "type": zod.string().optional(),
   "currency": zod.string().optional(),
+  "color": zod.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   "initialBalance": zod.number().optional(),
   "notes": zod.string().nullish()
 })
@@ -469,6 +373,7 @@ export const UpdateAccountResponse = zod.object({
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
+  "color": zod.string().regex(/^#[0-9A-Fa-f]{6}$/),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
   "notes": zod.string().nullish(),
@@ -499,8 +404,6 @@ export const ParseVoiceInputResponse = zod.object({
   "clientId": zod.number().nullish().describe('Matched existing client id (cross-language), null if new\/none'),
   "tripName": zod.string().nullish(),
   "tripId": zod.number().nullish().describe('Matched existing trip id (cross-language), null if new\/none'),
-  "studioName": zod.string().nullish(),
-  "studioId": zod.number().nullish().describe('Matched existing studio id (cross-language), null if new\/none'),
   "detectedLanguage": zod.string().nullish().describe('Language detected in the input (ar | en | mixed)'),
   "description": zod.string().nullish(),
   "date": zod.string().nullish().describe('Extracted transaction date (YYYY-MM-DD) if mentioned, null if not mentioned (client defaults to today)'),
@@ -575,8 +478,6 @@ export const GetRecentTransactionsResponseItem = zod.object({
   "clientName": zod.string().nullish(),
   "tripId": zod.number().nullish(),
   "tripName": zod.string().nullish(),
-  "studioId": zod.number().nullish(),
-  "studioName": zod.string().nullish(),
   "accountId": zod.number().nullish(),
   "accountName": zod.string().nullish(),
   "description": zod.string().nullish(),

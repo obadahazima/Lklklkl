@@ -5,13 +5,11 @@ import {
   useUpdateTransaction,
   useListClients,
   useListTrips,
-  useListStudios,
   getListTransactionsQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetRecentTransactionsQueryKey,
   getListClientsQueryKey,
   getListTripsQueryKey,
-  getListStudiosQueryKey,
 } from "@workspace/api-client-react";
 import type { Transaction } from "@workspace/api-zod";
 import { formatAmount, typeLabel, typeClass, statusLabel, statusClass, currencyClass, formatDate, cn } from "@/lib/utils";
@@ -33,12 +31,11 @@ export default function Transactions() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { settings } = useSettings();
-  const { language, currencies, primaryCurrency, manualRates, showClients, showTrips, showStudios } = settings;
+  const { language, currencies, primaryCurrency, manualRates, showClients, showTrips } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
   const { data: clients } = useListClients({ query: { queryKey: getListClientsQueryKey(), enabled: showClients } });
   const { data: trips } = useListTrips({ query: { queryKey: getListTripsQueryKey(), enabled: showTrips } });
-  const { data: studios } = useListStudios({ query: { queryKey: getListStudiosQueryKey(), enabled: showStudios } });
 
   function toEquivalent(amount: number, currency: string): number {
     const inAed = currency === "AED" ? amount : amount * (manualRates[currency] ?? 1);
@@ -220,10 +217,8 @@ export default function Transactions() {
           currencies={currencies}
           clients={clients}
           trips={trips}
-          studios={studios}
           showClients={showClients}
           showTrips={showTrips}
-          showStudios={showStudios}
           isSaving={updateMutation.isPending}
           onClose={() => setEditingTx(null)}
           onSave={(patch) => updateMutation.mutate({ id: editingTx.id, data: patch })}
@@ -239,10 +234,8 @@ function EditTransactionModal({
   currencies,
   clients,
   trips,
-  studios,
   showClients,
   showTrips,
-  showStudios,
   isSaving,
   onClose,
   onSave,
@@ -252,10 +245,8 @@ function EditTransactionModal({
   currencies: string[];
   clients?: { id: number; name: string }[];
   trips?: { id: number; name: string }[];
-  studios?: { id: number; name: string }[];
   showClients: boolean;
   showTrips: boolean;
-  showStudios: boolean;
   isSaving: boolean;
   onClose: () => void;
   onSave: (patch: {
@@ -267,7 +258,6 @@ function EditTransactionModal({
     description: string | null;
     clientId: number | null;
     tripId: number | null;
-    studioId: number | null;
   }) => void;
 }) {
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
@@ -280,7 +270,6 @@ function EditTransactionModal({
     description: tx.description ?? "",
     clientId: tx.clientId != null ? String(tx.clientId) : "",
     tripId: tx.tripId != null ? String(tx.tripId) : "",
-    studioId: tx.studioId != null ? String(tx.studioId) : "",
   });
 
   function handleSubmit() {
@@ -295,7 +284,6 @@ function EditTransactionModal({
       description: form.description.trim() ? form.description.trim() : null,
       clientId: form.clientId ? Number(form.clientId) : null,
       tripId: form.tripId ? Number(form.tripId) : null,
-      studioId: form.studioId ? Number(form.studioId) : null,
     });
   }
 
@@ -405,21 +393,6 @@ function EditTransactionModal({
               >
                 <option value="">{t("noneOption")}</option>
                 {trips?.map((tr) => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
-              </select>
-            </div>
-          )}
-
-          {showStudios && (
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">{t("studioLabel")}</label>
-              <select
-                value={form.studioId}
-                onChange={(e) => setForm((f) => ({ ...f, studioId: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-                data-testid="edit-tx-studio"
-              >
-                <option value="">{t("noneOption")}</option>
-                {studios?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           )}

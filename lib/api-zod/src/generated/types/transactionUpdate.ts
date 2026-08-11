@@ -16,8 +16,6 @@ export interface TransactionUpdate {
   /** @nullable */
   tripId?: number | null;
   /** @nullable */
-  studioId?: number | null;
-  /** @nullable */
   accountId?: number | null;
   /** @nullable */
   description?: string | null;

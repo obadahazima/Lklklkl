@@ -15,8 +15,6 @@ tags:
     description: Client management
   - name: trips
     description: Trip management
-  - name: studios
-    description: Real estate studio management
   - name: ai
     description: AI voice and chat features
   - name: dashboard
@@ -352,135 +350,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/TripPnl"
 
-  # ─── STUDIOS ────────────────────────────────────────────────────
-  /studios:
-    get:
-      operationId: listStudios
-      tags: [studios]
-      summary: List all studios
-      responses:
-        "200":
-          description: List of studios
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Studio"
-    post:
-      operationId: createStudio
-      tags: [studios]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/StudioInput"
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Studio"
-
-  /studios/{id}:
-    get:
-      operationId: getStudio
-      tags: [studios]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Studio
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Studio"
-    patch:
-      operationId: updateStudio
-      tags: [studios]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/StudioUpdate"
-      responses:
-        "200":
-          description: Updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Studio"
-
-  /studios/{id}/expenses:
-    get:
-      operationId: listStudioExpenses
-      tags: [studios]
-      summary: List expenses for a specific studio
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Studio expenses
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/StudioExpense"
-    post:
-      operationId: createStudioExpense
-      tags: [studios]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/StudioExpenseInput"
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StudioExpense"
-
-  /studios/expenses/{expenseId}:
-    delete:
-      operationId: deleteStudioExpense
-      tags: [studios]
-      parameters:
-        - name: expenseId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "204":
-          description: Deleted
-
   # ─── ACCOUNTS (cash / debit / credit payment sources) ─────────────
   /accounts:
     get:
@@ -686,10 +555,6 @@ components:
           type: ["integer", "null"]
         tripName:
           type: ["string", "null"]
-        studioId:
-          type: ["integer", "null"]
-        studioName:
-          type: ["string", "null"]
         accountId:
           type: ["integer", "null"]
         accountName:
@@ -718,8 +583,6 @@ components:
           type: ["integer", "null"]
         tripId:
           type: ["integer", "null"]
-        studioId:
-          type: ["integer", "null"]
         accountId:
           type: integer
           description: "Required — which cash/debit/credit account this transaction moved through"
@@ -742,8 +605,6 @@ components:
         clientId:
           type: ["integer", "null"]
         tripId:
-          type: ["integer", "null"]
-        studioId:
           type: ["integer", "null"]
         accountId:
           type: ["integer", "null"]
@@ -892,84 +753,10 @@ components:
           items:
             $ref: "#/components/schemas/TripCurrencyPnl"
 
-    # ─── STUDIO ───────────────────────────────────────────────────
-    Studio:
-      type: object
-      required: [id, name, createdAt]
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        address:
-          type: ["string", "null"]
-        notes:
-          type: ["string", "null"]
-        createdAt:
-          type: string
-
-    StudioInput:
-      type: object
-      required: [name]
-      properties:
-        name:
-          type: string
-        address:
-          type: ["string", "null"]
-        notes:
-          type: ["string", "null"]
-
-    StudioUpdate:
-      type: object
-      properties:
-        name:
-          type: string
-        address:
-          type: ["string", "null"]
-        notes:
-          type: ["string", "null"]
-
-    StudioExpense:
-      type: object
-      required: [id, studioId, category, amount, currency, date, createdAt]
-      properties:
-        id:
-          type: integer
-        studioId:
-          type: integer
-        category:
-          type: string
-          description: "rent | electricity | internet | maintenance | other"
-        amount:
-          type: number
-        currency:
-          type: string
-        date:
-          type: string
-        notes:
-          type: ["string", "null"]
-        createdAt:
-          type: string
-
-    StudioExpenseInput:
-      type: object
-      required: [category, amount, currency, date]
-      properties:
-        category:
-          type: string
-        amount:
-          type: number
-        currency:
-          type: string
-        date:
-          type: string
-        notes:
-          type: ["string", "null"]
-
     # ─── ACCOUNT (cash / debit / credit payment source) ────────────
     Account:
       type: object
-      required: [id, name, type, currency, initialBalance, currentBalance, createdAt]
+      required: [id, name, type, currency, color, initialBalance, currentBalance, createdAt]
       properties:
         id:
           type: integer
@@ -980,6 +767,9 @@ components:
           description: "cash | debit | credit"
         currency:
           type: string
+        color:
+          type: string
+          description: "Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard"
         initialBalance:
           type: number
         currentBalance:
@@ -1001,6 +791,9 @@ components:
           description: "cash | debit | credit"
         currency:
           type: string
+        color:
+          type: string
+          description: "Hex color (e.g. #3B82F6), defaults to a neutral blue if omitted"
         initialBalance:
           type: number
           description: "Starting balance when the account was added, defaults to 0"
@@ -1015,6 +808,8 @@ components:
         type:
           type: string
         currency:
+          type: string
+        color:
           type: string
         initialBalance:
           type: number
@@ -1059,11 +854,6 @@ components:
         tripId:
           type: ["integer", "null"]
           description: "Matched existing trip id (cross-language), null if new/none"
-        studioName:
-          type: ["string", "null"]
-        studioId:
-          type: ["integer", "null"]
-          description: "Matched existing studio id (cross-language), null if new/none"
         detectedLanguage:
           type: ["string", "null"]
           description: "Language detected in the input (ar | en | mixed)"

@@ -30,7 +30,6 @@ export interface AppSettings {
   manualRates: Record<string, number>;
   showClients: boolean;
   showTrips: boolean;
-  showStudios: boolean;
   theme: AppTheme;
   autoBackup: boolean;
 }
@@ -43,7 +42,6 @@ const defaultSettings: AppSettings = {
   manualRates: { AED: 1, USD: 3.67, SYP: 0.000282, EUR: 4.02, GBP: 4.69, SAR: 0.978, TRY: 0.108, LBP: 0.000041, JOD: 5.17, IQD: 0.00281, EGP: 0.073, KWD: 12.0, QAR: 1.007 },
   showClients: true,
   showTrips: true,
-  showStudios: true,
   theme: "light",
   autoBackup: true,
 };
@@ -59,7 +57,6 @@ function parseSettings(raw: Partial<AppSettings>): AppSettings {
     manualRates: correctRates(raw.manualRates ?? defaultSettings.manualRates),
     showClients: raw.showClients ?? defaultSettings.showClients,
     showTrips: raw.showTrips ?? defaultSettings.showTrips,
-    showStudios: raw.showStudios ?? defaultSettings.showStudios,
     theme: raw.theme ?? defaultSettings.theme,
     autoBackup: raw.autoBackup ?? defaultSettings.autoBackup,
   };

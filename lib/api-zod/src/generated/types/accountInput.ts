@@ -11,6 +11,8 @@ export interface AccountInput {
   /** cash | debit | credit */
   type: string;
   currency: string;
+  /** Hex color (e.g. #3B82F6), defaults to a neutral blue if omitted */
+  color?: string;
   /** Starting balance when the account was added, defaults to 0 */
   initialBalance?: number;
   /** @nullable */

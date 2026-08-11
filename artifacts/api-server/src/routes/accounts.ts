@@ -59,7 +59,12 @@ router.post("/accounts", async (req, res): Promise<void> => {
   try {
     const [account] = await db
       .insert(accountsTable)
-      .values({ ...parsed.data, initialBalance: String(parsed.data.initialBalance ?? 0), userId: req.userId })
+      .values({
+        ...parsed.data,
+        color: parsed.data.color ?? "#3B82F6",
+        initialBalance: String(parsed.data.initialBalance ?? 0),
+        userId: req.userId,
+      })
       .returning();
     res.status(201).json({
       ...account,

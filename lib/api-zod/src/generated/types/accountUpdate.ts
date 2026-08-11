@@ -10,6 +10,7 @@ export interface AccountUpdate {
   name?: string;
   type?: string;
   currency?: string;
+  color?: string;
   initialBalance?: number;
   /** @nullable */
   notes?: string | null;

@@ -17,6 +17,14 @@ const router = Router();
 
 router.use(requireAuth);
 
+// If a phone number is provided it must start with a country code (e.g. "+971501234567").
+// Numbers without one are ambiguous across a client base spanning multiple countries.
+const PHONE_WITH_COUNTRY_CODE = /^\+[1-9]\d{6,14}$/;
+function isValidPhone(phone: string | null | undefined): boolean {
+  if (!phone || !phone.trim()) return true; // phone is optional
+  return PHONE_WITH_COUNTRY_CODE.test(phone.trim());
+}
+
 router.get("/clients", async (req, res): Promise<void> => {
   try {
     const clients = await db
@@ -35,6 +43,10 @@ router.post("/clients", async (req, res): Promise<void> => {
   const parsed = CreateClientBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (!isValidPhone(parsed.data.phone)) {
+    res.status(400).json({ error: "Phone must start with a country code, e.g. +971501234567" });
     return;
   }
   try {
@@ -80,6 +92,10 @@ router.patch("/clients/:id", async (req, res): Promise<void> => {
   const bodyParsed = UpdateClientBody.safeParse(req.body);
   if (!bodyParsed.success) {
     res.status(400).json({ error: bodyParsed.error.message });
+    return;
+  }
+  if (!isValidPhone(bodyParsed.data.phone)) {
+    res.status(400).json({ error: "Phone must start with a country code, e.g. +971501234567" });
     return;
   }
   try {
@@ -169,7 +185,6 @@ router.get("/clients/:id/statement", async (req, res): Promise<void> => {
       amount: Number(t.amount),
       clientName: client.name,
       tripName: null as string | null,
-      studioName: null as string | null,
       createdAt: t.createdAt.toISOString(),
     }));
 

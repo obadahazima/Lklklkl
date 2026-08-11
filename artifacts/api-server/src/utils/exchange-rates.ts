@@ -41,5 +41,13 @@ export async function getExchangeRates(): Promise<AllRates> {
 
 export function toAed(amount: number, currency: string, rates: AllRates): number {
   if (currency === "AED") return amount;
-  return amount * (rates[currency] ?? 1);
+  const rate = rates[currency];
+  if (rate == null) {
+    // Silently falling back to 1 (i.e. treating this currency as if it were AED) would produce
+    // a wrong total with no indication anything was off. Surface it in the logs at least, since
+    // this route has no per-request logger here.
+    console.warn(`[exchange-rates] No rate found for currency "${currency}" — treating as 1:1 with AED, totals may be inaccurate.`);
+    return amount;
+  }
+  return amount * rate;
 }

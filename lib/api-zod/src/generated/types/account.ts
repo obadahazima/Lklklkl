@@ -12,6 +12,8 @@ export interface Account {
   /** cash | debit | credit */
   type: string;
   currency: string;
+  /** Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard */
+  color: string;
   initialBalance: number;
   /** initialBalance + income/receipt through this account - expense/payment through this account */
   currentBalance: number;

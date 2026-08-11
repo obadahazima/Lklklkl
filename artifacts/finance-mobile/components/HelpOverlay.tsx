@@ -55,9 +55,9 @@ const CONTENT: Record<
       },
       {
         icon: "map-pin",
-        title: "الرحلات والاستوديوهات",
+        title: "الرحلات",
         body:
-          "إذا فعّلتها بالإعدادات، فيك تربط المعاملات برحلة أو استوديو معيّن لتتبع أرباح ومصاريف كل واحد لحاله.",
+          "إذا فعّلتها بالإعدادات، فيك تربط المعاملات برحلة معيّنة لتتبع أرباحها ومصاريفها لحالها.",
       },
       {
         icon: "message-circle",
@@ -74,7 +74,7 @@ const CONTENT: Record<
     ],
     settingsTitle: "⚙️ الإعدادات",
     settingsBody:
-      "من صفحة الإعدادات فيك تغيّر اللغة، العملة الرئيسية، العملات المفعّلة، سعر الصرف (تلقائي/يدوي)، وتظهر/تخفي أقسام الزبائن والرحلات والاستوديوهات حسب احتياجك.",
+      "من صفحة الإعدادات فيك تغيّر اللغة، العملة الرئيسية، العملات المفعّلة، سعر الصرف (تلقائي/يدوي)، وتظهر/تخفي أقسام الزبائن والرحلات حسب احتياجك.",
     footer: "فيك ترجع لهالدليل بأي وقت من زر (؟) بالأعلى.",
     close: "فهمت، إغلاق",
   },
@@ -103,9 +103,9 @@ const CONTENT: Record<
       },
       {
         icon: "map-pin",
-        title: "Trips & Studios",
+        title: "Trips",
         body:
-          "If enabled in Settings, you can link transactions to a specific trip or studio to track each one's profit and expenses separately.",
+          "If enabled in Settings, you can link transactions to a specific trip to track its profit and expenses separately.",
       },
       {
         icon: "message-circle",
@@ -122,7 +122,7 @@ const CONTENT: Record<
     ],
     settingsTitle: "⚙️ Settings",
     settingsBody:
-      "From the Settings page you can change the language, primary currency, active currencies, exchange rate mode (auto/manual), and show/hide the Clients, Trips, and Studios sections as needed.",
+      "From the Settings page you can change the language, primary currency, active currencies, exchange rate mode (auto/manual), and show/hide the Clients and Trips sections as needed.",
     footer: "You can revisit this guide anytime from the (?) button at the top.",
     close: "Got it, close",
   },

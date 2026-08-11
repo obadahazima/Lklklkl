@@ -8,7 +8,6 @@ import {
   Mic,
   Users,
   Route,
-  Building2,
   MessageCircle,
   Settings,
   Wallet,
@@ -53,15 +52,15 @@ const CONTENT: Record<
       },
       {
         icon: Route,
-        title: "الرحلات والاستوديوهات",
+        title: "الرحلات",
         body:
-          "إذا فعّلتها بالإعدادات، فيك تربط المعاملات برحلة أو استوديو معيّن لتتبع أرباح ومصاريف كل واحد لحاله.",
+          "إذا فعّلتها بالإعدادات، فيك تربط المعاملات برحلة معيّنة لتتبع أرباحها ومصاريفها لحالها.",
       },
       {
         icon: MessageCircle,
         title: "بيلي 🤖 (المساعد الذكي)",
         body:
-          "بيلي هو مساعدك المالي الذكي بالتطبيق. اسأله أي سؤال بلغتك العادية متلاً \"قديش الزبون فلان عليه؟\" أو \"شو أرباح رحلة كذا؟\" وبيجاوبك بالأرقام الفعلية من بياناتك. وكمان فيك تخليه يضيفلك أو يعدّللك معاملات، زبائن، رحلات، واستديوهات مباشرة من المحادثة.",
+          "بيلي هو مساعدك المالي الذكي بالتطبيق. اسأله أي سؤال بلغتك العادية متلاً \"قديش الزبون فلان عليه؟\" أو \"شو أرباح رحلة كذا؟\" وبيجاوبك بالأرقام الفعلية من بياناتك. وكمان فيك تخليه يضيفلك أو يعدّللك معاملات، زبائن، ورحلات مباشرة من المحادثة.",
       },
       {
         icon: Sparkles,
@@ -72,7 +71,7 @@ const CONTENT: Record<
     ],
     settingsTitle: "⚙️ الإعدادات",
     settingsBody:
-      "من صفحة الإعدادات فيك تغيّر اللغة، العملة الرئيسية، العملات المفعّلة، سعر الصرف (تلقائي/يدوي)، وتظهر/تخفي أقسام الزبائن والرحلات والاستوديوهات حسب احتياجك.",
+      "من صفحة الإعدادات فيك تغيّر اللغة، العملة الرئيسية، العملات المفعّلة، سعر الصرف (تلقائي/يدوي)، وتظهر/تخفي أقسام الزبائن والرحلات حسب احتياجك.",
     footer: "فيك ترجع لهالدليل بأي وقت من زر (؟) بالأعلى.",
   },
   en: {
@@ -100,15 +99,15 @@ const CONTENT: Record<
       },
       {
         icon: Route,
-        title: "Trips & Studios",
+        title: "Trips",
         body:
-          "If enabled in Settings, you can link transactions to a specific trip or studio to track each one's profit and expenses separately.",
+          "If enabled in Settings, you can link transactions to a specific trip to track its profit and expenses separately.",
       },
       {
         icon: MessageCircle,
         title: "Billy 🤖 (AI Assistant)",
         body:
-          "Billy is your AI financial assistant. Ask any financial question naturally, e.g. \"How much does Ahmad owe?\" or \"What's the profit on trip X?\" and get answers based on your real data. You can also have Billy add or edit transactions, clients, trips, and studios right from the chat.",
+          "Billy is your AI financial assistant. Ask any financial question naturally, e.g. \"How much does Ahmad owe?\" or \"What's the profit on trip X?\" and get answers based on your real data. You can also have Billy add or edit transactions, clients, and trips right from the chat.",
       },
       {
         icon: Sparkles,
@@ -119,7 +118,7 @@ const CONTENT: Record<
     ],
     settingsTitle: "⚙️ Settings",
     settingsBody:
-      "From the Settings page you can change the language, primary currency, active currencies, exchange rate mode (auto/manual), and show/hide the Clients, Trips, and Studios sections as needed.",
+      "From the Settings page you can change the language, primary currency, active currencies, exchange rate mode (auto/manual), and show/hide the Clients and Trips sections as needed.",
     footer: "You can revisit this guide anytime from the (?) button at the top.",
   },
 };

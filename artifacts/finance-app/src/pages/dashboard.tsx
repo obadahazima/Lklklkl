@@ -1,11 +1,11 @@
-import { useGetDashboardSummary, useGetRecentTransactions, customFetch } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetRecentTransactions, useListAccounts, customFetch } from "@workspace/api-client-react";
 import { formatAmount, currencyClass, typeLabel, typeClass, statusLabel, statusClass, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Wallet, Users, Route, Clock, ArrowLeftRight, RefreshCw, AlertTriangle, X } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Users, Route, Clock, ArrowLeftRight, RefreshCw, AlertTriangle, X, Landmark } from "lucide-react";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useSettings, convertToPrimary, toAedFrontend, getRateUnit, rateToDisplay } from "@/contexts/settings-context";
-import { tr, getCurrencySymbol } from "@/lib/i18n";
+import { tr } from "@/lib/i18n";
 
 type OverdueClient = {
   clientId: number;
@@ -18,6 +18,7 @@ type OverdueClient = {
 export default function Dashboard() {
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary();
   const { data: recent, isLoading: loadingRecent } = useGetRecentTransactions();
+  const { data: accounts, isLoading: loadingAccounts } = useListAccounts();
   const { settings, effectiveRates } = useSettings();
   const { language, currencies: activeCurrencies, primaryCurrency, exchangeRateMode } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
@@ -41,18 +42,17 @@ export default function Dashboard() {
     };
   }, []);
 
-  const totalInAED = summary
-    ? (summary.currencies ?? []).reduce((sum, c) => sum + toAedFrontend(c.balance, c.currency, effectiveRates), 0)
-    : 0;
-
-  const totalInPrimary = convertToPrimary(totalInAED, primaryCurrency, effectiveRates);
-  const primarySymbol = getCurrencySymbol(primaryCurrency);
-
   const shownCurrencies = (summary?.currencies ?? []).filter(
     (c) => activeCurrencies.includes(c.currency) && (c.totalIncome > 0 || c.totalExpenses > 0)
   );
 
   const primaryRate = effectiveRates[primaryCurrency] ?? 1;
+
+  // Total across all accounts, each converted from its own currency into the primary currency.
+  const totalAccountsInPrimary = (accounts ?? []).reduce((sum, a) => {
+    const inAed = toAedFrontend(a.currentBalance, a.currency, effectiveRates);
+    return sum + convertToPrimary(inAed, primaryCurrency, effectiveRates);
+  }, 0);
 
   return (
     <div className="p-4 space-y-5 max-w-2xl mx-auto pb-24 lg:pb-6">
@@ -95,32 +95,31 @@ export default function Dashboard() {
         </Link>
       )}
 
-      {/* ── Total Wallet Card ── */}
-      {loadingSummary ? (
-        <div className="h-28 bg-card rounded-2xl border border-border animate-pulse" />
-      ) : summary ? (
+      {/* ── Accounts total + breakdown (now the primary hero card) ── */}
+      {loadingAccounts ? (
+        <div className="h-40 bg-card rounded-2xl border border-border animate-pulse" />
+      ) : accounts && accounts.length > 0 ? (
         <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-primary" />
-              <span className="font-bold text-foreground">{t("totalWallet")}</span>
+              <Landmark className="w-5 h-5 text-primary" />
+              <span className="font-bold text-foreground">
+                {language === "ar" ? "إجمالي الحسابات" : "Total accounts"}
+              </span>
             </div>
             <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-              {primaryCurrency}
+              {accounts.length} {language === "ar" ? "حساب" : accounts.length === 1 ? "account" : "accounts"}
             </span>
           </div>
           <p
             className={cn(
               "text-3xl font-bold mt-1",
-              totalInPrimary >= 0 ? "text-green-600" : "text-red-600"
+              totalAccountsInPrimary >= 0 ? "text-green-600" : "text-red-600"
             )}
-            data-testid="total-balance-aed"
+            data-testid="total-accounts-primary"
           >
-            {totalInPrimary < 0 ? "-" : ""}
-            {formatAmount(Math.abs(totalInPrimary), primaryCurrency)}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {totalInPrimary >= 0 ? t("youAreOwed") : t("youOwe")}
+            {totalAccountsInPrimary < 0 ? "-" : ""}
+            {formatAmount(Math.abs(totalAccountsInPrimary), primaryCurrency)}
           </p>
 
           {/* Exchange rate display */}
@@ -144,8 +143,45 @@ export default function Dashboard() {
               );
             })}
           </div>
+
+          <div className="space-y-2 mt-4 pt-3 border-t border-primary/10">
+            {accounts.map((a) => (
+              <Link key={a.id} href="/accounts">
+                <div
+                  className="flex items-center justify-between py-1.5 hover:opacity-80 cursor-pointer"
+                  data-testid={`dashboard-account-${a.id}`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: a.color }}
+                    />
+                    <span className="text-sm font-medium text-foreground truncate">{a.name}</span>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-sm font-bold shrink-0",
+                      a.currentBalance >= 0 ? "text-foreground" : "text-red-600"
+                    )}
+                  >
+                    {a.currentBalance < 0 ? "-" : ""}
+                    {formatAmount(Math.abs(a.currentBalance), a.currency)}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <Link href="/accounts">
+          <div className="bg-card border border-dashed border-border rounded-2xl p-6 text-center cursor-pointer hover:border-primary/40 transition-colors">
+            <Landmark className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-muted-foreground text-sm">
+              {language === "ar" ? "ما ضفت حسابات بعد — دوس لإضافة أول حساب" : "No accounts yet — tap to add your first one"}
+            </p>
+          </div>
+        </Link>
+      )}
 
       {/* Currency breakdown */}
       <section>

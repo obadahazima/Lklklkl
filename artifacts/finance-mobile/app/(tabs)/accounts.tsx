@@ -32,6 +32,12 @@ const TYPE_ICON: Record<string, keyof typeof Feather.glyphMap> = {
   credit: "credit-card",
 };
 
+const ACCOUNT_COLORS = [
+  "#3B82F6", "#EF4444", "#F59E0B", "#10B981",
+  "#8B5CF6", "#EC4899", "#06B6D4", "#F97316",
+  "#6366F1", "#14B8A6", "#84CC16", "#64748B",
+];
+
 export default function AccountsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -44,6 +50,7 @@ export default function AccountsScreen() {
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState(settings.primaryCurrency || "AED");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [color, setColor] = useState(ACCOUNT_COLORS[0]);
 
   const { data: accounts, isLoading, refetch } = useListAccounts();
   const { mutateAsync: createAccount, isPending: creating } = useCreateAccount();
@@ -77,12 +84,13 @@ export default function AccountsScreen() {
     if (!name.trim()) return;
     try {
       await createAccount({
-        data: { name: name.trim(), type, currency, initialBalance: parseFloat(initialBalance) || 0 } as AccountInput,
+        data: { name: name.trim(), type, currency, color, initialBalance: parseFloat(initialBalance) || 0 } as AccountInput,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowModal(false);
       setName("");
       setType("cash");
+      setColor(ACCOUNT_COLORS[0]);
       setInitialBalance("0");
       refetch();
     } catch {
@@ -139,8 +147,8 @@ export default function AccountsScreen() {
           renderItem={({ item }: any) => (
             <View style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 12 }}>
-                <View style={[styles.accountIcon, { backgroundColor: colors.accent }]}>
-                  <Feather name={TYPE_ICON[item.type] ?? "credit-card"} size={20} color={colors.primary} />
+                <View style={[styles.accountIcon, { backgroundColor: `${item.color ?? "#3B82F6"}22` }]}>
+                  <Feather name={TYPE_ICON[item.type] ?? "credit-card"} size={20} color={item.color ?? colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.accountName, { color: colors.foreground, textAlign: isAr ? "right" : "left" }]}>{item.name}</Text>
@@ -229,6 +237,23 @@ export default function AccountsScreen() {
                 textAlign={isAr ? "right" : "left"}
               />
 
+              <Text style={[styles.fieldLabel, { color: colors.foreground, textAlign: isAr ? "right" : "left" }]}>
+                {isAr ? "لون الحساب" : "Account color"}
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                {ACCOUNT_COLORS.map((c) => (
+                  <Pressable
+                    key={c}
+                    onPress={() => setColor(c)}
+                    style={[
+                      styles.colorSwatch,
+                      { backgroundColor: c },
+                      color === c && { borderWidth: 3, borderColor: colors.foreground },
+                    ]}
+                  />
+                ))}
+              </View>
+
               <Pressable
                 style={[styles.saveBtn, { backgroundColor: colors.primary }, (!name.trim() || creating) && { opacity: 0.5 }]}
                 onPress={handleCreate}
@@ -293,6 +318,9 @@ const styles = StyleSheet.create({
   },
   typeChip: {
     flex: 1, borderWidth: 1.5, borderRadius: 10, paddingVertical: 10, alignItems: "center",
+  },
+  colorSwatch: {
+    width: 32, height: 32, borderRadius: 16,
   },
   deleteBtn: {
     width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", marginLeft: 6,

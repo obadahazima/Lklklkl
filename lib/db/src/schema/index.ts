@@ -1,6 +1,5 @@
 export * from "./clients";
 export * from "./trips";
-export * from "./studios";
 export * from "./accounts";
 export * from "./transactions";
 export * from "./userSettings";

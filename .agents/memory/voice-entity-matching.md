@@ -1,17 +1,17 @@
 ---
 name: Voice/text transaction entity matching
-description: How spoken client/trip/studio names are matched to existing records across Arabic↔English in the finance app
+description: How spoken client/trip names are matched to existing records across Arabic↔English in the finance app
 ---
 
 # Cross-language entity matching for voice/text entry
 
-The finance app's voice/text transaction entry matches spoken client/trip/studio names
+The finance app's voice/text transaction entry matches spoken client/trip names
 to existing records **inside Gemini**, not via client-side string matching.
 
-**Rule:** The `/ai/parse-voice` route fetches the user's own clients/trips/studios
+**Rule:** The `/ai/parse-voice` route fetches the user's own clients/trips
 (scoped by `userId`) and passes their `{id, name}` lists to Gemini in the prompt.
-Gemini does transliteration/phonetic matching (e.g. spoken "رشا" → stored "Rasha",
-"studio noor" → "استديو النور") and returns the matched stored name + id. The route
+Gemini does transliteration/phonetic matching (e.g. spoken "رشا" → stored "Rasha")
+and returns the matched stored name + id. The route
 then validates each returned id against sets built from the user's own rows before
 sending it back (anti-IDOR / anti-hallucination).
 

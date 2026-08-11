@@ -27,6 +27,12 @@ router.put("/settings", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
     const settings = req.body;
+    // The exact settings shape evolves independently on web/mobile, so we don't lock it to a
+    // strict zod schema here — but it must at least be a plain JSON object, not a bare
+    // string/number/array/null, or the frontend's `settings.language` etc reads would crash.
+    if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
+      return res.status(400).json({ error: "settings must be a JSON object" });
+    }
     await db
       .insert(userSettingsTable)
       .values({ userId, settings })

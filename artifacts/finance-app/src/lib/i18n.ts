@@ -6,7 +6,6 @@ export const translations = {
     transactions: "المعاملات",
     clients: "الزبائن",
     trips: "الرحلات",
-    studios: "الاستديوهات",
     accounts: "الحسابات",
     chat: "المساعد الذكي",
     settings: "الإعدادات",
@@ -79,7 +78,6 @@ export const translations = {
     descriptionLabel: "الوصف",
     clientLabel: "الزبون",
     tripLabel: "الرحلة",
-    studioLabel: "الاستديو",
     noneOption: "بدون",
 
     // Clients page
@@ -107,17 +105,6 @@ export const translations = {
     tripAddedTitle: "تم الإضافة",
     tripAddedDesc: "تم إضافة الرحلة بنجاح",
     tripCount: "رحلة",
-
-    // Studios page
-    newStudio: "استديو جديد",
-    addStudioTitle: "إضافة استديو",
-    studioNamePlaceholder: "اسم الاستديو *",
-    addressPlaceholder: "العنوان (اختياري)",
-    noStudios: "لا توجد استديوهات",
-    studioExpensesLink: "المصاريف",
-    studioAddedTitle: "تم الإضافة",
-    studioAddedDesc: "تم إضافة الاستديو بنجاح",
-    studioCount: "استديو",
 
     // New Transaction page
     newTransactionDesc: "تحدث أو اكتب العملية",
@@ -156,12 +143,6 @@ export const translations = {
     newTripLabel: "لا، هذه رحلة جديدة: «{name}»",
     skipTrip: "تجاهل الرحلة وحفظ بدونها",
     newTripTitle: "رحلة جديدة",
-    studioAdded: "تم إضافة الاستديو",
-    similarStudiosTitle: "هل تقصد أحد هذه الاستديوهات؟",
-    similarStudiosDesc: "وجدنا استديوهات بأسماء مشابهة لـ «{name}»:",
-    newStudioLabel: "لا، هذا استديو جديد: «{name}»",
-    skipStudio: "تجاهل الاستديو وحفظ بدونه",
-    newStudioTitle: "استديو جديد",
 
     // Trip Detail page
     profitLoss: "الأرباح والخسائر",
@@ -173,17 +154,6 @@ export const translations = {
     myShare: "نصيبك (بعد القسمة)",
     tripNotFound: "لم يتم العثور على الرحلة",
 
-    // Studio Detail page
-    studioExpensesTitle: "مصاريف الاستديو",
-    addExpenseBtn: "مصروف",
-    addExpenseTitle: "إضافة مصروف",
-    noExpenses: "لا توجد مصاريف مسجلة",
-    totalLabel: "إجمالي:",
-    notesPlaceholder: "ملاحظات (اختياري)",
-    studioNotFound: "لم يتم العثور على الاستديو",
-    deletedExpense: "تم الحذف",
-    addedExpense: "تم الإضافة",
-
     // Chat page
     aiAssistantTitle: "بيلي 🤖",
     aiAssistantTagline: "مساعدك المالي الذكي",
@@ -191,7 +161,7 @@ export const translations = {
     analyzingData: "بيلي يحلّل البيانات...",
     chatPlaceholder: "اسأل بيلي عن أي شيء بحساباتك...",
     questionsCount: "سؤال",
-    chatWelcome: "هلا! أنا بيلي، مساعدك المالي الذكي بالتطبيق. بقدر أجاوبك عن أي شي بحساباتك — الأرصدة، ذمم الزبائن، أرباح الرحلات، مصاريف الاستديوهات — وكمان أضيفلك وأعدّللك معاملات وزبائن ورحلات مباشرة من هون. جرّبني!",
+    chatWelcome: "هلا! أنا بيلي، مساعدك المالي الذكي بالتطبيق. بقدر أجاوبك عن أي شي بحساباتك — الأرصدة، ذمم الزبائن، أرباح الرحلات — وكمان أضيفلك وأعدّللك معاملات وزبائن ورحلات مباشرة من هون. جرّبني!",
     unsupported: "غير مدعوم",
     voiceNotSupported: "متصفحك لا يدعم التسجيل الصوتي",
     voiceError: "خطأ في التسجيل",
@@ -201,7 +171,6 @@ export const translations = {
     transactions: "Transactions",
     clients: "Clients",
     trips: "Trips",
-    studios: "Studios",
     accounts: "Accounts",
     chat: "AI Assistant",
     settings: "Settings",
@@ -274,7 +243,6 @@ export const translations = {
     descriptionLabel: "Description",
     clientLabel: "Client",
     tripLabel: "Trip",
-    studioLabel: "Studio",
     noneOption: "None",
 
     // Clients page
@@ -302,17 +270,6 @@ export const translations = {
     tripAddedTitle: "Added",
     tripAddedDesc: "Trip added successfully",
     tripCount: "trip(s)",
-
-    // Studios page
-    newStudio: "New Studio",
-    addStudioTitle: "Add Studio",
-    studioNamePlaceholder: "Studio name *",
-    addressPlaceholder: "Address (optional)",
-    noStudios: "No studios",
-    studioExpensesLink: "Expenses",
-    studioAddedTitle: "Added",
-    studioAddedDesc: "Studio added successfully",
-    studioCount: "studio(s)",
 
     // New Transaction page
     newTransactionDesc: "Speak or type the transaction",
@@ -351,12 +308,6 @@ export const translations = {
     newTripLabel: "No, this is a new trip: \"{name}\"",
     skipTrip: "Skip trip and save without one",
     newTripTitle: "New Trip",
-    studioAdded: "Studio Added",
-    similarStudiosTitle: "Did you mean one of these studios?",
-    similarStudiosDesc: "We found studios with similar names to \"{name}\":",
-    newStudioLabel: "No, this is a new studio: \"{name}\"",
-    skipStudio: "Skip studio and save without one",
-    newStudioTitle: "New Studio",
 
     // Trip Detail page
     profitLoss: "Profit & Loss",
@@ -368,17 +319,6 @@ export const translations = {
     myShare: "Your share (after split)",
     tripNotFound: "Trip not found",
 
-    // Studio Detail page
-    studioExpensesTitle: "Studio Expenses",
-    addExpenseBtn: "Expense",
-    addExpenseTitle: "Add Expense",
-    noExpenses: "No expenses recorded",
-    totalLabel: "Total:",
-    notesPlaceholder: "Notes (optional)",
-    studioNotFound: "Studio not found",
-    deletedExpense: "Deleted",
-    addedExpense: "Added",
-
     // Chat page
     aiAssistantTitle: "Billy 🤖",
     aiAssistantTagline: "Your smart financial assistant",
@@ -386,7 +326,7 @@ export const translations = {
     analyzingData: "Billy is analyzing your data...",
     chatPlaceholder: "Ask Billy anything about your finances...",
     questionsCount: "question(s)",
-    chatWelcome: "Hey! I'm Billy, your AI financial assistant. I can answer anything about your accounts — balances, client receivables, trip profits, studio expenses — and I can also add or edit transactions, clients, and trips for you right here. Try me!",
+    chatWelcome: "Hey! I'm Billy, your AI financial assistant. I can answer anything about your accounts — balances, client receivables, trip profits — and I can also add or edit transactions, clients, and trips for you right here. Try me!",
     unsupported: "Not Supported",
     voiceNotSupported: "Your browser doesn't support voice recording",
     voiceError: "Recording error",

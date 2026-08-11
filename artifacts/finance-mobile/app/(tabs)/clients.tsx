@@ -2,6 +2,7 @@ import {
   useListClients,
   useListTransactions,
   useCreateClient,
+  useUpdateClient,
   useDeleteClient,
 } from "@workspace/api-client-react";
 import type { ClientInput } from "@workspace/api-client-react";
@@ -27,6 +28,13 @@ import { useColors } from "@/hooks/useColors";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTr } from "@/lib/i18n";
 
+// If a phone number is provided it must start with a country code (e.g. "+971501234567").
+function isValidPhone(phone: string): boolean {
+  const trimmed = phone.trim();
+  if (!trimmed) return true; // phone is optional
+  return /^\+[1-9]\d{6,14}$/.test(trimmed);
+}
+
 export default function ClientsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -37,6 +45,7 @@ export default function ClientsScreen() {
   const { primaryCurrency } = settings;
 
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [search, setSearch] = useState("");
@@ -44,6 +53,7 @@ export default function ClientsScreen() {
   const { data: clients, isLoading, refetch } = useListClients();
   const { data: txs } = useListTransactions({});
   const { mutateAsync: createClient, isPending: creating } = useCreateClient();
+  const { mutateAsync: updateClient, isPending: updating } = useUpdateClient();
   const { mutateAsync: deleteClient } = useDeleteClient();
 
   // Balance per client converted to the primary currency, respecting the
@@ -89,17 +99,33 @@ export default function ClientsScreen() {
     c.phone?.includes(search)
   );
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
+  const resetForm = () => {
+    setShowModal(false);
+    setEditingId(null);
+    setName("");
+    setPhone("");
+  };
+
+  const openEdit = (client: { id: number; name: string; phone?: string | null }) => {
+    setEditingId(client.id);
+    setName(client.name);
+    setPhone(client.phone ?? "");
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!name.trim() || !isValidPhone(phone)) return;
     try {
-      await createClient({ data: { name: name.trim(), phone: phone.trim() || undefined } as ClientInput });
+      if (editingId != null) {
+        await updateClient({ id: editingId, data: { name: name.trim(), phone: phone.trim() || undefined } });
+      } else {
+        await createClient({ data: { name: name.trim(), phone: phone.trim() || undefined } as ClientInput });
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowModal(false);
-      setName("");
-      setPhone("");
+      resetForm();
       refetch();
     } catch {
-      Alert.alert(isAr ? "خطأ" : "Error", isAr ? "فشل إضافة الزبون" : "Failed to add client");
+      Alert.alert(isAr ? "خطأ" : "Error", isAr ? "فشل حفظ الزبون" : "Failed to save client");
     }
   };
 
@@ -135,7 +161,7 @@ export default function ClientsScreen() {
       <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("clients")}</Text>
         <Pressable
-          onPress={() => setShowModal(true)}
+          onPress={() => { resetForm(); setShowModal(true); }}
           style={[styles.addBtn, { backgroundColor: colors.primary }]}
         >
           <Feather name="user-plus" size={18} color="#fff" />
@@ -203,6 +229,13 @@ export default function ClientsScreen() {
                 </View>
               </Pressable>
               <Pressable
+                onPress={() => openEdit(item)}
+                hitSlop={8}
+                style={[styles.deleteBtn, { backgroundColor: colors.accent }]}
+              >
+                <Feather name="edit-2" size={15} color={colors.primary} />
+              </Pressable>
+              <Pressable
                 onPress={() => handleDelete(String(item.id))}
                 hitSlop={8}
                 style={[styles.deleteBtn, { backgroundColor: "#fee2e2" }]}
@@ -220,8 +253,10 @@ export default function ClientsScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
             <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: colors.foreground }]}>{t("newClient")}</Text>
-                <Pressable onPress={() => setShowModal(false)}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                  {editingId != null ? (isAr ? "تعديل الزبون" : "Edit client") : t("newClient")}
+                </Text>
+                <Pressable onPress={resetForm}>
                   <Feather name="x" size={22} color={colors.mutedForeground} />
                 </Pressable>
               </View>
@@ -242,21 +277,33 @@ export default function ClientsScreen() {
                 {isAr ? "رقم الهاتف" : "Phone"}
               </Text>
               <TextInput
-                style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background }]}
+                style={[
+                  styles.input,
+                  { borderColor: phone && !isValidPhone(phone) ? colors.destructive : colors.border, color: colors.foreground, backgroundColor: colors.background },
+                ]}
                 value={phone}
                 onChangeText={setPhone}
-                placeholder={t("phonePlaceholder")}
+                placeholder={isAr ? "‎+971501234567" : "+971501234567"}
                 placeholderTextColor={colors.mutedForeground}
                 keyboardType="phone-pad"
                 textAlign="left"
               />
+              {!!phone && !isValidPhone(phone) && (
+                <Text style={{ color: colors.destructive, fontSize: 12, marginTop: -4 }}>
+                  {isAr ? "لازم يبدأ الرقم برمز الدولة، متلاً ‎+971501234567" : "Phone must start with a country code, e.g. +971501234567"}
+                </Text>
+              )}
 
               <Pressable
-                style={[styles.saveBtn, { backgroundColor: colors.primary }, (!name.trim() || creating) && { opacity: 0.5 }]}
-                onPress={handleCreate}
-                disabled={!name.trim() || creating}
+                style={[styles.saveBtn, { backgroundColor: colors.primary }, (!name.trim() || !isValidPhone(phone) || creating || updating) && { opacity: 0.5 }]}
+                onPress={handleSave}
+                disabled={!name.trim() || !isValidPhone(phone) || creating || updating}
               >
-                {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t("addClientTitle")}</Text>}
+                {creating || updating ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveBtnText}>{editingId != null ? (isAr ? "حفظ التعديلات" : "Save changes") : t("addClientTitle")}</Text>
+                )}
               </Pressable>
             </View>
           </KeyboardAvoidingView>

@@ -28,13 +28,6 @@ export interface VoiceParseResult {
      * @nullable
      */
   tripId?: number | null;
-  /** @nullable */
-  studioName?: string | null;
-  /**
-     * Matched existing studio id (cross-language), null if new/none
-     * @nullable
-     */
-  studioId?: number | null;
   /**
      * Language detected in the input (ar | en | mixed)
      * @nullable

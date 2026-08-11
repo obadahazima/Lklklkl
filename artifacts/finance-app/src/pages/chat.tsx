@@ -25,7 +25,6 @@ const QUICK_QUESTIONS_AR = [
   "من أكبر مدين عندي؟",
   "ما أرباح آخر رحلة؟",
   "كم معاملة معلّقة؟",
-  "ما مصاريف الاستديو؟",
   "لخّص وضعي المالي",
 ];
 
@@ -36,7 +35,6 @@ const QUICK_QUESTIONS_EN = [
   "Who owes me the most?",
   "What's the last trip's profit?",
   "How many pending transactions?",
-  "What are the studio expenses?",
   "Summarize my finances",
 ];
 

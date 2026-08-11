@@ -5,16 +5,13 @@ import {
   useDeleteTransaction,
   useListClients,
   useListTrips,
-  useListStudios,
   useListAccounts,
   useCreateAccount,
   useCreateClient,
   useCreateTrip,
-  useCreateStudio,
   useParseVoiceInput,
   getListClientsQueryKey,
   getListTripsQueryKey,
-  getListStudiosQueryKey,
   getListAccountsQueryKey,
   getListTransactionsQueryKey,
   getGetDashboardSummaryQueryKey,
@@ -46,7 +43,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import {
   useSettings,
-  AVAILABLE_CURRENCIES,
   getCurrencyName,
 } from "@/contexts/SettingsContext";
 import { useTr } from "@/lib/i18n";
@@ -95,7 +91,6 @@ type FormState = {
   currency: string;
   clientId: string;
   tripId: string;
-  studioId: string;
   accountId: string;
   description: string;
   status: "pending" | "settled";
@@ -109,7 +104,6 @@ function emptyForm(primaryCurrency = "AED"): FormState {
     currency: primaryCurrency,
     clientId: "",
     tripId: "",
-    studioId: "",
     accountId: "",
     description: "",
     status: "pending",
@@ -122,7 +116,7 @@ export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const { settings } = useSettings();
-  const { language, primaryCurrency, showClients, showTrips, showStudios } = settings;
+  const { language, primaryCurrency, showClients, showTrips } = settings;
   const t = useTr(language);
   const voice = useVoiceRecording(language);
   const params = useLocalSearchParams<{ openAdd?: string; openVoice?: string }>();
@@ -158,12 +152,11 @@ export default function TransactionsScreen() {
 
   const [clientResolution, setClientResolution] = useState<ResolutionState>({ kind: "idle" });
   const [tripResolution, setTripResolution] = useState<ResolutionState>({ kind: "idle" });
-  const [studioResolution, setStudioResolution] = useState<ResolutionState>({ kind: "idle" });
   const [newClientPhone, setNewClientPhone] = useState("");
 
   const parsedRef = useRef<VoiceParseResult | null>(null);
   const parsedDateDetectedRef = useRef(false);
-  const resolveRef = useRef<{ clientId?: number | null; tripId?: number | null; studioId?: number | null }>({});
+  const resolveRef = useRef<{ clientId?: number | null; tripId?: number | null }>({});
 
   const [voiceSheetVisible, setVoiceSheetVisible] = useState(false);
   const [voiceSheetStep, setVoiceSheetStep] = useState<"recording" | "processing" | "result">("recording");
@@ -172,7 +165,6 @@ export default function TransactionsScreen() {
   const { data: transactions, isLoading, refetch } = useListTransactions({});
   const { data: clients } = useListClients();
   const { data: trips } = useListTrips();
-  const { data: studios } = useListStudios();
   const { data: accounts } = useListAccounts();
   const { mutateAsync: createTx, isPending: creating } = useCreateTransaction();
   const { mutateAsync: deleteTx } = useDeleteTransaction();
@@ -203,7 +195,6 @@ export default function TransactionsScreen() {
       currency: item.currency,
       clientId: item.clientId != null ? String(item.clientId) : "",
       tripId: item.tripId != null ? String(item.tripId) : "",
-      studioId: item.studioId != null ? String(item.studioId) : "",
       accountId: item.accountId != null ? String(item.accountId) : "",
       description: item.description ?? "",
       status: item.status,
@@ -227,7 +218,6 @@ export default function TransactionsScreen() {
           currency: editForm.currency,
           clientId: editForm.clientId ? parseInt(editForm.clientId, 10) : null,
           tripId: editForm.tripId ? parseInt(editForm.tripId, 10) : null,
-          studioId: editForm.studioId ? parseInt(editForm.studioId, 10) : null,
           accountId: editForm.accountId ? parseInt(editForm.accountId, 10) : null,
           description: editForm.description || null,
           status: editForm.status,
@@ -277,17 +267,6 @@ export default function TransactionsScreen() {
       onSelect: (v) => setEditForm((f) => ({ ...f, tripId: v })),
     });
 
-  const openEditStudioPicker = () =>
-    setEditPicker({
-      title: t("studioLabel"),
-      selected: editForm.studioId,
-      options: [
-        { value: "", label: t("noStudioOption") },
-        ...(studios ?? []).map((s) => ({ value: String(s.id), label: s.name })),
-      ],
-      onSelect: (v) => setEditForm((f) => ({ ...f, studioId: v })),
-    });
-
   const openEditAccountPicker = () =>
     setEditPicker({
       title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
@@ -298,7 +277,6 @@ export default function TransactionsScreen() {
 
   const editClientName = clients?.find((c) => String(c.id) === editForm.clientId)?.name;
   const editTripName = trips?.find((tp) => String(tp.id) === editForm.tripId)?.name;
-  const editStudioName = studios?.find((s) => String(s.id) === editForm.studioId)?.name;
   const editAccountName = accounts?.find((a) => String(a.id) === editForm.accountId)?.name;
 
   const parseMutation = useParseVoiceInput({
@@ -355,19 +333,8 @@ export default function TransactionsScreen() {
     },
   });
 
-  const createStudioMutation = useCreateStudio({
-    mutation: {
-      onSuccess: (newStudio) => {
-        qc.invalidateQueries({ queryKey: getListStudiosQueryKey() });
-        resolveRef.current.studioId = newStudio.id;
-        setStudioResolution({ kind: "idle" });
-        advanceResolutionChain();
-      },
-    },
-  });
-
   const resolving =
-    createClientMutation.isPending || createTripMutation.isPending || createStudioMutation.isPending;
+    createClientMutation.isPending || createTripMutation.isPending;
 
   function findSimilar(list: { id: number; name: string }[] | undefined, name: string) {
     if (!list || !name) return [];
@@ -402,7 +369,6 @@ export default function TransactionsScreen() {
       ...f,
       clientId: r.clientId != null ? String(r.clientId) : "",
       tripId: r.tripId != null ? String(r.tripId) : "",
-      studioId: r.studioId != null ? String(r.studioId) : "",
     }));
     parsedRef.current = null;
     if (voiceSheetFlowRef.current) {
@@ -417,7 +383,6 @@ export default function TransactionsScreen() {
 
     if (!showClients && r.clientId === undefined) r.clientId = null;
     if (!showTrips && r.tripId === undefined) r.tripId = null;
-    if (!showStudios && r.studioId === undefined) r.studioId = null;
 
     if (r.clientId === undefined) {
       const name = p.clientName?.trim();
@@ -460,29 +425,6 @@ export default function TransactionsScreen() {
             return;
           }
           setTripResolution({ kind: "new", name });
-          return;
-        }
-      }
-    }
-
-    if (r.studioId === undefined) {
-      const name = p.studioName?.trim();
-      const aiId = p.studioId;
-      if (aiId != null) {
-        r.studioId = aiId;
-      } else if (!name) {
-        r.studioId = null;
-      } else {
-        const exact = studios?.find((s) => norm(s.name) === norm(name));
-        if (exact) {
-          r.studioId = exact.id;
-        } else {
-          const similar = findSimilar(studios, name);
-          if (similar.length > 0) {
-            setStudioResolution({ kind: "similar", matches: similar, inputName: name });
-            return;
-          }
-          setStudioResolution({ kind: "new", name });
           return;
         }
       }
@@ -596,7 +538,6 @@ export default function TransactionsScreen() {
         currency: form.currency,
         clientId: form.clientId ? parseInt(form.clientId, 10) : null,
         tripId: form.tripId ? parseInt(form.tripId, 10) : null,
-        studioId: form.studioId ? parseInt(form.studioId, 10) : null,
         accountId: parseInt(form.accountId, 10),
         description: form.description || null,
         status: form.status,
@@ -661,17 +602,6 @@ export default function TransactionsScreen() {
       onSelect: (v) => setForm((f) => ({ ...f, tripId: v })),
     });
 
-  const openStudioPicker = () =>
-    setPicker({
-      title: t("studioLabel"),
-      selected: form.studioId,
-      options: [
-        { value: "", label: t("noStudioOption") },
-        ...(studios ?? []).map((s) => ({ value: String(s.id), label: s.name })),
-      ],
-      onSelect: (v) => setForm((f) => ({ ...f, studioId: v })),
-    });
-
   const openAccountPicker = () =>
     setPicker({
       title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
@@ -682,7 +612,6 @@ export default function TransactionsScreen() {
 
   const clientName = clients?.find((c) => String(c.id) === form.clientId)?.name;
   const tripName = trips?.find((tp) => String(tp.id) === form.tripId)?.name;
-  const studioName = studios?.find((s) => String(s.id) === form.studioId)?.name;
   const accountName = accounts?.find((a) => String(a.id) === form.accountId)?.name;
 
   const renderResolution = (
@@ -1041,7 +970,7 @@ export default function TransactionsScreen() {
                     </View>
                   </View>
 
-                  {(clientName || tripName || studioName) && (
+                  {(clientName || tripName) && (
                     <View style={{ gap: 8 }}>
                       {!!clientName && (
                         <View style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -1059,15 +988,6 @@ export default function TransactionsScreen() {
                             {language === "ar" ? "رحلة:" : "Trip:"}
                           </Text>
                           <Text style={[styles.entityName, { color: colors.foreground }]}>{tripName}</Text>
-                        </View>
-                      )}
-                      {!!studioName && (
-                        <View style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                          <Feather name="home" size={14} color={colors.primary} />
-                          <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
-                            {language === "ar" ? "استديو:" : "Studio:"}
-                          </Text>
-                          <Text style={[styles.entityName, { color: colors.foreground }]}>{studioName}</Text>
                         </View>
                       )}
                     </View>
@@ -1355,18 +1275,6 @@ export default function TransactionsScreen() {
                   </>
                 )}
 
-                {showStudios && (
-                  <>
-                    <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("studioLabel")}</Text>
-                    <Pressable onPress={openStudioPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
-                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-                      <Text style={[styles.selectText, { color: studioName ? colors.foreground : colors.mutedForeground }]}>
-                        {studioName ?? t("noStudioOption")}
-                      </Text>
-                    </Pressable>
-                  </>
-                )}
-
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("statusLabel")}</Text>
                 <View style={styles.segRow}>
                   {(["pending", "settled"] as const).map((st) => (
@@ -1515,18 +1423,6 @@ export default function TransactionsScreen() {
                       <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
                       <Text style={[styles.selectText, { color: editTripName ? colors.foreground : colors.mutedForeground }]}>
                         {editTripName ?? t("noTripOption")}
-                      </Text>
-                    </Pressable>
-                  </>
-                )}
-
-                {showStudios && (
-                  <>
-                    <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("studioLabel")}</Text>
-                    <Pressable onPress={openEditStudioPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
-                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-                      <Text style={[styles.selectText, { color: editStudioName ? colors.foreground : colors.mutedForeground }]}>
-                        {editStudioName ?? t("noStudioOption")}
                       </Text>
                     </Pressable>
                   </>
@@ -1729,40 +1625,6 @@ export default function TransactionsScreen() {
         },
       })}
 
-      {renderResolution(studioResolution, {
-        icon: "home",
-        similarTitle: t("similarStudiosTitle"),
-        similarDesc:
-          studioResolution.kind === "similar" ? t("similarStudiosDesc", { name: studioResolution.inputName }) : "",
-        newLabel:
-          studioResolution.kind !== "idle"
-            ? t("newStudioLabel", {
-                name: studioResolution.kind === "similar" ? studioResolution.inputName : studioResolution.name,
-              })
-            : "",
-        skipText: t("skipStudio"),
-        newTitle: t("newStudioTitle"),
-        onChoose: (id) => {
-          resolveRef.current.studioId = id;
-          setStudioResolution({ kind: "idle" });
-          advanceResolutionChain();
-        },
-        onSwitchToNew: () => {
-          if (studioResolution.kind === "similar") {
-            setStudioResolution({ kind: "new", name: studioResolution.inputName });
-          }
-        },
-        onConfirmNew: () => {
-          if (studioResolution.kind === "new") {
-            createStudioMutation.mutate({ data: { name: studioResolution.name } });
-          }
-        },
-        onSkip: () => {
-          resolveRef.current.studioId = null;
-          setStudioResolution({ kind: "idle" });
-          advanceResolutionChain();
-        },
-      })}
     </View>
   );
 }

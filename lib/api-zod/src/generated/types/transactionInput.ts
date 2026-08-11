@@ -15,8 +15,6 @@ export interface TransactionInput {
   clientId?: number | null;
   /** @nullable */
   tripId?: number | null;
-  /** @nullable */
-  studioId?: number | null;
   /** Required — which cash/debit/credit account this transaction moved through */
   accountId: number;
   /** @nullable */

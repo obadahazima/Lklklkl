@@ -4,10 +4,8 @@ import {
   useCreateTransaction,
   useCreateClient,
   useCreateTrip,
-  useCreateStudio,
   useListClients,
   useListTrips,
-  useListStudios,
   useListAccounts,
   useCreateAccount,
   getListTransactionsQueryKey,
@@ -15,7 +13,6 @@ import {
   getGetRecentTransactionsQueryKey,
   getListClientsQueryKey,
   getListTripsQueryKey,
-  getListStudiosQueryKey,
   getListAccountsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,7 +29,6 @@ import {
   Users,
   Map,
   MapPin,
-  Building2,
   PlusCircle,
 } from "lucide-react";
 import { cn, typeLabel, currencyClass, formatAmount } from "@/lib/utils";
@@ -48,8 +44,6 @@ type ParsedData = {
   clientId?: number | null;
   tripName?: string | null;
   tripId?: number | null;
-  studioName?: string | null;
-  studioId?: number | null;
   detectedLanguage?: string | null;
   description?: string | null;
   date?: string | null;
@@ -63,14 +57,12 @@ type ResolutionState =
 
 type ClientResolutionState = ResolutionState;
 type TripResolutionState = ResolutionState;
-type StudioResolutionState = ResolutionState;
 
 type PendingTx = {
   type: string; amount: number; currency: string;
   description: string | null; status: string; date: string;
   clientId: number | null | undefined;
   tripId: number | null | undefined;
-  studioId: number | null | undefined;
   accountId: number | null | undefined;
 };
 
@@ -79,7 +71,7 @@ export default function NewTransaction() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { settings } = useSettings();
-  const { language, showClients, showTrips, showStudios } = settings;
+  const { language, showClients, showTrips } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
   const [step, setStep] = useState<"input" | "confirm">("input");
@@ -90,7 +82,6 @@ export default function NewTransaction() {
   const [clientResolution, setClientResolution] = useState<ClientResolutionState>({ kind: "idle" });
   const [newClientPhone, setNewClientPhone] = useState("");
   const [tripResolution, setTripResolution] = useState<TripResolutionState>({ kind: "idle" });
-  const [studioResolution, setStudioResolution] = useState<StudioResolutionState>({ kind: "idle" });
 
   const pendingTxRef = useRef<PendingTx | null>(null);
 
@@ -100,7 +91,6 @@ export default function NewTransaction() {
     currency: settings.primaryCurrency,
     clientId: "",
     tripId: "",
-    studioId: "",
     accountId: "",
     description: "",
     status: "pending",
@@ -114,7 +104,6 @@ export default function NewTransaction() {
 
   const { data: clients } = useListClients();
   const { data: trips } = useListTrips();
-  const { data: studios } = useListStudios();
   const { data: accounts } = useListAccounts();
 
   // If there's exactly one account, default to it so most users never have to touch this field.
@@ -193,20 +182,6 @@ export default function NewTransaction() {
           pendingTxRef.current.tripId = newTrip.id;
         }
         setTripResolution({ kind: "idle" });
-        advanceResolutionChain();
-      },
-    },
-  });
-
-  const createStudioMutation = useCreateStudio({
-    mutation: {
-      onSuccess: (newStudio) => {
-        queryClient.invalidateQueries({ queryKey: getListStudiosQueryKey() });
-        toast({ title: t("studioAdded"), description: newStudio.name });
-        if (pendingTxRef.current) {
-          pendingTxRef.current.studioId = newStudio.id;
-        }
-        setStudioResolution({ kind: "idle" });
         advanceResolutionChain();
       },
     },
@@ -321,14 +296,6 @@ export default function NewTransaction() {
       .map((t) => ({ id: t.id, name: t.name }));
   }
 
-  function findSimilarStudios(name: string): { id: number; name: string }[] {
-    if (!studios || !name) return [];
-    const n = norm(name);
-    return studios
-      .filter((s) => { const sn = norm(s.name); return sn === n || sn.includes(n) || n.includes(sn) || n.split(" ").some((w) => w.length > 1 && sn.includes(w)); })
-      .map((s) => ({ id: s.id, name: s.name }));
-  }
-
   function savePendingTransaction() {
     const p = pendingTxRef.current;
     if (!p) return;
@@ -347,7 +314,6 @@ export default function NewTransaction() {
         currency: p.currency,
         clientId: p.clientId ?? null,
         tripId: p.tripId ?? null,
-        studioId: p.studioId ?? null,
         accountId: p.accountId,
         description: p.description,
         status: p.status,
@@ -363,7 +329,6 @@ export default function NewTransaction() {
     // Skip hidden entity types from settings
     if (!showClients && p.clientId === undefined) p.clientId = null;
     if (!showTrips && p.tripId === undefined) p.tripId = null;
-    if (!showStudios && p.studioId === undefined) p.studioId = null;
 
     if (p.clientId === undefined) {
       const name = parsed?.clientName?.trim();
@@ -398,22 +363,6 @@ export default function NewTransaction() {
       }
     }
 
-    if (p.studioId === undefined) {
-      const name = parsed?.studioName?.trim();
-      const aiId = parsed?.studioId;
-      if (aiId != null) { p.studioId = aiId; }
-      else if (!name) { p.studioId = null; }
-      else {
-        const exact = studios?.find((s) => norm(s.name) === norm(name));
-        if (exact) { p.studioId = exact.id; }
-        else {
-          const similar = findSimilarStudios(name);
-          if (similar.length > 0) { setStudioResolution({ kind: "similar", matches: similar, inputName: name }); return; }
-          else { setStudioResolution({ kind: "new", name }); return; }
-        }
-      }
-    }
-
     savePendingTransaction();
   }
 
@@ -428,7 +377,6 @@ export default function NewTransaction() {
       date: parsed.date || new Date().toISOString().split("T")[0],
       clientId: undefined,
       tripId: undefined,
-      studioId: undefined,
       accountId: manualForm.accountId ? parseInt(manualForm.accountId) : null,
     };
     advanceResolutionChain();
@@ -470,24 +418,6 @@ export default function NewTransaction() {
     advanceResolutionChain();
   }
 
-  function chooseExistingStudio(id: number) {
-    if (!pendingTxRef.current) return;
-    pendingTxRef.current.studioId = id;
-    setStudioResolution({ kind: "idle" });
-    advanceResolutionChain();
-  }
-
-  function confirmNewStudio(name: string) {
-    createStudioMutation.mutate({ data: { name } });
-  }
-
-  function skipStudio() {
-    if (!pendingTxRef.current) return;
-    pendingTxRef.current.studioId = null;
-    setStudioResolution({ kind: "idle" });
-    advanceResolutionChain();
-  }
-
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
     const amt = parseFloat(manualForm.amount);
@@ -510,7 +440,6 @@ export default function NewTransaction() {
         currency: manualForm.currency,
         clientId: manualForm.clientId ? parseInt(manualForm.clientId) : null,
         tripId: manualForm.tripId ? parseInt(manualForm.tripId) : null,
-        studioId: manualForm.studioId ? parseInt(manualForm.studioId) : null,
         accountId: parseInt(manualForm.accountId),
         description: manualForm.description || null,
         status: manualForm.status,
@@ -519,7 +448,7 @@ export default function NewTransaction() {
     });
   }
 
-  const isLoading = createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createStudioMutation.isPending || createAccountMutation.isPending;
+  const isLoading = createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createAccountMutation.isPending;
   const ChevronBack = language === "ar" ? ChevronRight : ChevronLeft;
 
   return (
@@ -720,84 +649,6 @@ export default function NewTransaction() {
         </div>
       )}
 
-      {/* ── Studio Resolution Modal ── */}
-      {studioResolution.kind !== "idle" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl p-5 w-full max-w-sm">
-            {studioResolution.kind === "similar" ? (
-              <>
-                <div className="flex items-center gap-2 mb-4">
-                  <Building2 className="w-5 h-5 text-amber-500" />
-                  <h2 className="font-bold text-foreground">{t("similarStudiosTitle")}</h2>
-                </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  {tr(language, "similarStudiosDesc", { name: studioResolution.inputName })}
-                </p>
-                <div className="space-y-2 mb-4">
-                  {studioResolution.matches.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => chooseExistingStudio(m.id)}
-                      disabled={isLoading}
-                      className="w-full flex items-center gap-3 p-3 bg-accent rounded-xl text-right hover:bg-primary/10 transition-colors disabled:opacity-50"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0">
-                        <Building2 className="w-4 h-4" />
-                      </div>
-                      <span className="font-semibold text-sm">{m.name}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="border-t border-border pt-3 space-y-2">
-                  <button
-                    onClick={() => setStudioResolution({ kind: "new", name: studioResolution.inputName })}
-                    className="w-full flex items-center justify-center gap-2 border border-primary text-primary rounded-xl py-2.5 text-sm font-semibold hover:bg-primary/10 transition-colors"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    {tr(language, "newStudioLabel", { name: studioResolution.inputName })}
-                  </button>
-                  <button
-                    onClick={skipStudio}
-                    disabled={isLoading}
-                    className="w-full text-muted-foreground text-sm py-2 hover:text-foreground transition-colors"
-                  >
-                    {t("skipStudio")}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 mb-4">
-                  <Building2 className="w-5 h-5 text-primary" />
-                  <h2 className="font-bold text-foreground">{t("newStudioTitle")}</h2>
-                </div>
-                <p className="text-sm text-muted-foreground mb-1">{language === "ar" ? "الاسم" : "Name"}</p>
-                <div className="bg-accent rounded-xl px-3 py-2 mb-4 font-semibold text-foreground">
-                  {studioResolution.name}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={skipStudio}
-                    disabled={isLoading}
-                    className="border border-border rounded-xl py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                  >
-                    {t("ignore")}
-                  </button>
-                  <button
-                    onClick={() => confirmNewStudio(studioResolution.name)}
-                    disabled={isLoading}
-                    className="bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Building2 className="w-4 h-4" />}
-                    {t("addAndSave")}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Step: Input ── */}
       {step === "input" ? (
         <div className="space-y-5">
@@ -978,7 +829,7 @@ export default function NewTransaction() {
                 </div>
               )}
             </div>
-            {(showClients || showTrips || showStudios) && (
+            {(showClients || showTrips) && (
               <div className="grid grid-cols-2 gap-3">
                 {showClients && (
                   <div>
@@ -1008,22 +859,6 @@ export default function NewTransaction() {
                       <option value="">{t("noTripOption")}</option>
                       {trips?.map((tp) => (
                         <option key={tp.id} value={tp.id}>{tp.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {showStudios && (
-                  <div className={!showClients && !showTrips ? "col-span-2" : ""}>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("studioLabel")}</label>
-                    <select
-                      value={manualForm.studioId}
-                      onChange={(e) => setManualForm({ ...manualForm, studioId: e.target.value })}
-                      className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
-                      data-testid="select-studio"
-                    >
-                      <option value="">{language === "ar" ? "بدون استوديو" : "No studio"}</option>
-                      {studios?.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
                   </div>
@@ -1108,7 +943,6 @@ export default function NewTransaction() {
                 },
                 { label: language === "ar" ? "الزبون" : "Client", value: parsed?.clientName },
                 { label: language === "ar" ? "الرحلة" : "Trip", value: parsed?.tripName },
-                { label: language === "ar" ? "الاستديو" : "Studio", value: parsed?.studioName },
                 { label: language === "ar" ? "الوصف" : "Description", value: parsed?.description },
                 {
                   label: language === "ar" ? "التاريخ" : "Date",
@@ -1140,8 +974,8 @@ export default function NewTransaction() {
                 ))}
             </div>
 
-            {/* Status indicators for client / trip / studio */}
-            {(parsed?.clientName || parsed?.tripName || parsed?.studioName) && (
+            {/* Status indicators for client / trip */}
+            {(parsed?.clientName || parsed?.tripName) && (
               <div className="mt-3 pt-3 border-t border-border space-y-1.5">
                 {parsed?.clientName && (
                   (parsed.clientId != null && clients?.some((c) => c.id === parsed.clientId)) || clients?.find((c) => norm(c.name) === norm(parsed.clientName!)) ? (
@@ -1175,24 +1009,6 @@ export default function NewTransaction() {
                         {findSimilarTrips(parsed.tripName).length > 0
                           ? (language === "ar" ? "سيُطلب منك التأكيد على اسم الرحلة" : "You'll be asked to confirm the trip")
                           : (language === "ar" ? "رحلة جديدة، ستتمكن من إضافتها" : "New trip, you can add it")}
-                      </span>
-                    </div>
-                  )
-                )}
-                {parsed?.studioName && (
-                  (parsed.studioId != null && studios?.some((s) => s.id === parsed.studioId)) || studios?.find((s) => norm(s.name) === norm(parsed.studioName!)) ? (
-                    <div className="flex items-center gap-2 text-green-600 text-xs">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>{language === "ar" ? "استديو موجود — سيتم ربطه تلقائياً" : "Existing studio — will be linked automatically"}</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-amber-600 text-xs">
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>
-                        «{parsed.studioName}» —{" "}
-                        {findSimilarStudios(parsed.studioName).length > 0
-                          ? (language === "ar" ? "سيُطلب منك التأكيد على اسم الاستديو" : "You'll be asked to confirm the studio")
-                          : (language === "ar" ? "استديو جديد، ستتمكن من إضافته" : "New studio, you can add it")}
                       </span>
                     </div>
                   )

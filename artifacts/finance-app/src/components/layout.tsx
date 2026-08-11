@@ -4,7 +4,6 @@ import {
   ArrowLeftRight,
   Users,
   Route,
-  Building2,
   Wallet,
   MessageCircle,
   Plus,
@@ -29,7 +28,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const { settings } = useSettings();
-  const { language, showClients, showTrips, showStudios } = settings;
+  const { language, showClients, showTrips } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -52,7 +51,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/transactions", icon: ArrowLeftRight, labelKey: "transactions" as const },
     ...(showClients ? [{ href: "/clients", icon: Users, labelKey: "clients" as const }] : []),
     ...(showTrips ? [{ href: "/trips", icon: Route, labelKey: "trips" as const }] : []),
-    ...(showStudios ? [{ href: "/studios", icon: Building2, labelKey: "studios" as const }] : []),
     { href: "/accounts", icon: Wallet, labelKey: "accounts" as const },
     { href: "/chat", icon: MessageCircle, labelKey: "chat" as const },
     { href: "/settings", icon: Settings, labelKey: "settings" as const },

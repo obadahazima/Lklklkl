@@ -50,7 +50,6 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="client/[id]" />
       <Stack.Screen name="trip/[id]" />
-      <Stack.Screen name="studio/[id]" />
     </Stack>
   );
 }

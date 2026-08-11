@@ -17,9 +17,7 @@ import Clients from "@/pages/clients";
 import ClientStatement from "@/pages/client-statement";
 import Trips from "@/pages/trips";
 import TripDetail from "@/pages/trip-detail";
-import Studios from "@/pages/studios";
 import Accounts from "@/pages/accounts";
-import StudioDetail from "@/pages/studio-detail";
 import Chat from "@/pages/chat";
 import Settings from "@/pages/settings";
 import Landing from "@/pages/landing";
@@ -215,12 +213,6 @@ function AppRoutes() {
       </Route>
       <Route path="/trips/:id">
         {(params) => <ProtectedRoute><TripDetail /></ProtectedRoute>}
-      </Route>
-      <Route path="/studios">
-        <ProtectedRoute><Studios /></ProtectedRoute>
-      </Route>
-      <Route path="/studios/:id">
-        {(params) => <ProtectedRoute><StudioDetail /></ProtectedRoute>}
       </Route>
       <Route path="/accounts">
         <ProtectedRoute><Accounts /></ProtectedRoute>

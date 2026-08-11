@@ -36,7 +36,7 @@ export default function SettingsScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
   const { settings, updateSettings } = useSettings();
-  const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, showStudios, theme, autoBackup } = settings;
+  const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, theme, autoBackup } = settings;
 
   const [localRates, setLocalRates] = useState<Record<string, number>>({ ...manualRates });
 
@@ -443,7 +443,6 @@ export default function SettingsScreen() {
             {[
               { key: "showClients" as const, value: showClients, labelAr: "الزبائن", labelEn: "Clients" },
               { key: "showTrips" as const, value: showTrips, labelAr: "الرحلات", labelEn: "Trips" },
-              { key: "showStudios" as const, value: showStudios, labelAr: "الاستديوهات", labelEn: "Studios" },
             ].map(({ key, value, labelAr, labelEn }, idx, arr) => (
               <View
                 key={key}

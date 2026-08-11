@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { transactionsTable, clientsTable, tripsTable, studiosTable, accountsTable } from "@workspace/db";
+import { transactionsTable, clientsTable, tripsTable, accountsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import {
   CreateTransactionBody,
@@ -16,10 +16,34 @@ const router = Router();
 
 router.use(requireAuth);
 
+/**
+ * Verifies clientId/tripId/accountId (when provided) actually belong to this user before
+ * they're attached to a transaction. Without this, any authenticated user could pass another
+ * user's numeric id and both (a) silently link their transaction to a stranger's record, and
+ * (b) have enrichTransaction() leak that stranger's client/trip/account name back to them.
+ */
+async function assertOwnedForeignKeys(
+  userId: string,
+  ids: { clientId?: number | null; tripId?: number | null; accountId?: number | null },
+): Promise<string | null> {
+  if (ids.clientId != null) {
+    const [c] = await db.select({ id: clientsTable.id }).from(clientsTable).where(and(eq(clientsTable.id, ids.clientId), eq(clientsTable.userId, userId)));
+    if (!c) return "Invalid clientId";
+  }
+  if (ids.tripId != null) {
+    const [tr] = await db.select({ id: tripsTable.id }).from(tripsTable).where(and(eq(tripsTable.id, ids.tripId), eq(tripsTable.userId, userId)));
+    if (!tr) return "Invalid tripId";
+  }
+  if (ids.accountId != null) {
+    const [a] = await db.select({ id: accountsTable.id }).from(accountsTable).where(and(eq(accountsTable.id, ids.accountId), eq(accountsTable.userId, userId)));
+    if (!a) return "Invalid accountId";
+  }
+  return null;
+}
+
 async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
   let clientName: string | null = null;
   let tripName: string | null = null;
-  let studioName: string | null = null;
   let accountName: string | null = null;
 
   if (t.clientId) {
@@ -29,10 +53,6 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
   if (t.tripId) {
     const [tr] = await db.select({ name: tripsTable.name }).from(tripsTable).where(eq(tripsTable.id, t.tripId));
     tripName = tr?.name ?? null;
-  }
-  if (t.studioId) {
-    const [s] = await db.select({ name: studiosTable.name }).from(studiosTable).where(eq(studiosTable.id, t.studioId));
-    studioName = s?.name ?? null;
   }
   if (t.accountId) {
     const [a] = await db.select({ name: accountsTable.name }).from(accountsTable).where(eq(accountsTable.id, t.accountId));
@@ -44,7 +64,6 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
     amount: Number(t.amount),
     clientName,
     tripName,
-    studioName,
     accountName,
     createdAt: t.createdAt.toISOString(),
   };
@@ -96,6 +115,15 @@ router.post("/transactions", async (req, res): Promise<void> => {
     return;
   }
   try {
+    const fkError = await assertOwnedForeignKeys(req.userId, {
+      clientId: parsed.data.clientId,
+      tripId: parsed.data.tripId,
+      accountId: parsed.data.accountId,
+    });
+    if (fkError) {
+      res.status(400).json({ error: fkError });
+      return;
+    }
     const [tx] = await db
       .insert(transactionsTable)
       .values({
@@ -108,7 +136,6 @@ router.post("/transactions", async (req, res): Promise<void> => {
         description: parsed.data.description ?? null,
         clientId: parsed.data.clientId ?? null,
         tripId: parsed.data.tripId ?? null,
-        studioId: parsed.data.studioId ?? null,
         accountId: parsed.data.accountId,
       })
       .returning();
@@ -157,6 +184,15 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
     return;
   }
   try {
+    const fkError = await assertOwnedForeignKeys(req.userId, {
+      clientId: bodyParsed.data.clientId,
+      tripId: bodyParsed.data.tripId,
+      accountId: bodyParsed.data.accountId,
+    });
+    if (fkError) {
+      res.status(400).json({ error: fkError });
+      return;
+    }
     const updateData: Record<string, unknown> = {};
     if (bodyParsed.data.type !== undefined) updateData.type = bodyParsed.data.type;
     if (bodyParsed.data.amount !== undefined) updateData.amount = String(bodyParsed.data.amount);

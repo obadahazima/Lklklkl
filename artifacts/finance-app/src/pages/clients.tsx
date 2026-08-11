@@ -3,19 +3,30 @@ import {
   useListClients,
   useListTransactions,
   useCreateClient,
+  useUpdateClient,
   useDeleteClient,
   getListClientsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Plus, Users, ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
+import { Plus, Users, ChevronLeft, ChevronRight, Trash2, Pencil, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings, toAedFrontend, convertToPrimary } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 import { cn, formatAmount } from "@/lib/utils";
 
+// A phone number, if provided, must start with a country code (e.g. "+971...").
+// Local-format numbers without a country code are ambiguous once a client base spans
+// more than one country, so we require the "+" prefix up front rather than guessing later.
+function isValidPhone(phone: string): boolean {
+  const trimmed = phone.trim();
+  if (!trimmed) return true; // phone is optional
+  return /^\+[1-9]\d{6,14}$/.test(trimmed);
+}
+
 export default function Clients() {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const { toast } = useToast();
@@ -57,21 +68,55 @@ export default function Clients() {
     }
   }
 
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() });
+
+  const resetForm = () => {
+    setShowAdd(false);
+    setEditingId(null);
+    setName("");
+    setPhone("");
+  };
+
   const createMutation = useCreateClient({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() });
-        setShowAdd(false);
-        setName(""); setPhone("");
+        invalidate();
+        resetForm();
         toast({ title: t("clientAddedTitle"), description: t("clientAddedDesc") });
       },
     },
   });
 
+  const updateMutation = useUpdateClient({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        resetForm();
+        toast({ title: language === "ar" ? "تم التعديل" : "Updated" });
+      },
+    },
+  });
+
+  function startEdit(client: NonNullable<typeof clients>[number]) {
+    setEditingId(client.id);
+    setName(client.name);
+    setPhone(client.phone ?? "");
+    setShowAdd(true);
+  }
+
+  function handleSave() {
+    if (!name.trim() || !isValidPhone(phone)) return;
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, data: { name: name.trim(), phone: phone.trim() || undefined } });
+    } else {
+      createMutation.mutate({ data: { name: name.trim(), phone: phone.trim() || undefined } });
+    }
+  }
+
   const deleteMutation = useDeleteClient({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListClientsQueryKey() });
+        invalidate();
         toast({ title: t("deletedSuccess") });
       },
     },
@@ -87,7 +132,7 @@ export default function Clients() {
           <p className="text-muted-foreground text-sm">{clients?.length ?? 0} {t("clientCount")}</p>
         </div>
         <button
-          onClick={() => setShowAdd(true)}
+          onClick={() => { resetForm(); setShowAdd(true); }}
           className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-semibold"
           data-testid="btn-add-client"
         >
@@ -96,12 +141,14 @@ export default function Clients() {
         </button>
       </div>
 
-      {/* Add form */}
+      {/* Add / Edit form */}
       {showAdd && (
         <div className="bg-card border-2 border-primary/20 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-sm">{t("addClientTitle")}</h2>
-            <button onClick={() => setShowAdd(false)} className="text-muted-foreground hover:text-foreground">
+            <h2 className="font-bold text-sm">
+              {editingId ? (language === "ar" ? "تعديل الزبون" : "Edit client") : t("addClientTitle")}
+            </h2>
+            <button onClick={resetForm} className="text-muted-foreground hover:text-foreground">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -114,21 +161,34 @@ export default function Clients() {
               className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
               data-testid="input-client-name"
             />
-            <input
-              type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder={t("phonePlaceholder")}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
-              data-testid="input-client-phone"
-            />
+            <div>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder={language === "ar" ? "رقم الهاتف مع رمز الدولة، مثلاً ‎+971501234567" : "Phone with country code, e.g. +971501234567"}
+                className={cn(
+                  "w-full border rounded-lg px-3 py-2 text-sm bg-background",
+                  phone && !isValidPhone(phone) ? "border-destructive" : "border-border",
+                )}
+                dir="ltr"
+                data-testid="input-client-phone"
+              />
+              {phone && !isValidPhone(phone) && (
+                <p className="text-xs text-destructive mt-1">
+                  {language === "ar"
+                    ? "لازم يبدأ الرقم برمز الدولة، متلاً ‎+971501234567"
+                    : "Phone must start with a country code, e.g. +971501234567"}
+                </p>
+              )}
+            </div>
             <button
-              onClick={() => name.trim() && createMutation.mutate({ data: { name, phone: phone || undefined } })}
-              disabled={createMutation.isPending || !name.trim()}
+              onClick={handleSave}
+              disabled={createMutation.isPending || updateMutation.isPending || !name.trim() || !isValidPhone(phone)}
               className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
               data-testid="btn-save-client"
             >
-              {createMutation.isPending ? t("saving") : t("save")}
+              {createMutation.isPending || updateMutation.isPending ? t("saving") : t("save")}
             </button>
           </div>
         </div>
@@ -180,6 +240,13 @@ export default function Clients() {
                         <ChevronNav className="w-3 h-3" />
                       </button>
                     </Link>
+                    <button
+                      onClick={() => startEdit(client)}
+                      className="text-muted-foreground hover:text-primary p-1"
+                      data-testid={`btn-edit-client-${client.id}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => window.confirm(t("deleteClientConfirm")) && deleteMutation.mutate({ id: client.id })}
                       className="text-muted-foreground hover:text-destructive p-1"

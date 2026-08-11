@@ -15,6 +15,15 @@ import { cn } from "@/lib/utils";
 
 const TYPE_ICON: Record<string, typeof Wallet> = { cash: Wallet, debit: Landmark, credit: CreditCard };
 
+// A fixed, curated palette (rather than a raw color input) keeps every account visually distinct
+// and legible against both light/dark backgrounds, and matches the "pick a wallet color" pattern
+// from apps like this.
+const ACCOUNT_COLORS = [
+  "#3B82F6", "#EF4444", "#F59E0B", "#10B981",
+  "#8B5CF6", "#EC4899", "#06B6D4", "#F97316",
+  "#6366F1", "#14B8A6", "#84CC16", "#64748B",
+];
+
 export default function Accounts() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -22,6 +31,7 @@ export default function Accounts() {
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState("");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [color, setColor] = useState(ACCOUNT_COLORS[0]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { settings } = useSettings();
@@ -39,6 +49,7 @@ export default function Accounts() {
     setType("cash");
     setCurrency(primaryCurrency || "AED");
     setInitialBalance("0");
+    setColor(ACCOUNT_COLORS[0]);
   };
 
   const createMutation = useCreateAccount({
@@ -76,6 +87,7 @@ export default function Accounts() {
     setType(account.type);
     setCurrency(account.currency);
     setInitialBalance(String(account.initialBalance));
+    setColor(account.color || ACCOUNT_COLORS[0]);
     setShowForm(true);
   }
 
@@ -84,11 +96,11 @@ export default function Accounts() {
     if (editingId) {
       updateMutation.mutate({
         id: editingId,
-        data: { name: name.trim(), type, currency, initialBalance: parseFloat(initialBalance) || 0 },
+        data: { name: name.trim(), type, currency, color, initialBalance: parseFloat(initialBalance) || 0 },
       });
     } else {
       createMutation.mutate({
-        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", initialBalance: parseFloat(initialBalance) || 0 },
+        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: parseFloat(initialBalance) || 0 },
       });
     }
   }
@@ -187,6 +199,27 @@ export default function Accounts() {
                 data-testid="input-account-initial-balance"
               />
             </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {language === "ar" ? "لون الحساب" : "Account color"}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {ACCOUNT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    className={cn(
+                      "w-7 h-7 rounded-full transition-transform",
+                      color === c ? "ring-2 ring-offset-2 ring-foreground scale-110" : "hover:scale-105"
+                    )}
+                    style={{ backgroundColor: c }}
+                    aria-label={c}
+                    data-testid={`color-swatch-${c}`}
+                  />
+                ))}
+              </div>
+            </div>
             <button
               onClick={handleSave}
               disabled={createMutation.isPending || updateMutation.isPending || !name.trim()}
@@ -213,8 +246,11 @@ export default function Accounts() {
             return (
               <div key={account.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center justify-between" data-testid={`account-card-${account.id}`}>
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <Icon className="w-5 h-5 text-primary" />
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${account.color}1a` }}
+                  >
+                    <Icon className="w-5 h-5" style={{ color: account.color }} />
                   </div>
                   <div>
                     <h3 className="font-bold text-foreground">{account.name}</h3>

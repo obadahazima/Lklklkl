@@ -26,10 +26,6 @@ export interface Transaction {
   /** @nullable */
   tripName?: string | null;
   /** @nullable */
-  studioId?: number | null;
-  /** @nullable */
-  studioName?: string | null;
-  /** @nullable */
   accountId?: number | null;
   /** @nullable */
   accountName?: string | null;
@@ -49,8 +45,6 @@ export interface TransactionInput {
   clientId?: number | null;
   /** @nullable */
   tripId?: number | null;
-  /** @nullable */
-  studioId?: number | null;
   /** Required — which cash/debit/credit account this transaction moved through */
   accountId: number;
   /** @nullable */
@@ -67,8 +61,6 @@ export interface TransactionUpdate {
   clientId?: number | null;
   /** @nullable */
   tripId?: number | null;
-  /** @nullable */
-  studioId?: number | null;
   /** @nullable */
   accountId?: number | null;
   /** @nullable */
@@ -163,60 +155,14 @@ export interface TripPnl {
   breakdown: TripCurrencyPnl[];
 }
 
-export interface Studio {
-  id: number;
-  name: string;
-  /** @nullable */
-  address?: string | null;
-  /** @nullable */
-  notes?: string | null;
-  createdAt: string;
-}
-
-export interface StudioInput {
-  name: string;
-  /** @nullable */
-  address?: string | null;
-  /** @nullable */
-  notes?: string | null;
-}
-
-export interface StudioUpdate {
-  name?: string;
-  /** @nullable */
-  address?: string | null;
-  /** @nullable */
-  notes?: string | null;
-}
-
-export interface StudioExpense {
-  id: number;
-  studioId: number;
-  /** rent | electricity | internet | maintenance | other */
-  category: string;
-  amount: number;
-  currency: string;
-  date: string;
-  /** @nullable */
-  notes?: string | null;
-  createdAt: string;
-}
-
-export interface StudioExpenseInput {
-  category: string;
-  amount: number;
-  currency: string;
-  date: string;
-  /** @nullable */
-  notes?: string | null;
-}
-
 export interface Account {
   id: number;
   name: string;
   /** cash | debit | credit */
   type: string;
   currency: string;
+  /** Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard */
+  color: string;
   initialBalance: number;
   /** initialBalance + income/receipt through this account - expense/payment through this account */
   currentBalance: number;
@@ -230,6 +176,8 @@ export interface AccountInput {
   /** cash | debit | credit */
   type: string;
   currency: string;
+  /** Hex color (e.g. #3B82F6), defaults to a neutral blue if omitted */
+  color?: string;
   /** Starting balance when the account was added, defaults to 0 */
   initialBalance?: number;
   /** @nullable */
@@ -240,6 +188,7 @@ export interface AccountUpdate {
   name?: string;
   type?: string;
   currency?: string;
+  color?: string;
   initialBalance?: number;
   /** @nullable */
   notes?: string | null;
@@ -281,13 +230,6 @@ export interface VoiceParseResult {
      * @nullable
      */
   tripId?: number | null;
-  /** @nullable */
-  studioName?: string | null;
-  /**
-     * Matched existing studio id (cross-language), null if new/none
-     * @nullable
-     */
-  studioId?: number | null;
   /**
      * Language detected in the input (ar | en | mixed)
      * @nullable
