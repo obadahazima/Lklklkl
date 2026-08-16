@@ -104,6 +104,7 @@ export default function TripDetailScreen() {
         })),
         primaryCurrency,
         primaryTotal,
+        language: settings.language,
       });
     } catch {
       Alert.alert(t("share"), t("exportPdf"));

@@ -94,6 +94,7 @@ export default function ClientStatement() {
             })),
             primaryCurrency,
             primaryTotal: totalInPrimary,
+            language,
           }}
         />
       </div>

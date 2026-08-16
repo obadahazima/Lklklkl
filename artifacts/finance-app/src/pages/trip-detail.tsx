@@ -86,6 +86,7 @@ export default function TripDetail() {
             totals: exportTotals,
             primaryCurrency,
             primaryTotal,
+            language,
           }}
         />
       </div>

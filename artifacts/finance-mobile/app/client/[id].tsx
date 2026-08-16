@@ -78,6 +78,7 @@ export default function ClientStatementScreen() {
       })),
       primaryCurrency,
       primaryTotal: Math.round(totalInPrimary * 100) / 100,
+      language: settings.language,
     };
 
     try {
