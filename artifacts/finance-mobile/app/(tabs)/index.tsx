@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { useSettings, getCurrencySymbol } from "@/contexts/SettingsContext";
-import { useTr } from "@/lib/i18n";
+import { useTr, formatNum } from "@/lib/i18n";
 
 type TxType = "income" | "expense" | "payment" | "receipt";
 
@@ -201,7 +201,7 @@ export default function DashboardScreen() {
             ]}>
               <Text style={styles.heroLabel}>إجمالي الحسابات</Text>
               <Text style={styles.heroAmount}>
-                {Math.abs(totalAccountsInPrimary).toLocaleString("ar", { maximumFractionDigits: 0 })}
+                {formatNum(Math.abs(totalAccountsInPrimary), { maximumFractionDigits: 0 })}
               </Text>
               <Text style={styles.heroCurrency}>{primaryCurrency}</Text>
 
@@ -238,7 +238,7 @@ export default function DashboardScreen() {
                     </View>
                     <Text style={styles.heroAccountAmount}>
                       {a.currentBalance < 0 ? "-" : ""}
-                      {Math.abs(a.currentBalance).toLocaleString("ar", { maximumFractionDigits: 0 })} {a.currency}
+                      {formatNum(Math.abs(a.currentBalance), { maximumFractionDigits: 0 })} {a.currency}
                     </Text>
                   </Pressable>
                 ))}
@@ -256,14 +256,14 @@ export default function DashboardScreen() {
             <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Feather name="trending-up" size={18} color="#16a34a" />
               <Text style={[styles.statValue, { color: colors.foreground }]}>
-                {fromAed(totalIncome, primaryCurrency, effectiveRates).toLocaleString("ar", { maximumFractionDigits: 0 })}
+                {formatNum(fromAed(totalIncome, primaryCurrency, effectiveRates), { maximumFractionDigits: 0 })}
               </Text>
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>إجمالي الدخل ({primaryCurrency})</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Feather name="trending-down" size={18} color="#ef4444" />
               <Text style={[styles.statValue, { color: colors.foreground }]}>
-                {fromAed(totalExpenses, primaryCurrency, effectiveRates).toLocaleString("ar", { maximumFractionDigits: 0 })}
+                {formatNum(fromAed(totalExpenses, primaryCurrency, effectiveRates), { maximumFractionDigits: 0 })}
               </Text>
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>إجمالي المصاريف ({primaryCurrency})</Text>
             </View>
@@ -307,14 +307,14 @@ export default function DashboardScreen() {
                       <Feather name="trending-up" size={14} color="#16a34a" />
                       <Text style={[styles.ieLabel, { color: colors.mutedForeground }]}>{t("income")}</Text>
                       <Text style={[styles.ieValue, { color: "#16a34a" }]}>
-                        {getCurrencySymbol(c.currency)} {Number(c.totalIncome).toLocaleString("ar", { maximumFractionDigits: 0 })}
+                        {getCurrencySymbol(c.currency, language)} {formatNum(Number(c.totalIncome), { maximumFractionDigits: 0 })}
                       </Text>
                     </View>
                     <View style={styles.ieItem}>
                       <Feather name="trending-down" size={14} color="#ef4444" />
                       <Text style={[styles.ieLabel, { color: colors.mutedForeground }]}>{t("expense")}</Text>
                       <Text style={[styles.ieValue, { color: "#ef4444" }]}>
-                        {getCurrencySymbol(c.currency)} {Number(c.totalExpenses).toLocaleString("ar", { maximumFractionDigits: 0 })}
+                        {getCurrencySymbol(c.currency, language)} {formatNum(Number(c.totalExpenses), { maximumFractionDigits: 0 })}
                       </Text>
                     </View>
                   </View>
@@ -357,7 +357,7 @@ export default function DashboardScreen() {
                   styles.txAmount,
                   { color: isIncoming(tx.type) ? "#16a34a" : "#ef4444" }
                 ]}>
-                  {isIncoming(tx.type) ? "+" : "-"}{Number(tx.amount).toLocaleString(language === "ar" ? "ar" : "en")} {tx.currency}
+                  {isIncoming(tx.type) ? "+" : "-"}{formatNum(Number(tx.amount))} {tx.currency}
                 </Text>
               </View>
             ))
@@ -399,7 +399,7 @@ function BalanceCard({ currency, amount, colors }: { currency: string; amount: n
       <View style={[styles.currencyDot, { backgroundColor: dotColor }]} />
       <Text style={[styles.currencyCode, { color: colors.foreground }]}>{currency}</Text>
       <Text style={[styles.balanceAmount, { color: num >= 0 ? "#16a34a" : "#ef4444" }]}>
-        {num >= 0 ? "" : "-"}{Math.abs(num).toLocaleString("ar", { maximumFractionDigits: 0 })}
+        {num >= 0 ? "" : "-"}{formatNum(Math.abs(num), { maximumFractionDigits: 0 })}
       </Text>
     </View>
   );

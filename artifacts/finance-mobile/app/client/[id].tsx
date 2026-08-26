@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useSettings } from "@/contexts/SettingsContext";
-import { useTr } from "@/lib/i18n";
+import { useTr, formatNum } from "@/lib/i18n";
 import { exportStatementPdf, type ExportOptions } from "@/lib/export";
 
 function formatDate(d: string, lang: string) {
@@ -103,7 +103,7 @@ export default function ClientStatementScreen() {
   if (!data) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ color: colors.mutedForeground }}>لم يتم العثور على العميل</Text>
+        <Text style={{ color: colors.mutedForeground }}>{t("clientNotFound")}</Text>
       </View>
     );
   }
@@ -136,7 +136,7 @@ export default function ClientStatementScreen() {
           {client.phone ? (
             <Text style={[styles.clientPhone, { color: colors.mutedForeground }]}>{client.phone}</Text>
           ) : (
-            <Text style={[styles.clientPhone, { color: colors.mutedForeground }]}>كشف الحساب</Text>
+            <Text style={[styles.clientPhone, { color: colors.mutedForeground }]}>{t("statement")}</Text>
           )}
         </View>
         <Pressable
@@ -159,7 +159,7 @@ export default function ClientStatementScreen() {
         ]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
             <Feather name="credit-card" size={14} color={colors.mutedForeground} />
-            <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>الإجمالي بـ {primaryCurrency}</Text>
+            <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>{t("totalIn")} {primaryCurrency}</Text>
             <View style={[styles.currencyTag, { backgroundColor: colors.muted }]}>
               <Text style={[styles.currencyTagText, { color: colors.foreground }]}>{primaryCurrency}</Text>
             </View>
@@ -169,30 +169,30 @@ export default function ClientStatementScreen() {
             { color: totalInPrimary === 0 ? colors.foreground : totalInPrimary > 0 ? "#16a34a" : "#ef4444" }
           ]}>
             {totalInPrimary === 0
-              ? "مسدد بالكامل"
-              : `${totalInPrimary > 0 ? "له " : "عليه "}${Math.abs(totalInPrimary).toLocaleString("ar", { maximumFractionDigits: 0 })} ${primaryCurrency}`}
+              ? t("fullySettled")
+              : `${totalInPrimary > 0 ? t("owedPrefix") : t("owesPrefix")}${formatNum(Math.abs(totalInPrimary), { maximumFractionDigits: 0 })} ${primaryCurrency}`}
           </Text>
         </View>
 
         {/* Balances per currency */}
         {balances.length > 0 && (
           <View>
-            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>الأرصدة المفتوحة</Text>
+            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>{t("openBalances")}</Text>
             <View style={{ gap: 8 }}>
               {balances.map((b: any) => (
                 <View key={b.currency} style={[styles.balanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                     <View style={{ flexDirection: "row", gap: 12 }}>
                       <View style={{ alignItems: "flex-end" }}>
-                        <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>مدفوع</Text>
+                        <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>{t("paid")}</Text>
                         <Text style={{ fontSize: 12, color: "#ef4444", fontWeight: "600" as const, fontFamily: "Inter_600SemiBold" }}>
-                          {Number(b.paid).toLocaleString("ar")}
+                          {formatNum(Number(b.paid))}
                         </Text>
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
-                        <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>مقبوض</Text>
+                        <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>{t("received")}</Text>
                         <Text style={{ fontSize: 12, color: "#16a34a", fontWeight: "600" as const, fontFamily: "Inter_600SemiBold" }}>
-                          {Number(b.received).toLocaleString("ar")}
+                          {formatNum(Number(b.received))}
                         </Text>
                       </View>
                     </View>
@@ -205,8 +205,8 @@ export default function ClientStatementScreen() {
                         { color: b.openBalance >= 0 ? "#16a34a" : "#ef4444" }
                       ]}>
                         {b.openBalance === 0
-                          ? "مسدد"
-                          : `${b.openBalance > 0 ? "له " : "عليه "}${Math.abs(b.openBalance).toLocaleString("ar", { maximumFractionDigits: 0 })}`}
+                          ? t("settledShort")
+                          : `${b.openBalance > 0 ? t("owedPrefix") : t("owesPrefix")}${formatNum(Math.abs(b.openBalance), { maximumFractionDigits: 0 })}`}
                       </Text>
                     </View>
                   </View>
@@ -219,11 +219,11 @@ export default function ClientStatementScreen() {
         {/* Transactions */}
         <View>
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-            المعاملات ({transactions.length})
+            {t("transactionsCount")} ({transactions.length})
           </Text>
           {transactions.length === 0 ? (
             <View style={[styles.emptyBox, { borderColor: colors.border }]}>
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>لا توجد معاملات لهذا العميل</Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{t("noClientTransactions")}</Text>
             </View>
           ) : (
             <View style={[styles.txList, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -251,12 +251,12 @@ export default function ClientStatementScreen() {
                   <View style={{ alignItems: "flex-end" }}>
                     <Text style={[styles.txAmount, { color: typeColor(tx.type) }]}>
                       {tx.type === "expense" || tx.type === "payment" ? "-" : "+"}
-                      {Number(tx.amount).toLocaleString("ar")} {tx.currency}
+                      {formatNum(Number(tx.amount))} {tx.currency}
                     </Text>
                     {tx.currency !== primaryCurrency && (
                       <Text style={[styles.txConvert, { color: colors.mutedForeground }]}>
                         ≈ {tx.type === "expense" || tx.type === "payment" ? "-" : "+"}
-                        {Math.abs(toPrimary(Number(tx.amount), tx.currency, effectiveRates, primaryCurrency)).toLocaleString("ar", { maximumFractionDigits: 0 })} {primaryCurrency}
+                        {formatNum(Math.abs(toPrimary(Number(tx.amount), tx.currency, effectiveRates, primaryCurrency)), { maximumFractionDigits: 0 })} {primaryCurrency}
                       </Text>
                     )}
                   </View>
@@ -264,9 +264,9 @@ export default function ClientStatementScreen() {
               ))}
               {/* Total row */}
               <View style={[styles.txTotalRow, { backgroundColor: colors.muted }]}>
-                <Text style={[styles.txTotalLabel, { color: colors.mutedForeground }]}>الإجمالي ({primaryCurrency})</Text>
+                <Text style={[styles.txTotalLabel, { color: colors.mutedForeground }]}>{t("totalLabel")} ({primaryCurrency})</Text>
                 <Text style={[styles.txTotalValue, { color: totalInPrimary >= 0 ? "#16a34a" : "#ef4444" }]}>
-                  {totalInPrimary >= 0 ? "+" : ""}{totalInPrimary.toLocaleString("ar", { maximumFractionDigits: 0 })}
+                  {totalInPrimary >= 0 ? "+" : ""}{formatNum(totalInPrimary, { maximumFractionDigits: 0 })}
                 </Text>
               </View>
             </View>

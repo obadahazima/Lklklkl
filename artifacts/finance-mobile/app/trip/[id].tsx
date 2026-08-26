@@ -15,13 +15,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useSettings } from "@/contexts/SettingsContext";
-import { useTr } from "@/lib/i18n";
+import { useTr, formatNum } from "@/lib/i18n";
 import { exportStatementPdf } from "@/lib/export";
 
-function statusLabel(s: string) {
-  if (s === "active") return "نشطة";
-  if (s === "completed") return "مكتملة";
-  if (s === "cancelled") return "ملغاة";
+function statusLabel(s: string, t: (key: any) => string) {
+  if (s === "active") return t("statusActive");
+  if (s === "completed") return t("statusCompleted");
+  if (s === "cancelled") return t("statusCancelled");
   return s;
 }
 
@@ -63,7 +63,7 @@ export default function TripDetailScreen() {
   if (!data) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ color: colors.mutedForeground }}>لم يتم العثور على الرحلة</Text>
+        <Text style={{ color: colors.mutedForeground }}>{t("tripNotFound")}</Text>
       </View>
     );
   }
@@ -126,11 +126,11 @@ export default function TripDetailScreen() {
             <Text style={[styles.tripName, { color: colors.foreground }]}>{trip.name}</Text>
             {trip.isShared && (
               <View style={styles.sharedBadge}>
-                <Text style={styles.sharedText}>مشتركة</Text>
+                <Text style={styles.sharedText}>{t("shared")}</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>الأرباح والخسائر</Text>
+          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>{t("profitLoss")}</Text>
         </View>
         <Pressable onPress={handleShare} style={[styles.shareBtn, { backgroundColor: colors.accent }]} accessibilityLabel={t("share")}>
           <Feather name="share-2" size={18} color={colors.primary} />
@@ -144,7 +144,7 @@ export default function TripDetailScreen() {
             backgroundColor: statusColor(trip.status) + "20",
           }]}>
             <Text style={[styles.statusText, { color: statusColor(trip.status) }]}>
-              {statusLabel(trip.status)}
+              {statusLabel(trip.status, t)}
             </Text>
           </View>
           {(trip.origin || trip.destination) && (
@@ -157,14 +157,14 @@ export default function TripDetailScreen() {
         {trip.isShared && (
           <View style={[styles.sharedNotice, { backgroundColor: "#f5f3ff", borderColor: "#c4b5fd" }]}>
             <Feather name="divide" size={14} color="#7c3aed" />
-            <Text style={styles.sharedNoticeText}>رحلة مشتركة — صافي الربح يُقسّم على 2</Text>
+            <Text style={styles.sharedNoticeText}>{t("sharedTripNote")}</Text>
           </View>
         )}
 
         {breakdown.length === 0 ? (
           <View style={[styles.emptyBox, { borderColor: colors.border }]}>
             <Feather name="bar-chart-2" size={32} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>لا توجد معاملات لهذه الرحلة</Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{t("noTripTransactions")}</Text>
           </View>
         ) : (
           breakdown.map((b: any) => (
@@ -172,9 +172,9 @@ export default function TripDetailScreen() {
               {/* Header row */}
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <View>
-                  <Text style={[styles.netLabel, { color: colors.mutedForeground }]}>الربح الصافي</Text>
+                  <Text style={[styles.netLabel, { color: colors.mutedForeground }]}>{t("netProfit")}</Text>
                   <Text style={[styles.netValue, { color: b.netProfit >= 0 ? "#16a34a" : "#ef4444" }]}>
-                    {b.netProfit >= 0 ? "+" : ""}{Number(b.netProfit).toLocaleString("ar", { maximumFractionDigits: 0 })} {b.currency}
+                    {b.netProfit >= 0 ? "+" : ""}{formatNum(Number(b.netProfit), { maximumFractionDigits: 0 })} {b.currency}
                   </Text>
                 </View>
                 <View style={[styles.currencyTag, { backgroundColor: colors.accent }]}>
@@ -187,19 +187,19 @@ export default function TripDetailScreen() {
                 <View style={[styles.metricBox, { backgroundColor: colors.card, borderWidth: 1, borderColor: "#16a34a22", flex: 1 }]}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     <Feather name="trending-up" size={13} color="#16a34a" />
-                    <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>الإيرادات</Text>
+                    <Text style={[styles.metricLabel, { color: colors.mutedForeground }]}>{t("revenue")}</Text>
                   </View>
                   <Text style={[styles.metricValue, { color: "#16a34a" }]}>
-                    {Number(b.revenue).toLocaleString("ar", { maximumFractionDigits: 0 })}
+                    {formatNum(Number(b.revenue), { maximumFractionDigits: 0 })}
                   </Text>
                 </View>
                 <View style={[styles.metricBox, { backgroundColor: colors.card, borderWidth: 1, borderColor: "#ef444422", flex: 1 }]}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     <Feather name="trending-down" size={13} color="#ef4444" />
-                    <Text style={[styles.metricLabel, { color: "#ef4444" }]}>المصاريف</Text>
+                    <Text style={[styles.metricLabel, { color: "#ef4444" }]}>{t("expensesLabel")}</Text>
                   </View>
                   <Text style={[styles.metricValue, { color: "#ef4444" }]}>
-                    {Number(b.expenses).toLocaleString("ar", { maximumFractionDigits: 0 })}
+                    {formatNum(Number(b.expenses), { maximumFractionDigits: 0 })}
                   </Text>
                 </View>
               </View>
@@ -207,9 +207,9 @@ export default function TripDetailScreen() {
               {/* My share (shared trips) */}
               {trip.isShared && (
                 <View style={[styles.myShareBox, { borderColor: "#c4b5fd", backgroundColor: "#f5f3ff" }]}>
-                  <Text style={styles.myShareLabel}>نصيبك (بعد القسمة)</Text>
+                  <Text style={styles.myShareLabel}>{t("myShare")}</Text>
                   <Text style={[styles.myShareValue, { color: b.myShare >= 0 ? "#7c3aed" : "#ef4444" }]}>
-                    {b.myShare >= 0 ? "+" : ""}{Number(b.myShare).toLocaleString("ar", { maximumFractionDigits: 0 })} {b.currency}
+                    {b.myShare >= 0 ? "+" : ""}{formatNum(Number(b.myShare), { maximumFractionDigits: 0 })} {b.currency}
                   </Text>
                 </View>
               )}

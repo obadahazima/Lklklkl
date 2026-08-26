@@ -224,7 +224,8 @@ export const AVAILABLE_CURRENCIES = [
   { code: "QAR", nameAr: "ريال قطري", nameEn: "Qatari Riyal", symbol: "ر.ق" },
 ];
 
-export function getCurrencySymbol(code: string): string {
+export function getCurrencySymbol(code: string, lang: "ar" | "en" = "ar"): string {
+  if (lang === "en") return code;
   return AVAILABLE_CURRENCIES.find((c) => c.code === code)?.symbol ?? code;
 }
 

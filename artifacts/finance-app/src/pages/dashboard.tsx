@@ -119,7 +119,7 @@ export default function Dashboard() {
             data-testid="total-accounts-primary"
           >
             {totalAccountsInPrimary < 0 ? "-" : ""}
-            {formatAmount(Math.abs(totalAccountsInPrimary), primaryCurrency)}
+            {formatAmount(Math.abs(totalAccountsInPrimary), primaryCurrency, language)}
           </p>
 
           {/* Exchange rate display */}
@@ -165,7 +165,7 @@ export default function Dashboard() {
                     )}
                   >
                     {a.currentBalance < 0 ? "-" : ""}
-                    {formatAmount(Math.abs(a.currentBalance), a.currency)}
+                    {formatAmount(Math.abs(a.currentBalance), a.currency, language)}
                   </span>
                 </div>
               </Link>
@@ -212,11 +212,11 @@ export default function Dashboard() {
                     <div className="text-end">
                       <p className={cn("text-xl font-bold", c.balance >= 0 ? "text-green-600" : "text-red-600")}>
                         {c.balance < 0 ? "-" : ""}
-                        {formatAmount(Math.abs(c.balance), c.currency)}
+                        {formatAmount(Math.abs(c.balance), c.currency, language)}
                       </p>
                       {primaryCurrency !== c.currency && (
                         <p className="text-xs text-muted-foreground">
-                          ≈ {formatAmount(Math.abs(balanceInPrimary), primaryCurrency)}
+                          ≈ {formatAmount(Math.abs(balanceInPrimary), primaryCurrency, language)}
                         </p>
                       )}
                     </div>
@@ -225,12 +225,12 @@ export default function Dashboard() {
                     <div className="flex items-center gap-1.5">
                       <TrendingUp className="w-3.5 h-3.5 text-green-500" />
                       <span className="text-xs text-muted-foreground">{t("income")}:</span>
-                      <span className="text-xs font-semibold text-green-600">{formatAmount(c.totalIncome, c.currency)}</span>
+                      <span className="text-xs font-semibold text-green-600">{formatAmount(c.totalIncome, c.currency, language)}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <TrendingDown className="w-3.5 h-3.5 text-red-500" />
                       <span className="text-xs text-muted-foreground">{t("expense")}:</span>
-                      <span className="text-xs font-semibold text-red-600">{formatAmount(c.totalExpenses, c.currency)}</span>
+                      <span className="text-xs font-semibold text-red-600">{formatAmount(c.totalExpenses, c.currency, language)}</span>
                     </div>
                   </div>
                 </div>
@@ -326,14 +326,14 @@ export default function Dashboard() {
                   <div className="text-end shrink-0">
                     <p className={cn("text-sm font-bold", typeClass(tx.type))}>
                       {tx.type === "expense" || tx.type === "payment" ? "-" : "+"}
-                      {formatAmount(tx.amount, tx.currency)}
+                      {formatAmount(tx.amount, tx.currency, language)}
                     </p>
                     {tx.currency !== primaryCurrency && (() => {
                       const inAed = tx.currency === "AED" ? tx.amount : tx.amount * (effectiveRates[tx.currency] ?? 1);
                       const inPrimary = primaryCurrency === "AED" ? inAed : inAed / (effectiveRates[primaryCurrency] ?? 1);
                       return (
                         <p className="text-[10px] text-muted-foreground mb-0.5">
-                          ≈ {formatAmount(inPrimary, primaryCurrency)}
+                          ≈ {formatAmount(inPrimary, primaryCurrency, language)}
                         </p>
                       );
                     })()}

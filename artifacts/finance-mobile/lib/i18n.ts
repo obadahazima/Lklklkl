@@ -33,6 +33,9 @@ export const translations = {
     typeTransfer: "تحويل",
     statusPending: "معلقة",
     statusSettled: "مسددة",
+    statusActive: "نشطة",
+    statusCompleted: "مكتملة",
+    statusCancelled: "ملغاة",
     language: "اللغة",
     arabic: "العربية",
     english: "الإنجليزية",
@@ -70,6 +73,16 @@ export const translations = {
     clientCount: "زبون",
     paid: "مدفوع",
     received: "مقبوض",
+    clientNotFound: "لم يتم العثور على العميل",
+    totalIn: "الإجمالي بـ",
+    fullySettled: "مسدد بالكامل",
+    openBalances: "الأرصدة المفتوحة",
+    settledShort: "مسدد",
+    owedPrefix: "له ",
+    owesPrefix: "عليه ",
+    transactionsCount: "المعاملات",
+    noClientTransactions: "لا توجد معاملات لهذا العميل",
+    totalLabel: "الإجمالي",
 
     newTrip: "رحلة جديدة",
     addTripTitle: "إضافة رحلة",
@@ -193,6 +206,9 @@ export const translations = {
     typeTransfer: "Transfer",
     statusPending: "Pending",
     statusSettled: "Settled",
+    statusActive: "Active",
+    statusCompleted: "Completed",
+    statusCancelled: "Cancelled",
     language: "Language",
     arabic: "Arabic",
     english: "English",
@@ -230,6 +246,16 @@ export const translations = {
     clientCount: "client(s)",
     paid: "Paid",
     received: "Received",
+    clientNotFound: "Client not found",
+    totalIn: "Total in",
+    fullySettled: "Fully Settled",
+    openBalances: "Open Balances",
+    settledShort: "Settled",
+    owedPrefix: "",
+    owesPrefix: "-",
+    transactionsCount: "Transactions",
+    noClientTransactions: "No transactions for this client",
+    totalLabel: "Total",
 
     newTrip: "New Trip",
     addTripTitle: "Add Trip",
@@ -337,4 +363,11 @@ export function tr(lang: Lang, key: TranslationKey, vars?: Record<string, string
 
 export function useTr(lang: Lang) {
   return (key: TranslationKey, vars?: Record<string, string>) => tr(lang, key, vars);
+}
+
+// Always formats with Latin digits ("en-US"), regardless of app language —
+// digit script should stay consistent so numbers don't flip between Arabic-Indic
+// and Latin numerals when the user switches the app language.
+export function formatNum(n: number, opts?: Intl.NumberFormatOptions): string {
+  return n.toLocaleString("en-US", opts);
 }

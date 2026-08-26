@@ -229,8 +229,8 @@ export default function Clients() {
                       data-testid={`client-balance-${client.id}`}
                     >
                       {balance > 0
-                        ? (language === "ar" ? "له " : "") + formatAmount(balance, primaryCurrency)
-                        : (language === "ar" ? "عليه " : "-") + formatAmount(balance, primaryCurrency)}
+                        ? (language === "ar" ? "له " : "") + formatAmount(balance, primaryCurrency, language)
+                        : (language === "ar" ? "عليه " : "-") + formatAmount(balance, primaryCurrency, language)}
                     </span>
                   )}
                   <div className="flex items-center gap-2">

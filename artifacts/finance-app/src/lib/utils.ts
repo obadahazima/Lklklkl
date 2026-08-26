@@ -7,8 +7,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatAmount(amount: number, currency: string): string {
-  const sym = getCurrencySymbol(currency);
+export function formatAmount(amount: number, currency: string, lang: Lang = "ar"): string {
+  const sym = getCurrencySymbol(currency, lang);
   const formatted = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,

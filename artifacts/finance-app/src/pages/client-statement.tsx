@@ -51,7 +51,7 @@ export default function ClientStatement() {
     balances.reduce((sum, b) => sum + toPrimary(b.openBalance, b.currency, effectiveRates, primaryCurrency), 0) * 100
   ) / 100;
 
-  const primarySym = getCurrencySymbol(primaryCurrency);
+  const primarySym = getCurrencySymbol(primaryCurrency, language);
   const hasNonPrimary = balances.some((b) => b.currency !== primaryCurrency);
 
   return (
@@ -123,8 +123,8 @@ export default function ClientStatement() {
           {totalInPrimary === 0
             ? language === "ar" ? "مسدد بالكامل" : "Fully Settled"
             : totalInPrimary > 0
-            ? (language === "ar" ? "له " : "") + formatAmount(totalInPrimary, primaryCurrency)
-            : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(totalInPrimary), primaryCurrency)}
+            ? (language === "ar" ? "له " : "") + formatAmount(totalInPrimary, primaryCurrency, language)
+            : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(totalInPrimary), primaryCurrency, language)}
         </p>
 
         {balances.length > 0 && totalInPrimary !== 0 && hasNonPrimary && (
@@ -176,12 +176,12 @@ export default function ClientStatement() {
                         {b.openBalance === 0
                           ? language === "ar" ? "مسدد" : "Settled"
                           : b.openBalance > 0
-                          ? (language === "ar" ? "له " : "") + formatAmount(b.openBalance, b.currency)
-                          : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(b.openBalance), b.currency)}
+                          ? (language === "ar" ? "له " : "") + formatAmount(b.openBalance, b.currency, language)
+                          : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(b.openBalance), b.currency, language)}
                       </span>
                       {b.currency !== primaryCurrency && b.openBalance !== 0 && (
                         <span className="text-xs text-muted-foreground">
-                          ≈ {formatAmount(Math.abs(inPrimary), primaryCurrency)}
+                          ≈ {formatAmount(Math.abs(inPrimary), primaryCurrency, language)}
                         </span>
                       )}
                     </div>
@@ -190,12 +190,12 @@ export default function ClientStatement() {
                     <div className="flex items-center gap-1.5">
                       <TrendingDown className="w-3.5 h-3.5 text-red-500" />
                       <span className="text-xs text-muted-foreground">{language === "ar" ? "مدفوع:" : "Paid:"}</span>
-                      <span className="text-xs font-semibold text-red-600">{formatAmount(b.paid, b.currency)}</span>
+                      <span className="text-xs font-semibold text-red-600">{formatAmount(b.paid, b.currency, language)}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <TrendingUp className="w-3.5 h-3.5 text-green-500" />
                       <span className="text-xs text-muted-foreground">{language === "ar" ? "مقبوض:" : "Received:"}</span>
-                      <span className="text-xs font-semibold text-green-600">{formatAmount(b.received, b.currency)}</span>
+                      <span className="text-xs font-semibold text-green-600">{formatAmount(b.received, b.currency, language)}</span>
                     </div>
                   </div>
                 </div>
@@ -258,11 +258,11 @@ export default function ClientStatement() {
                     </div>
                     <div className="shrink-0 text-end">
                       <span className={cn("text-sm font-bold block", typeClass(tx.type))}>
-                        {isDebit ? "-" : "+"}{formatAmount(tx.amount, tx.currency)}
+                        {isDebit ? "-" : "+"}{formatAmount(tx.amount, tx.currency, language)}
                       </span>
                       {tx.currency !== primaryCurrency && (
                         <span className="text-[11px] text-muted-foreground">
-                          ≈ {isDebit ? "-" : "+"}{formatAmount(inPrimary, primaryCurrency)}
+                          ≈ {isDebit ? "-" : "+"}{formatAmount(inPrimary, primaryCurrency, language)}
                         </span>
                       )}
                     </div>
@@ -277,7 +277,7 @@ export default function ClientStatement() {
                 {language === "ar" ? `الإجمالي (${primaryCurrency})` : `Total (${primaryCurrency})`}
               </span>
               <span className={cn("text-sm font-bold", totalInPrimary >= 0 ? "text-green-600" : "text-red-600")}>
-                {totalInPrimary >= 0 ? "+" : ""}{formatAmount(totalInPrimary, primaryCurrency)}
+                {totalInPrimary >= 0 ? "+" : ""}{formatAmount(totalInPrimary, primaryCurrency, language)}
               </span>
             </div>
           </div>

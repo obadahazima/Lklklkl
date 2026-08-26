@@ -932,7 +932,7 @@ export default function NewTransaction() {
                   label: language === "ar" ? "المبلغ" : "Amount",
                   value:
                     parsed?.amount && parsed?.currency
-                      ? formatAmount(parsed.amount, parsed.currency)
+                      ? formatAmount(parsed.amount, parsed.currency, language)
                       : null,
                   bold: true,
                 },

@@ -111,7 +111,7 @@ export default function TripDetail() {
                 <div className={language === "ar" ? "text-left" : "text-right"}>
                   <p className="text-xs text-muted-foreground">{t("netProfit")}</p>
                   <p className={cn("text-xl font-bold", b.netProfit >= 0 ? "text-green-600" : "text-red-600")}>
-                    {b.netProfit >= 0 ? "+" : ""}{formatAmount(b.netProfit, b.currency)}
+                    {b.netProfit >= 0 ? "+" : ""}{formatAmount(b.netProfit, b.currency, language)}
                   </p>
                 </div>
               </div>
@@ -122,14 +122,14 @@ export default function TripDetail() {
                     <TrendingUp className="w-3.5 h-3.5 text-green-600" />
                     <span className="text-xs text-green-700 dark:text-green-400 font-medium">{t("revenue")}</span>
                   </div>
-                  <p className="text-base font-bold text-green-700 dark:text-green-400">{formatAmount(b.revenue, b.currency)}</p>
+                  <p className="text-base font-bold text-green-700 dark:text-green-400">{formatAmount(b.revenue, b.currency, language)}</p>
                 </div>
                 <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <TrendingDown className="w-3.5 h-3.5 text-red-600" />
                     <span className="text-xs text-red-700 dark:text-red-400 font-medium">{t("expensesLabel")}</span>
                   </div>
-                  <p className="text-base font-bold text-red-700 dark:text-red-400">{formatAmount(b.expenses, b.currency)}</p>
+                  <p className="text-base font-bold text-red-700 dark:text-red-400">{formatAmount(b.expenses, b.currency, language)}</p>
                 </div>
               </div>
 
@@ -137,7 +137,7 @@ export default function TripDetail() {
                 <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800/40 rounded-xl p-3">
                   <p className="text-xs text-purple-600 font-medium mb-1">{t("myShare")}</p>
                   <p className={cn("text-lg font-bold", b.myShare >= 0 ? "text-purple-700" : "text-red-600")}>
-                    {b.myShare >= 0 ? "+" : ""}{formatAmount(b.myShare, b.currency)}
+                    {b.myShare >= 0 ? "+" : ""}{formatAmount(b.myShare, b.currency, language)}
                   </p>
                 </div>
               )}

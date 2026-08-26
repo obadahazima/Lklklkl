@@ -170,11 +170,11 @@ export default function Transactions() {
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="text-end">
                           <span className={cn("text-base font-bold block", typeClass(tx.type))}>
-                            {tx.type === "expense" || tx.type === "payment" ? "-" : "+"}{formatAmount(tx.amount, tx.currency)}
+                            {tx.type === "expense" || tx.type === "payment" ? "-" : "+"}{formatAmount(tx.amount, tx.currency, language)}
                           </span>
                           {tx.currency !== primaryCurrency && (
                             <span className="text-[10px] text-muted-foreground">
-                              ≈ {formatAmount(toEquivalent(tx.amount, tx.currency), primaryCurrency)}
+                              ≈ {formatAmount(toEquivalent(tx.amount, tx.currency), primaryCurrency, language)}
                             </span>
                           )}
                         </div>
