@@ -115,6 +115,69 @@ function emptyForm(primaryCurrency = "AED"): FormState {
   };
 }
 
+function AddAccountPanel({
+  colors,
+  language,
+  newAccountName,
+  setNewAccountName,
+  newAccountType,
+  setNewAccountType,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  colors: any;
+  language: string;
+  newAccountName: string;
+  setNewAccountName: (v: string) => void;
+  newAccountType: string;
+  setNewAccountType: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  return (
+    <View style={{ gap: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+      <TextInput
+        autoFocus
+        value={newAccountName}
+        onChangeText={setNewAccountName}
+        placeholder={language === "ar" ? "اسم الحساب (مثلاً: فيزا الشغل)" : "Account name (e.g. Visa)"}
+        placeholderTextColor={colors.mutedForeground}
+        style={[styles.selectBtn, { borderColor: colors.border, color: colors.foreground }]}
+      />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {(["cash", "debit", "credit"] as const).map((ty) => (
+          <Pressable
+            key={ty}
+            onPress={() => setNewAccountType(ty)}
+            style={[
+              styles.selectBtn,
+              { flex: 1, justifyContent: "center", borderColor: newAccountType === ty ? colors.primary : colors.border },
+            ]}
+          >
+            <Text style={{ color: newAccountType === ty ? colors.primary : colors.foreground, fontWeight: "600" }}>
+              {ty === "cash" ? (language === "ar" ? "كاش" : "Cash") : ty === "debit" ? (language === "ar" ? "ديبت" : "Debit") : (language === "ar" ? "ائتمان" : "Credit")}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Pressable
+          onPress={onSave}
+          disabled={!newAccountName.trim() || saving}
+          style={{ flex: 1, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center", opacity: !newAccountName.trim() ? 0.5 : 1 }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>{language === "ar" ? "إضافة" : "Add"}</Text>
+        </Pressable>
+        <Pressable onPress={onCancel} style={{ paddingHorizontal: 14, justifyContent: "center" }}>
+          <Text style={{ color: colors.mutedForeground }}>{language === "ar" ? "إلغاء" : "Cancel"}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function TransactionsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -339,16 +402,24 @@ export default function TransactionsScreen() {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountType, setNewAccountType] = useState("cash");
+  const addAccountTargetRef = useRef<"accountId" | "toAccountId">("accountId");
   const createAccountMutation = useCreateAccount({
     mutation: {
       onSuccess: (newAccount) => {
         qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
-        setForm((f) => ({ ...f, accountId: String(newAccount.id) }));
+        setForm((f) => ({ ...f, [addAccountTargetRef.current]: String(newAccount.id) }));
         setShowAddAccount(false);
         setNewAccountName("");
       },
     },
   });
+
+  function openAddAccount(target: "accountId" | "toAccountId") {
+    addAccountTargetRef.current = target;
+    setNewAccountName("");
+    setNewAccountType("cash");
+    setShowAddAccount(true);
+  }
 
   const createTripMutation = useCreateTrip({
     mutation: {
@@ -1090,34 +1161,78 @@ export default function TransactionsScreen() {
                   )}
 
                   <View style={{ gap: 8 }}>
-                    <Pressable
-                      onPress={openAccountPicker}
-                      style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}
-                    >
-                      <Feather name="credit-card" size={14} color={colors.primary} />
-                      <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
-                        {form.type === "transfer" ? (language === "ar" ? "من حساب:" : "From:") : (language === "ar" ? "الحساب:" : "Account:")}
-                      </Text>
-                      <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
-                        {accounts?.find((a) => String(a.id) === form.accountId)?.name || (language === "ar" ? "اختر" : "Choose")}
-                      </Text>
-                      <Feather name="edit-2" size={12} color={colors.mutedForeground} />
-                    </Pressable>
-
-                    {form.type === "transfer" && (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
                       <Pressable
-                        onPress={openToAccountPicker}
-                        style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}
+                        onPress={openAccountPicker}
+                        style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border, flex: 1 }]}
                       >
-                        <Feather name="repeat" size={14} color={colors.primary} />
+                        <Feather name="credit-card" size={14} color={colors.primary} />
                         <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
-                          {language === "ar" ? "إلى حساب:" : "To:"}
+                          {form.type === "transfer" ? (language === "ar" ? "من حساب:" : "From:") : (language === "ar" ? "الحساب:" : "Account:")}
                         </Text>
                         <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
-                          {toAccountName || (language === "ar" ? "اختر" : "Choose")}
+                          {accountName || (language === "ar" ? "اختر" : "Choose")}
                         </Text>
                         <Feather name="edit-2" size={12} color={colors.mutedForeground} />
                       </Pressable>
+                      <Pressable
+                        onPress={() => openAddAccount("accountId")}
+                        style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border, paddingHorizontal: 10 }]}
+                      >
+                        <Feather name="plus" size={14} color={colors.primary} />
+                      </Pressable>
+                    </View>
+                    {showAddAccount && addAccountTargetRef.current === "accountId" && (
+                      <AddAccountPanel
+                        colors={colors}
+                        language={language}
+                        newAccountName={newAccountName}
+                        setNewAccountName={setNewAccountName}
+                        newAccountType={newAccountType}
+                        setNewAccountType={setNewAccountType}
+                        onSave={() => createAccountMutation.mutate({ data: { name: newAccountName.trim(), type: newAccountType, currency: form.currency } })}
+                        onCancel={() => setShowAddAccount(false)}
+                        saving={createAccountMutation.isPending}
+                      />
+                    )}
+
+                    {form.type === "transfer" && (
+                      <>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <Pressable
+                            onPress={openToAccountPicker}
+                            style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border, flex: 1 }]}
+                          >
+                            <Feather name="repeat" size={14} color={colors.primary} />
+                            <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
+                              {language === "ar" ? "إلى حساب:" : "To:"}
+                            </Text>
+                            <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
+                              {toAccountName || (language === "ar" ? "اختر" : "Choose")}
+                            </Text>
+                            <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => openAddAccount("toAccountId")}
+                            style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border, paddingHorizontal: 10 }]}
+                          >
+                            <Feather name="plus" size={14} color={colors.primary} />
+                          </Pressable>
+                        </View>
+                        {showAddAccount && addAccountTargetRef.current === "toAccountId" && (
+                          <AddAccountPanel
+                            colors={colors}
+                            language={language}
+                            newAccountName={newAccountName}
+                            setNewAccountName={setNewAccountName}
+                            newAccountType={newAccountType}
+                            setNewAccountType={setNewAccountType}
+                            onSave={() => createAccountMutation.mutate({ data: { name: newAccountName.trim(), type: newAccountType, currency: form.currency } })}
+                            onCancel={() => setShowAddAccount(false)}
+                            saving={createAccountMutation.isPending}
+                          />
+                        )}
+                      </>
                     )}
                   </View>
 
@@ -1401,60 +1516,32 @@ export default function TransactionsScreen() {
                     ? (language === "ar" ? "من حساب" : "From account")
                     : (language === "ar" ? "الحساب/البطاقة" : "Account/Card")} *
                 </Text>
-                {!showAddAccount ? (
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Pressable onPress={openAccountPicker} style={[styles.selectBtn, { borderColor: colors.border, flex: 1 }]}>
-                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-                      <Text style={[styles.selectText, { color: accountName ? colors.foreground : colors.mutedForeground }]}>
-                        {accountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setShowAddAccount(true)}
-                      style={[styles.selectBtn, { borderColor: colors.border, paddingHorizontal: 14 }]}
-                    >
-                      <Text style={{ color: colors.primary, fontWeight: "600" }}>+ {language === "ar" ? "جديد" : "New"}</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={{ gap: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-                    <TextInput
-                      autoFocus
-                      value={newAccountName}
-                      onChangeText={setNewAccountName}
-                      placeholder={language === "ar" ? "اسم الحساب (مثلاً: فيزا الشغل)" : "Account name (e.g. Visa)"}
-                      placeholderTextColor={colors.mutedForeground}
-                      style={[styles.selectBtn, { borderColor: colors.border, color: colors.foreground }]}
-                    />
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      {(["cash", "debit", "credit"] as const).map((ty) => (
-                        <Pressable
-                          key={ty}
-                          onPress={() => setNewAccountType(ty)}
-                          style={[
-                            styles.selectBtn,
-                            { flex: 1, justifyContent: "center", borderColor: newAccountType === ty ? colors.primary : colors.border },
-                          ]}
-                        >
-                          <Text style={{ color: newAccountType === ty ? colors.primary : colors.foreground, fontWeight: "600" }}>
-                            {ty === "cash" ? (language === "ar" ? "كاش" : "Cash") : ty === "debit" ? (language === "ar" ? "ديبت" : "Debit") : (language === "ar" ? "ائتمان" : "Credit")}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      <Pressable
-                        onPress={() => createAccountMutation.mutate({ data: { name: newAccountName.trim(), type: newAccountType, currency: form.currency } })}
-                        disabled={!newAccountName.trim() || createAccountMutation.isPending}
-                        style={{ flex: 1, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center", opacity: !newAccountName.trim() ? 0.5 : 1 }}
-                      >
-                        <Text style={{ color: "#fff", fontWeight: "700" }}>{language === "ar" ? "إضافة" : "Add"}</Text>
-                      </Pressable>
-                      <Pressable onPress={() => setShowAddAccount(false)} style={{ paddingHorizontal: 14, justifyContent: "center" }}>
-                        <Text style={{ color: colors.mutedForeground }}>{language === "ar" ? "إلغاء" : "Cancel"}</Text>
-                      </Pressable>
-                    </View>
-                  </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable onPress={openAccountPicker} style={[styles.selectBtn, { borderColor: colors.border, flex: 1 }]}>
+                    <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                    <Text style={[styles.selectText, { color: accountName ? colors.foreground : colors.mutedForeground }]}>
+                      {accountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => openAddAccount("accountId")}
+                    style={[styles.selectBtn, { borderColor: colors.border, paddingHorizontal: 14 }]}
+                  >
+                    <Text style={{ color: colors.primary, fontWeight: "600" }}>+ {language === "ar" ? "جديد" : "New"}</Text>
+                  </Pressable>
+                </View>
+                {showAddAccount && addAccountTargetRef.current === "accountId" && (
+                  <AddAccountPanel
+                    colors={colors}
+                    language={language}
+                    newAccountName={newAccountName}
+                    setNewAccountName={setNewAccountName}
+                    newAccountType={newAccountType}
+                    setNewAccountType={setNewAccountType}
+                    onSave={() => createAccountMutation.mutate({ data: { name: newAccountName.trim(), type: newAccountType, currency: form.currency } })}
+                    onCancel={() => setShowAddAccount(false)}
+                    saving={createAccountMutation.isPending}
+                  />
                 )}
 
                 {form.type === "transfer" && (
@@ -1462,12 +1549,33 @@ export default function TransactionsScreen() {
                     <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
                       {language === "ar" ? "إلى حساب" : "To account"} *
                     </Text>
-                    <Pressable onPress={openToAccountPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
-                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-                      <Text style={[styles.selectText, { color: toAccountName ? colors.foreground : colors.mutedForeground }]}>
-                        {toAccountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
-                      </Text>
-                    </Pressable>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Pressable onPress={openToAccountPicker} style={[styles.selectBtn, { borderColor: colors.border, flex: 1 }]}>
+                        <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                        <Text style={[styles.selectText, { color: toAccountName ? colors.foreground : colors.mutedForeground }]}>
+                          {toAccountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => openAddAccount("toAccountId")}
+                        style={[styles.selectBtn, { borderColor: colors.border, paddingHorizontal: 14 }]}
+                      >
+                        <Text style={{ color: colors.primary, fontWeight: "600" }}>+ {language === "ar" ? "جديد" : "New"}</Text>
+                      </Pressable>
+                    </View>
+                    {showAddAccount && addAccountTargetRef.current === "toAccountId" && (
+                      <AddAccountPanel
+                        colors={colors}
+                        language={language}
+                        newAccountName={newAccountName}
+                        setNewAccountName={setNewAccountName}
+                        newAccountType={newAccountType}
+                        setNewAccountType={setNewAccountType}
+                        onSave={() => createAccountMutation.mutate({ data: { name: newAccountName.trim(), type: newAccountType, currency: form.currency } })}
+                        onCancel={() => setShowAddAccount(false)}
+                        saving={createAccountMutation.isPending}
+                      />
+                    )}
                   </>
                 )}
 
