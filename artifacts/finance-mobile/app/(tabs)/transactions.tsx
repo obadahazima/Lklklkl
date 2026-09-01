@@ -165,6 +165,7 @@ export default function TransactionsScreen() {
   const [voiceSheetVisible, setVoiceSheetVisible] = useState(false);
   const [voiceSheetStep, setVoiceSheetStep] = useState<"recording" | "processing" | "result">("recording");
   const voiceSheetFlowRef = useRef(false);
+  const [voiceEditField, setVoiceEditField] = useState<null | "type" | "amount" | "date" | "description">(null);
 
   const { data: transactions, isLoading, refetch } = useListTransactions({});
   const { data: clients } = useListClients();
@@ -387,6 +388,7 @@ export default function TransactionsScreen() {
     parsedDateDetectedRef.current = !!data.date;
     parsedRef.current = data;
     resolveRef.current = {};
+    setVoiceEditField(null);
     advanceResolutionChain();
   }
 
@@ -485,6 +487,7 @@ export default function TransactionsScreen() {
 
   async function openVoiceSheet() {
     resetForm();
+    setVoiceEditField(null);
     voiceSheetFlowRef.current = true;
     const ok = await voice.startRecording();
     if (!ok) {
@@ -515,6 +518,7 @@ export default function TransactionsScreen() {
   function closeVoiceSheet() {
     voiceSheetFlowRef.current = false;
     setVoiceSheetVisible(false);
+    setVoiceEditField(null);
     resetForm();
     if (voice.state === "recording") {
       voice.cancelRecording();
@@ -1005,70 +1009,211 @@ export default function TransactionsScreen() {
                   )}
 
                   <View style={styles.resultGrid}>
-                    <View style={[styles.resultCard, { backgroundColor: typeBg(form.type, settings.theme === "dark"), borderColor: colors.border }]}>
-                      <Text style={[styles.resultCardLabel, { color: colors.mutedForeground }]}>
-                        {language === "ar" ? "النوع" : "Type"}
-                      </Text>
+                    <Pressable
+                      style={[styles.resultCard, { backgroundColor: typeBg(form.type, settings.theme === "dark"), borderColor: colors.border }]}
+                      onPress={() => setVoiceEditField((f) => (f === "type" ? null : "type"))}
+                    >
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text style={[styles.resultCardLabel, { color: colors.mutedForeground }]}>
+                          {language === "ar" ? "النوع" : "Type"}
+                        </Text>
+                        <Feather name="edit-2" size={11} color={colors.mutedForeground} />
+                      </View>
                       <Text style={[styles.resultCardValue, { color: typeColor(form.type) }]}>
                         {form.type === "income" ? t("typeIncome")
                           : form.type === "expense" ? t("typeExpense")
                           : form.type === "payment" ? t("typePayment")
+                          : form.type === "transfer" ? t("typeTransfer")
                           : t("typeReceipt")}
                       </Text>
-                    </View>
-                    <View style={[styles.resultCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                      <Text style={[styles.resultCardLabel, { color: colors.mutedForeground }]}>
-                        {language === "ar" ? "المبلغ" : "Amount"}
-                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.resultCard, { backgroundColor: colors.background, borderColor: colors.border }]}
+                      onPress={() => setVoiceEditField((f) => (f === "amount" ? null : "amount"))}
+                    >
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text style={[styles.resultCardLabel, { color: colors.mutedForeground }]}>
+                          {language === "ar" ? "المبلغ" : "Amount"}
+                        </Text>
+                        <Feather name="edit-2" size={11} color={colors.mutedForeground} />
+                      </View>
                       <Text style={[styles.resultCardValue, { color: colors.foreground }]}>
                         {form.amount || "—"} {form.currency}
                       </Text>
-                    </View>
+                    </Pressable>
                   </View>
 
-                  {(clientName || tripName) && (
+                  {voiceEditField === "type" && (
+                    <View style={styles.segRow}>
+                      {TX_TYPES.map((ty) => (
+                        <Pressable
+                          key={ty}
+                          onPress={() => {
+                            setForm((f) => ({ ...f, type: ty }));
+                            setVoiceEditField(null);
+                          }}
+                          style={[
+                            styles.segBtn,
+                            { borderColor: colors.border },
+                            form.type === ty && { backgroundColor: colors.primary, borderColor: colors.primary },
+                          ]}
+                        >
+                          <Text style={[styles.segText, form.type === ty && { color: "#fff" }]}>
+                            {ty === "income" ? t("typeIncome")
+                              : ty === "expense" ? t("typeExpense")
+                              : ty === "payment" ? t("typePayment")
+                              : ty === "receipt" ? t("typeReceipt")
+                              : t("typeTransfer")}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+
+                  {voiceEditField === "amount" && (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TextInput
+                        style={[styles.input, { borderColor: colors.border, color: colors.foreground, flex: 1 }]}
+                        value={form.amount}
+                        onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
+                        keyboardType="decimal-pad"
+                        placeholder="0.00"
+                        placeholderTextColor={colors.mutedForeground}
+                        textAlign="right"
+                        autoFocus
+                      />
+                      <Pressable onPress={openCurrencyPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
+                        <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                        <Text style={[styles.selectText, { color: colors.foreground }]}>{form.currency}</Text>
+                      </Pressable>
+                    </View>
+                  )}
+
+                  <View style={{ gap: 8 }}>
+                    <Pressable
+                      onPress={openAccountPicker}
+                      style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}
+                    >
+                      <Feather name="credit-card" size={14} color={colors.primary} />
+                      <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
+                        {form.type === "transfer" ? (language === "ar" ? "من حساب:" : "From:") : (language === "ar" ? "الحساب:" : "Account:")}
+                      </Text>
+                      <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
+                        {accounts?.find((a) => String(a.id) === form.accountId)?.name || (language === "ar" ? "اختر" : "Choose")}
+                      </Text>
+                      <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+                    </Pressable>
+
+                    {form.type === "transfer" && (
+                      <Pressable
+                        onPress={openToAccountPicker}
+                        style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}
+                      >
+                        <Feather name="repeat" size={14} color={colors.primary} />
+                        <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
+                          {language === "ar" ? "إلى حساب:" : "To:"}
+                        </Text>
+                        <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
+                          {toAccountName || (language === "ar" ? "اختر" : "Choose")}
+                        </Text>
+                        <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+                      </Pressable>
+                    )}
+                  </View>
+
+                  {form.type !== "transfer" && (showClients || showTrips) && (
                     <View style={{ gap: 8 }}>
-                      {!!clientName && (
-                        <View style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      {showClients && (
+                        <Pressable
+                          onPress={openClientPicker}
+                          style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}
+                        >
                           <Feather name="user" size={14} color={colors.primary} />
                           <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
                             {language === "ar" ? "زبون:" : "Client:"}
                           </Text>
-                          <Text style={[styles.entityName, { color: colors.foreground }]}>{clientName}</Text>
-                        </View>
+                          <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
+                            {clientName || (language === "ar" ? "بدون" : "None")}
+                          </Text>
+                          <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+                        </Pressable>
                       )}
-                      {!!tripName && (
-                        <View style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      {showTrips && (
+                        <Pressable
+                          onPress={openTripPicker}
+                          style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}
+                        >
                           <Feather name="map-pin" size={14} color={colors.primary} />
                           <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
                             {language === "ar" ? "رحلة:" : "Trip:"}
                           </Text>
-                          <Text style={[styles.entityName, { color: colors.foreground }]}>{tripName}</Text>
-                        </View>
+                          <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
+                            {tripName || (language === "ar" ? "بدون" : "None")}
+                          </Text>
+                          <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+                        </Pressable>
                       )}
                     </View>
                   )}
 
-                  {!!form.description && (
-                    <View style={[styles.transcribedBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                      <Text style={[{ color: colors.mutedForeground, fontSize: 11, marginBottom: 2, textAlign: "right" }]}>
+                  <Pressable
+                    style={[styles.transcribedBox, { backgroundColor: colors.background, borderColor: colors.border }]}
+                    onPress={() => setVoiceEditField((f) => (f === "description" ? null : "description"))}
+                  >
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={[{ color: colors.mutedForeground, fontSize: 11 }]}>
                         {language === "ar" ? "الوصف" : "Description"}
                       </Text>
-                      <Text style={[{ color: colors.foreground, textAlign: "right", fontSize: 13 }]}>{form.description}</Text>
+                      <Feather name="edit-2" size={11} color={colors.mutedForeground} />
                     </View>
-                  )}
+                    {voiceEditField === "description" ? (
+                      <TextInput
+                        style={[styles.input, { borderColor: colors.border, color: colors.foreground, marginTop: 4 }]}
+                        value={form.description}
+                        onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
+                        placeholder={language === "ar" ? "وصف اختياري" : "Optional description"}
+                        placeholderTextColor={colors.mutedForeground}
+                        textAlign="right"
+                        autoFocus
+                        onBlur={() => setVoiceEditField(null)}
+                      />
+                    ) : (
+                      <Text style={[{ color: colors.foreground, textAlign: "right", fontSize: 13, marginTop: 2 }]}>
+                        {form.description || (language === "ar" ? "بدون وصف" : "No description")}
+                      </Text>
+                    )}
+                  </Pressable>
 
-                  <View style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Pressable
+                    style={[styles.entityRow, { backgroundColor: colors.background, borderColor: colors.border }]}
+                    onPress={() => setVoiceEditField((f) => (f === "date" ? null : "date"))}
+                  >
                     <Feather name="calendar" size={14} color={colors.primary} />
                     <Text style={[styles.entityLabel, { color: colors.mutedForeground }]}>
                       {language === "ar" ? "التاريخ:" : "Date:"}
                     </Text>
-                    <Text style={[styles.entityName, { color: colors.foreground }]}>
-                      {parsedDateDetectedRef.current
-                        ? form.date
-                        : `${form.date} (${language === "ar" ? "اليوم، لم يُذكر تاريخ" : "today, none mentioned"})`}
-                    </Text>
-                  </View>
+                    {voiceEditField === "date" ? (
+                      <TextInput
+                        style={[styles.input, { borderColor: colors.border, color: colors.foreground, flex: 1, marginHorizontal: 6, paddingVertical: 4 }]}
+                        value={form.date}
+                        onChangeText={(v) => {
+                          setForm((f) => ({ ...f, date: v }));
+                          parsedDateDetectedRef.current = true;
+                        }}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={colors.mutedForeground}
+                        autoFocus
+                        onBlur={() => setVoiceEditField(null)}
+                      />
+                    ) : (
+                      <Text style={[styles.entityName, { color: colors.foreground, flex: 1 }]}>
+                        {parsedDateDetectedRef.current
+                          ? form.date
+                          : `${form.date} (${language === "ar" ? "اليوم، لم يُذكر تاريخ" : "today, none mentioned"})`}
+                      </Text>
+                    )}
+                    <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+                  </Pressable>
 
                   <Pressable
                     style={[
@@ -1107,6 +1252,7 @@ export default function TransactionsScreen() {
                       onPress={async () => {
                         setVoiceSheetVisible(false);
                         resetForm();
+                        setVoiceEditField(null);
                         voiceSheetFlowRef.current = true;
                         const ok = await voice.startRecording();
                         if (!ok) {
