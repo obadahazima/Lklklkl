@@ -29,6 +29,26 @@ export interface VoiceParseResult {
      */
   tripId?: number | null;
   /**
+     * Matched or mentioned account/card name. For type=transfer, this is the source account.
+     * @nullable
+     */
+  accountName?: string | null;
+  /**
+     * Matched existing account id, null if new/none/not mentioned
+     * @nullable
+     */
+  accountId?: number | null;
+  /**
+     * Destination account name — only set when type=transfer
+     * @nullable
+     */
+  toAccountName?: string | null;
+  /**
+     * Matched existing destination account id — only set when type=transfer
+     * @nullable
+     */
+  toAccountId?: number | null;
+  /**
      * Language detected in the input (ar | en | mixed)
      * @nullable
      */

@@ -48,7 +48,7 @@ import {
 import { useTr } from "@/lib/i18n";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 
-const TX_TYPES = ["income", "expense", "payment", "receipt"] as const;
+const TX_TYPES = ["income", "expense", "payment", "receipt", "transfer"] as const;
 type TxType = (typeof TX_TYPES)[number];
 
 function isOutgoing(t: string) {
@@ -56,10 +56,12 @@ function isOutgoing(t: string) {
 }
 
 function typeColor(t: string) {
+  if (t === "transfer") return "#7c3aed";
   return isOutgoing(t) ? "#ef4444" : "#16a34a";
 }
 
 function typeBg(t: string, isDark?: boolean) {
+  if (t === "transfer") return isDark ? "#2e1a4d" : "#ede9fe";
   if (isOutgoing(t)) return isDark ? "#3f1212" : "#fee2e2";
   return isDark ? "#0f2d1a" : "#dcfce7";
 }
@@ -92,6 +94,7 @@ type FormState = {
   clientId: string;
   tripId: string;
   accountId: string;
+  toAccountId: string;
   description: string;
   status: "pending" | "settled";
   date: string;
@@ -105,6 +108,7 @@ function emptyForm(primaryCurrency = "AED"): FormState {
     clientId: "",
     tripId: "",
     accountId: "",
+    toAccountId: "",
     description: "",
     status: "pending",
     date: new Date().toISOString().slice(0, 10),
@@ -196,6 +200,7 @@ export default function TransactionsScreen() {
       clientId: item.clientId != null ? String(item.clientId) : "",
       tripId: item.tripId != null ? String(item.tripId) : "",
       accountId: item.accountId != null ? String(item.accountId) : "",
+      toAccountId: item.toAccountId != null ? String(item.toAccountId) : "",
       description: item.description ?? "",
       status: item.status,
       date: String(item.date).slice(0, 10),
@@ -209,6 +214,16 @@ export default function TransactionsScreen() {
       Alert.alert(t("saveError"), t("saveErrorDesc"));
       return;
     }
+    if (editForm.type === "transfer") {
+      if (!editForm.toAccountId) {
+        Alert.alert(t("saveError"), language === "ar" ? "اختر الحساب الوجهة" : "Choose the destination account");
+        return;
+      }
+      if (editForm.toAccountId === editForm.accountId) {
+        Alert.alert(t("saveError"), language === "ar" ? "الحساب المصدر والوجهة لازم يختلفوا" : "Source and destination accounts must differ");
+        return;
+      }
+    }
     try {
       await updateTx({
         id: editingTx.id,
@@ -216,9 +231,10 @@ export default function TransactionsScreen() {
           type: editForm.type,
           amount: amt,
           currency: editForm.currency,
-          clientId: editForm.clientId ? parseInt(editForm.clientId, 10) : null,
-          tripId: editForm.tripId ? parseInt(editForm.tripId, 10) : null,
+          clientId: editForm.type === "transfer" ? null : (editForm.clientId ? parseInt(editForm.clientId, 10) : null),
+          tripId: editForm.type === "transfer" ? null : (editForm.tripId ? parseInt(editForm.tripId, 10) : null),
           accountId: editForm.accountId ? parseInt(editForm.accountId, 10) : null,
+          toAccountId: editForm.type === "transfer" ? parseInt(editForm.toAccountId, 10) : null,
           description: editForm.description || null,
           status: editForm.status,
           date: editForm.date,
@@ -275,9 +291,20 @@ export default function TransactionsScreen() {
       onSelect: (v) => setEditForm((f) => ({ ...f, accountId: v })),
     });
 
+  const openEditToAccountPicker = () =>
+    setEditPicker({
+      title: language === "ar" ? "إلى حساب" : "To account",
+      selected: editForm.toAccountId,
+      options: (accounts ?? [])
+        .filter((a) => String(a.id) !== editForm.accountId)
+        .map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      onSelect: (v) => setEditForm((f) => ({ ...f, toAccountId: v })),
+    });
+
   const editClientName = clients?.find((c) => String(c.id) === editForm.clientId)?.name;
   const editTripName = trips?.find((tp) => String(tp.id) === editForm.tripId)?.name;
   const editAccountName = accounts?.find((a) => String(a.id) === editForm.accountId)?.name;
+  const editToAccountName = accounts?.find((a) => String(a.id) === editForm.toAccountId)?.name;
 
   const parseMutation = useParseVoiceInput({
     mutation: {
@@ -531,14 +558,31 @@ export default function TransactionsScreen() {
       );
       return;
     }
+    if (form.type === "transfer") {
+      if (!form.toAccountId) {
+        Alert.alert(
+          language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
+          language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
+        );
+        return;
+      }
+      if (form.toAccountId === form.accountId) {
+        Alert.alert(
+          language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
+          language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
+        );
+        return;
+      }
+    }
     try {
       const payload: TransactionInput = {
         type: form.type,
         amount: amt,
         currency: form.currency,
-        clientId: form.clientId ? parseInt(form.clientId, 10) : null,
-        tripId: form.tripId ? parseInt(form.tripId, 10) : null,
+        clientId: form.type === "transfer" ? null : (form.clientId ? parseInt(form.clientId, 10) : null),
+        tripId: form.type === "transfer" ? null : (form.tripId ? parseInt(form.tripId, 10) : null),
         accountId: parseInt(form.accountId, 10),
+        toAccountId: form.type === "transfer" ? parseInt(form.toAccountId, 10) : null,
         description: form.description || null,
         status: form.status,
         date: form.date,
@@ -609,6 +653,18 @@ export default function TransactionsScreen() {
       options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
       onSelect: (v) => setForm((f) => ({ ...f, accountId: v })),
     });
+
+  const openToAccountPicker = () =>
+    setPicker({
+      title: language === "ar" ? "إلى حساب" : "To account",
+      selected: form.toAccountId,
+      options: (accounts ?? [])
+        .filter((a) => String(a.id) !== form.accountId)
+        .map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      onSelect: (v) => setForm((f) => ({ ...f, toAccountId: v })),
+    });
+
+  const toAccountName = accounts?.find((a) => String(a.id) === form.toAccountId)?.name;
 
   const clientName = clients?.find((c) => String(c.id) === form.clientId)?.name;
   const tripName = trips?.find((tp) => String(tp.id) === form.tripId)?.name;
@@ -832,7 +888,7 @@ export default function TransactionsScreen() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={[styles.txAmount, { color: typeColor(item.type) }]}>
-                  {isOutgoing(item.type) ? "-" : "+"}
+                  {item.type === "transfer" ? "" : isOutgoing(item.type) ? "-" : "+"}
                   {parseFloat(item.amount).toLocaleString()}
                 </Text>
                 <Text style={[styles.txCurrency, { color: colors.mutedForeground }]}>{item.currency}</Text>
@@ -1164,7 +1220,9 @@ export default function TransactionsScreen() {
                           ? t("typeExpense")
                           : ty === "payment"
                           ? t("typePayment")
-                          : t("typeReceipt")}
+                          : ty === "receipt"
+                          ? t("typeReceipt")
+                          : t("typeTransfer")}
                       </Text>
                     </Pressable>
                   ))}
@@ -1193,7 +1251,9 @@ export default function TransactionsScreen() {
                 </Pressable>
 
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                  {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} *
+                  {form.type === "transfer"
+                    ? (language === "ar" ? "من حساب" : "From account")
+                    : (language === "ar" ? "الحساب/البطاقة" : "Account/Card")} *
                 </Text>
                 {!showAddAccount ? (
                   <View style={{ flexDirection: "row", gap: 8 }}>
@@ -1251,7 +1311,21 @@ export default function TransactionsScreen() {
                   </View>
                 )}
 
-                {showClients && (
+                {form.type === "transfer" && (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                      {language === "ar" ? "إلى حساب" : "To account"} *
+                    </Text>
+                    <Pressable onPress={openToAccountPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
+                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                      <Text style={[styles.selectText, { color: toAccountName ? colors.foreground : colors.mutedForeground }]}>
+                        {toAccountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+
+                {form.type !== "transfer" && showClients && (
                   <>
                     <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("clientLabel")}</Text>
                     <Pressable onPress={openClientPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
@@ -1263,7 +1337,7 @@ export default function TransactionsScreen() {
                   </>
                 )}
 
-                {showTrips && (
+                {form.type !== "transfer" && showTrips && (
                   <>
                     <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("tripLabel")}</Text>
                     <Pressable onPress={openTripPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
@@ -1366,7 +1440,9 @@ export default function TransactionsScreen() {
                           ? t("typeExpense")
                           : ty === "payment"
                           ? t("typePayment")
-                          : t("typeReceipt")}
+                          : ty === "receipt"
+                          ? t("typeReceipt")
+                          : t("typeTransfer")}
                       </Text>
                     </Pressable>
                   ))}
@@ -1395,7 +1471,9 @@ export default function TransactionsScreen() {
                 </Pressable>
 
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                  {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} *
+                  {editForm.type === "transfer"
+                    ? (language === "ar" ? "من حساب" : "From account")
+                    : (language === "ar" ? "الحساب/البطاقة" : "Account/Card")} *
                 </Text>
                 <Pressable onPress={openEditAccountPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
                   <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
@@ -1404,7 +1482,21 @@ export default function TransactionsScreen() {
                   </Text>
                 </Pressable>
 
-                {showClients && (
+                {editForm.type === "transfer" && (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                      {language === "ar" ? "إلى حساب" : "To account"} *
+                    </Text>
+                    <Pressable onPress={openEditToAccountPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
+                      <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                      <Text style={[styles.selectText, { color: editToAccountName ? colors.foreground : colors.mutedForeground }]}>
+                        {editToAccountName ?? (language === "ar" ? "اختر حساب..." : "Select account...")}
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+
+                {editForm.type !== "transfer" && showClients && (
                   <>
                     <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("clientLabel")}</Text>
                     <Pressable onPress={openEditClientPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>
@@ -1416,7 +1508,7 @@ export default function TransactionsScreen() {
                   </>
                 )}
 
-                {showTrips && (
+                {editForm.type !== "transfer" && showTrips && (
                   <>
                     <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("tripLabel")}</Text>
                     <Pressable onPress={openEditTripPicker} style={[styles.selectBtn, { borderColor: colors.border }]}>

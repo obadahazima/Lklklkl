@@ -9,7 +9,7 @@
 export interface Transaction {
   id: number;
   date: string;
-  /** income | expense | payment | receipt */
+  /** income | expense | payment | receipt | transfer */
   type: string;
   amount: number;
   /** AED | USD | SYP */
@@ -26,6 +26,13 @@ export interface Transaction {
   accountId?: number | null;
   /** @nullable */
   accountName?: string | null;
+  /**
+     * Destination account for type=transfer only
+     * @nullable
+     */
+  toAccountId?: number | null;
+  /** @nullable */
+  toAccountName?: string | null;
   /** @nullable */
   description?: string | null;
   /** pending | settled */

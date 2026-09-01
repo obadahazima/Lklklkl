@@ -15,8 +15,13 @@ export interface TransactionInput {
   clientId?: number | null;
   /** @nullable */
   tripId?: number | null;
-  /** Required — which cash/debit/credit account this transaction moved through */
+  /** Required — which cash/debit/credit account this transaction moved through. For type=transfer, this is the source account. */
   accountId: number;
+  /**
+     * Required when type=transfer — the destination account. Must differ from accountId.
+     * @nullable
+     */
+  toAccountId?: number | null;
   /** @nullable */
   description?: string | null;
   status: string;

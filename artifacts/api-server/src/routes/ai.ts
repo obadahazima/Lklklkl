@@ -241,6 +241,7 @@ type TxRow = {
   clientId: number | null;
   tripId: number | null;
   accountId: number | null;
+  toAccountId: number | null;
   description: string | null;
   status: string;
 };
@@ -293,12 +294,15 @@ function buildFinancialContext(
   });
 
   const accountSummaries = accounts.map((account) => {
-    const aTxs = txs.filter((t) => t.accountId === account.id);
-    const income   = aTxs.filter((t) => t.type === "income"  || t.type === "receipt").reduce((s, t) => s + Number(t.amount), 0);
-    const spending = aTxs.filter((t) => t.type === "expense" || t.type === "payment").reduce((s, t) => s + Number(t.amount), 0);
-    const currentBalance = Number(account.initialBalance) + income - spending;
+    const outgoing = txs.filter((t) => t.accountId === account.id);
+    const incomingTransfers = txs.filter((t) => t.toAccountId === account.id && t.type === "transfer");
+    const income   = outgoing.filter((t) => t.type === "income"  || t.type === "receipt").reduce((s, t) => s + Number(t.amount), 0);
+    const spending = outgoing.filter((t) => t.type === "expense" || t.type === "payment").reduce((s, t) => s + Number(t.amount), 0);
+    const transferredOut = outgoing.filter((t) => t.type === "transfer").reduce((s, t) => s + Number(t.amount), 0);
+    const transferredIn = incomingTransfers.reduce((s, t) => s + Number(t.amount), 0);
+    const currentBalance = Number(account.initialBalance) + income - spending - transferredOut + transferredIn;
     const typeAr = account.type === "cash" ? "كاش" : account.type === "credit" ? "بطاقة ائتمان" : "بطاقة دفع";
-    return { id: account.id, name: account.name, typeAr, currency: account.currency, currentBalance, txCount: aTxs.length };
+    return { id: account.id, name: account.name, typeAr, currency: account.currency, currentBalance, txCount: outgoing.length + incomingTransfers.length };
   });
   const overallAccountsBalance = accounts.length > 0
     ? [...new Set(accounts.map((a) => a.currency))].map((cur) => {
@@ -363,11 +367,18 @@ function buildFinancialContext(
   const sorted = [...txs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 150);
   lines.push(`=== سجل المعاملات (${sorted.length} من ${txs.length}) ===`);
   sorted.forEach((t) => {
-    const typeAr = t.type === "income" ? "دخل" : t.type === "expense" ? "مصروف" : t.type === "payment" ? "دفعة" : "قبض";
+    const typeAr = t.type === "income" ? "دخل" : t.type === "expense" ? "مصروف" : t.type === "payment" ? "دفعة"
+      : t.type === "receipt" ? "قبض" : t.type === "transfer" ? "تحويل" : t.type;
     const parts: string[] = [`#${t.id}`, `[${t.date}]`, typeAr, `${Number(t.amount).toFixed(2)} ${t.currency}`];
     if (t.clientId && clientMap.has(t.clientId)) parts.push(`زبون:${clientMap.get(t.clientId)}`);
     if (t.tripId   && tripMap.has(t.tripId))     parts.push(`رحلة:${tripMap.get(t.tripId)}`);
-    if (t.accountId && accountMap.has(t.accountId)) parts.push(`حساب:${accountMap.get(t.accountId)}`);
+    if (t.type === "transfer") {
+      const from = t.accountId && accountMap.has(t.accountId) ? accountMap.get(t.accountId) : "؟";
+      const to = t.toAccountId && accountMap.has(t.toAccountId) ? accountMap.get(t.toAccountId) : "؟";
+      parts.push(`من:${from} → إلى:${to}`);
+    } else if (t.accountId && accountMap.has(t.accountId)) {
+      parts.push(`حساب:${accountMap.get(t.accountId)}`);
+    }
     if (t.description) parts.push(`"${t.description}"`);
     parts.push(t.status === "pending" ? "[معلّق]" : "[مسدّد]");
     lines.push(parts.join(" "));
@@ -397,13 +408,15 @@ router.post("/ai/parse-voice", requireAuth, async (req, res): Promise<void> => {
     : activeCurrencies[0];
 
   try {
-    const [clients, trips] = await Promise.all([
+    const [clients, trips, accounts] = await Promise.all([
       db.select().from(clientsTable).where(eq(clientsTable.userId, req.userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, req.userId)),
+      db.select().from(accountsTable).where(eq(accountsTable.userId, req.userId)),
     ]);
 
     const clientList = (clients as ClientRow[]).map((c) => `  - id:${c.id} | ${c.name}`).join("\n") || "  (لا يوجد)";
     const tripList = (trips as TripRow[]).map((t) => `  - id:${t.id} | ${t.name}`).join("\n") || "  (لا يوجد)";
+    const accountList = (accounts as AccountRow[]).map((a) => `  - id:${a.id} | ${a.name} (${a.currency})`).join("\n") || "  (لا يوجد)";
 
     // Build dynamic currency hint lines
     const currencyHints = buildCurrencyHints(activeCurrencies);
@@ -428,9 +441,12 @@ ${clientList}
 === الرحلات الموجودة ===
 ${tripList}
 
+=== الحسابات/البطاقات الموجودة ===
+${accountList}
+
 --- قواعد مطابقة الأسماء ---
 - طابق أي اسم مذكور مع القوائم أعلاه حتى لو اختلفت اللغة أو الكتابة (مثلاً "رشا" = "Rasha"، "دبي" = "Dubai"). اعتمد على النطق لا المطابقة الحرفية.
-- عند وجود تطابق: أعِد المعرّف الرقمي في clientId/tripId والاسم المخزَّن بالضبط في clientName/tripName.
+- عند وجود تطابق: أعِد المعرّف الرقمي في clientId/tripId/accountId والاسم المخزَّن بالضبط في clientName/tripName/accountName.
 - عند عدم وجود تطابق: المعرّف = null والاسم كما نُطق.
 - إذا لم يُذكر اسم: الاسم والمعرّف = null.
 
@@ -452,12 +468,20 @@ income (دخل/إيراد عام — لا يوجد دافع شخصي محدد):
 receipt (قبض من شخص محدد — يوجد دافع شخصي):
   استلام مبلغ من شخص/زبون بالاسم. مثل: "قبضت ٣٠٠ من سامي"، "استلمت من أحمد".
 
+transfer (تحويل بين حسابين/بطاقتين يملكهما نفس المستخدم — لا يوجد شخص خارجي إطلاقاً):
+  يُستخدم فقط عندما تنتقل المصاري بين حساب وحساب تاني تبع نفس المستخدم (بنك، كاش، بطاقة)، بدون أي طرف خارجي.
+  أمثلة: "سحبت 500 من بنك الإمارات كاش"، "سحبت من البنك للكاش"، "حولت 1000 من حساب البنك لحساب الفيزا"، "نقلت من الكاش للبنك".
+  العلامة الفارقة: فيه حسابان تبع نفس الشخص (مصدر ووجهة)، ومافي طرف ثالث (زبون) ياخد أو يعطي المصاري.
+  عند type=transfer: accountName/accountId = الحساب المصدر (يلي طلعت منه المصاري)، toAccountName/toAccountId = الحساب الوجهة (يلي دخلت فيه). لازم تحدد الاثنين إذا أمكن من الجملة ومن قائمة الحسابات أعلاه.
+
 ⚠️ قاعدة التمييز الأساسية:
-  هل يوجد شخص/زبون محدد يدفع أو يستلم هذا المبلغ؟
-  - نعم + المال خارج منك → payment
-  - نعم + المال داخل إليك → receipt
-  - لا + المال خارج منك → expense
-  - لا + المال داخل إليك → income
+  هل فيه حسابان تبع نفس المستخدم بس (مصدر ووجهة)، بدون أي شخص خارجي؟
+  - نعم → transfer
+  - لا، وفيه شخص/زبون محدد يدفع أو يستلم هذا المبلغ؟
+    - نعم + المال خارج منك → payment
+    - نعم + المال داخل إليك → receipt
+    - لا + المال خارج منك → expense
+    - لا + المال داخل إليك → income
 
 --- قواعد العملة (مهم جداً) ---
 العملات المفعّلة في هذا الحساب: ${activeCurrencies.join(", ")}
@@ -480,7 +504,7 @@ ${currencyHints}
 - لا تخترع تاريخاً أبداً؛ التاريخ يُستخرج فقط إذا كان مذكوراً أو مفهوماً ضمنياً من الجملة بوضوح.
 
 أعِد JSON فقط بدون أي نص خارجه:
-{"type":"...","amount":0,"currency":"${primaryCurrency}","clientName":null,"clientId":null,"tripName":null,"tripId":null,"detectedLanguage":"...","description":"...","date":null}
+{"type":"...","amount":0,"currency":"${primaryCurrency}","clientName":null,"clientId":null,"tripName":null,"tripId":null,"accountName":null,"accountId":null,"toAccountName":null,"toAccountId":null,"detectedLanguage":"...","description":"...","date":null}
 
 أمثلة:
 جملة: "دفعت فاتورة الكهرباء ٣٠٠ درهم" → type: expense (لا يوجد مستلم شخصي)، date: null (لا يوجد ذكر للتاريخ)
@@ -488,7 +512,9 @@ ${currencyHints}
 جملة: "دفعت أغراض لرشا بـ٢٠٠" → type: payment (رشا مستفيدة مباشرة)
 جملة: "دفعت إيجار الشقة" → type: expense (لا يوجد مستلم شخصي)
 جملة: "قبضت ١٠٠٠ من سامي أمس" → type: receipt، date: التاريخ الفعلي ليوم أمس بصيغة YYYY-MM-DD
-جملة: "قبضت ٥٠٠ من محمد بتاريخ ١٥/٧" → date: التاريخ ١٥ تموز من السنة الحالية بصيغة YYYY-MM-DD`;
+جملة: "قبضت ٥٠٠ من محمد بتاريخ ١٥/٧" → date: التاريخ ١٥ تموز من السنة الحالية بصيغة YYYY-MM-DD
+جملة: "سحبت 500 من بنك الإمارات كاش" → type: transfer، accountName: "بنك الإمارات" (المصدر)، toAccountName: "كاش" أو اسم حساب الكاش المطابق من القائمة (الوجهة)
+جملة: "حولت 1000 من الكاش للفيزا" → type: transfer، accountName: الحساب المطابق لـ"الكاش"، toAccountName: الحساب المطابق لـ"الفيزا"`;
 
     const result = await withRetry(() => model.generateContent(prompt));
     const responseText = result.response.text().trim();
@@ -511,6 +537,7 @@ ${currencyHints}
     };
     const clientIds = new Set((clients as ClientRow[]).map((c) => c.id));
     const tripIds = new Set((trips as TripRow[]).map((t) => t.id));
+    const accountIds = new Set((accounts as AccountRow[]).map((a) => a.id));
 
     const normalizedCurrency = normalizeCurrency(parsedResult.currency);
     // Prefer a currency in the user's active list; fall back to primary
@@ -533,15 +560,28 @@ ${currencyHints}
       finalDate = extractDateFallback(text, new Date());
     }
 
+    const parsedType = (parsedResult.type as string) || null;
+    let toAccountId = toId(parsedResult.toAccountId, accountIds);
+    let toAccountName = (parsedResult.toAccountName as string) || null;
+    if (parsedType !== "transfer") {
+      // Never leak a destination account onto a non-transfer transaction.
+      toAccountId = null;
+      toAccountName = null;
+    }
+
     res.json({
       success: true,
-      type: (parsedResult.type as string) || null,
+      type: parsedType,
       amount: (parsedResult.amount as number) || null,
       currency: finalCurrency,
       clientName: (parsedResult.clientName as string) || null,
       clientId: toId(parsedResult.clientId, clientIds),
       tripName: (parsedResult.tripName as string) || null,
       tripId: toId(parsedResult.tripId, tripIds),
+      accountName: (parsedResult.accountName as string) || null,
+      accountId: toId(parsedResult.accountId, accountIds),
+      toAccountName,
+      toAccountId,
       detectedLanguage: (parsedResult.detectedLanguage as string) || null,
       description: (parsedResult.description as string) || null,
       date: finalDate,
@@ -617,17 +657,18 @@ router.post("/ai/transcribe-voice", requireAuth, async (req, res): Promise<void>
 const createTransactionDeclaration: FunctionDeclaration = {
   name: "create_transaction",
   description:
-    "أضف معاملة مالية جديدة (دخل، مصروف، دفعة لزبون، أو قبض من زبون). استخدمها فقط عندما يطلب المستخدم صراحةً إضافة/تسجيل معاملة. accountId إلزامي دائماً — كل معاملة لازم ترتبط بحساب/بطاقة دفع (كاش أو بطاقة). لا تستدعِ هذه الأداة قبل ما تحدد accountId (راجع قسم الحسابات بالتعليمات).",
+    "أضف معاملة مالية جديدة (دخل، مصروف، دفعة لزبون، قبض من زبون، أو تحويل بين حسابين). استخدمها فقط عندما يطلب المستخدم صراحةً إضافة/تسجيل معاملة. accountId إلزامي دائماً — كل معاملة لازم ترتبط بحساب/بطاقة دفع (كاش أو بطاقة). لا تستدعِ هذه الأداة قبل ما تحدد accountId (راجع قسم الحسابات بالتعليمات). للتحويل (type=transfer) بين حسابين، accountId هو الحساب المصدر (يلي طلعت منه المصاري) وtoAccountId هو الحساب الوجهة (يلي دخلت فيه) — كلاهما إلزامي ومختلفان. إذا وصف المستخدم أكثر من حركة مالية بجملة واحدة (مثلاً سحب من حساب ثم إعطاء جزء لشخص)، استدعِ هذه الأداة أكثر من مرة، مرة لكل حركة منفصلة (راجع قسم التحويلات بالتعليمات).",
   parameters: {
     type: SchemaType.OBJECT,
     properties: {
-      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt"], description: "نوع المعاملة" },
+      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt", "transfer"], description: "نوع المعاملة" },
       amount: { type: SchemaType.NUMBER, description: "المبلغ (رقم موجب)" },
       currency: { type: SchemaType.STRING, description: "كود العملة ISO مثل AED أو USD أو SYP" },
       date: { type: SchemaType.STRING, description: "تاريخ المعاملة بصيغة YYYY-MM-DD. إذا لم يُذكر تاريخ استخدم تاريخ اليوم." },
-      accountId: { type: SchemaType.NUMBER, description: "معرّف الحساب/البطاقة اللي طلعت أو دخلت منه المصاري — إلزامي دائماً، لا قيمة افتراضية" },
-      clientId: { type: SchemaType.NUMBER, description: "معرّف الزبون إذا كانت المعاملة مرتبطة بزبون موجود (اختياري)" },
-      tripId: { type: SchemaType.NUMBER, description: "معرّف الرحلة إذا كانت مرتبطة برحلة (اختياري)" },
+      accountId: { type: SchemaType.NUMBER, description: "معرّف الحساب/البطاقة اللي طلعت أو دخلت منه المصاري — إلزامي دائماً، لا قيمة افتراضية. للتحويل: الحساب المصدر." },
+      toAccountId: { type: SchemaType.NUMBER, description: "إلزامي فقط عندما type=transfer: معرّف الحساب الوجهة (يلي دخلت فيه المصاري). يجب أن يختلف عن accountId. لا تستخدمه لأي نوع آخر." },
+      clientId: { type: SchemaType.NUMBER, description: "معرّف الزبون إذا كانت المعاملة مرتبطة بزبون موجود (اختياري، غير منطقي لنوع transfer)" },
+      tripId: { type: SchemaType.NUMBER, description: "معرّف الرحلة إذا كانت مرتبطة برحلة (اختياري، غير منطقي لنوع transfer)" },
       description: { type: SchemaType.STRING, description: "وصف موجز للمعاملة (اختياري)" },
       status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"], description: "حالة المعاملة، افتراضياً pending" },
     },
@@ -643,13 +684,14 @@ const updateTransactionDeclaration: FunctionDeclaration = {
     type: SchemaType.OBJECT,
     properties: {
       id: { type: SchemaType.NUMBER, description: "معرّف المعاملة (id) المطلوب تعديلها" },
-      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt"] },
+      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt", "transfer"] },
       amount: { type: SchemaType.NUMBER },
       currency: { type: SchemaType.STRING },
       date: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
       clientId: { type: SchemaType.NUMBER },
       tripId: { type: SchemaType.NUMBER },
-      accountId: { type: SchemaType.NUMBER, description: "معرّف الحساب/البطاقة الجديد إذا بدك تنقل المعاملة لحساب تاني" },
+      accountId: { type: SchemaType.NUMBER, description: "معرّف الحساب/البطاقة الجديد إذا بدك تنقل المعاملة لحساب تاني (المصدر للتحويل)" },
+      toAccountId: { type: SchemaType.NUMBER, description: "معرّف الحساب الوجهة الجديد — فقط عندما type=transfer" },
       description: { type: SchemaType.STRING },
       status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"] },
     },
@@ -865,7 +907,7 @@ const searchTransactionsDeclaration: FunctionDeclaration = {
       minAmount: { type: SchemaType.NUMBER, description: "أقل مبلغ (اختياري)" },
       maxAmount: { type: SchemaType.NUMBER, description: "أعلى مبلغ (اختياري)" },
       descriptionContains: { type: SchemaType.STRING, description: "كلمة أو جزء من وصف المعاملة (اختياري)" },
-      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt"], description: "نوع المعاملة (اختياري)" },
+      type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "payment", "receipt", "transfer"], description: "نوع المعاملة (اختياري)" },
       status: { type: SchemaType.STRING, format: "enum", enum: ["pending", "settled"], description: "حالة المعاملة (اختياري)" },
     },
     required: [],
@@ -894,6 +936,20 @@ async function executeTool(
       .from(accountsTable)
       .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, userId)));
     if (!account) return { error: "الحساب غير موجود" };
+
+    const toAccountId = num(args.toAccountId) ?? null;
+    if (args.type === "transfer") {
+      if (!toAccountId) return { error: "toAccountId إلزامي للتحويل" };
+      if (toAccountId === accountId) return { error: "toAccountId يجب أن يختلف عن accountId" };
+      const [toAccount] = await db
+        .select()
+        .from(accountsTable)
+        .where(and(eq(accountsTable.id, toAccountId), eq(accountsTable.userId, userId)));
+      if (!toAccount) return { error: "الحساب الوجهة غير موجود" };
+    } else if (toAccountId) {
+      return { error: "toAccountId مسموح فقط لنوع transfer" };
+    }
+
     const [tx] = await db
       .insert(transactionsTable)
       .values({
@@ -907,6 +963,7 @@ async function executeTool(
         clientId: num(args.clientId) ?? null,
         tripId: num(args.tripId) ?? null,
         accountId,
+        toAccountId,
       })
       .returning();
     return { success: true, transaction: { ...tx, amount: Number(tx.amount) } };
@@ -915,6 +972,12 @@ async function executeTool(
   if (name === "update_transaction") {
     const id = num(args.id);
     if (!id) return { error: "id مفقود" };
+    const [existing] = await db
+      .select()
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.id, id), eq(transactionsTable.userId, userId)));
+    if (!existing) return { error: "المعاملة غير موجودة" };
+
     const updateData: Record<string, unknown> = {};
     if (typeof args.type === "string") updateData.type = args.type;
     const amount = num(args.amount);
@@ -938,6 +1001,32 @@ async function executeTool(
         .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, userId)));
       if (!account) return { error: "الحساب غير موجود" };
       updateData.accountId = accountId;
+    }
+    const toAccountId = num(args.toAccountId);
+    if (toAccountId !== undefined) {
+      const [toAccount] = await db
+        .select()
+        .from(accountsTable)
+        .where(and(eq(accountsTable.id, toAccountId), eq(accountsTable.userId, userId)));
+      if (!toAccount) return { error: "الحساب الوجهة غير موجود" };
+      updateData.toAccountId = toAccountId;
+    }
+
+    const effectiveType = (updateData.type as string) ?? existing.type;
+    const effectiveAccountId = accountId !== undefined ? accountId : existing.accountId;
+    const willClearToAccountId = effectiveType !== "transfer" && toAccountId === undefined;
+    const effectiveToAccountId = willClearToAccountId
+      ? null
+      : toAccountId !== undefined ? toAccountId : existing.toAccountId;
+    if (effectiveType === "transfer") {
+      if (!effectiveToAccountId) return { error: "toAccountId إلزامي للتحويل" };
+      if (effectiveToAccountId === effectiveAccountId) return { error: "toAccountId يجب أن يختلف عن accountId" };
+    } else if (effectiveToAccountId) {
+      return { error: "toAccountId مسموح فقط لنوع transfer" };
+    }
+    // Switching away from transfer clears any stale destination account.
+    if (willClearToAccountId) {
+      updateData.toAccountId = null;
     }
 
     const [tx] = await db
@@ -1020,6 +1109,7 @@ async function executeTool(
 
     const byCurrency = new Map<string, { income: number; expense: number }>();
     for (const t of inRange) {
+      if (t.type === "transfer") continue; // internal movement between own accounts, not real income/expense
       const entry = byCurrency.get(t.currency) ?? { income: 0, expense: 0 };
       if (t.type === "income" || t.type === "receipt") entry.income += Number(t.amount);
       else entry.expense += Number(t.amount);
@@ -1356,6 +1446,13 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
 - إذا ذكر المستخدم معاملة بدون ما يقول من أي حساب/بطاقة، ولم يكن هناك حساب واحد واضح (مثلاً عنده حساب وحيد فقط)، **لا تكمل create_transaction قبل ما تسأله**: "من أي حساب أو بطاقة؟" واعرض له الخيارات الموجودة أدناه إذا كانت أكثر من واحد. إذا كان عنده حساب واحد بس مسجّل، فيك تستخدمه مباشرة بدون سؤال (ما في لبس).
 - إذا ما عنده ولا حساب واحد بعد (القائمة فاضية): لازم تنشئ حساب أول (اسأله شو نوعه — كاش أو بطاقة، وشو اسمه، وشو عملته، وإذا بدو يحدد رصيد ابتدائي) قبل أول معاملة.
 - لما يسأل عن "التوتال يلي معي بكل الكروت" أو أرصدة حساباته، استخدم قسم "الحسابات/بطاقات الدفع" بالبيانات أدناه (فيه الإجمالي عبر كل الحسابات جاهز محسوب).
+
+--- التحويل بين حسابين (type=transfer) — مهم جداً ---
+- استخدم type=transfer فقط لحركة مصاري بين حسابين/بطاقتين يملكهما نفس المستخدم (مش دفع لزبون ومش دخل/مصروف عام). مثال: "سحبت 500 من بنك الإمارات وحطيتهم كاش"، "حولت 1000 من حساب البنك للكاش"، "نقلت من الفيزا للكاش".
+- بالتحويل: accountId = الحساب المصدر (يلي طلعت منه المصاري)، toAccountId = الحساب الوجهة (يلي دخلت فيه). لازم الاثنين موجودين ومختلفين عن بعض. طابق أسماء الحسابين بنفس منطق مطابقة الحسابات أعلاه (بما فيه إنشاء حساب جديد تلقائياً لو الاسم جديد كلياً).
+- التحويل لا يُحتسب دخل ولا مصروف بالتقارير أو بالأرصدة الإجمالية — هو فقط نقل داخلي بين حسابات نفس المستخدم، وما بيأثر على صافي أمواله الكلي، بس بيأثر على رصيد كل حساب من الاثنين.
+- ⚠️ إذا وصف المستخدم بجملة واحدة أكثر من حركة مالية منفصلة — مثلاً "سحبت 100 من البنك وعطيت 90 كاش لسامر" — هاي جملتان بمعنى اثنتين، مش تحويل واحد: (1) سحب/تحويل بمبلغ 100 من البنك للكاش (type=transfer، accountId=البنك، toAccountId=الكاش)، ثم (2) دفعة (type=payment إذا في زبون بالاسم مثل سامر، أو expense إذا ما في مستلم شخصي محدد) بمبلغ 90 من حساب الكاش. استدعِ create_transaction مرتين بنفس الرد لتسجيل الحركتين، وأخبر المستخدم بوضوح بالنتيجتين معاً (كم صار بالكاش بعد الحركتين، وكم بقي منه).
+- لا تفترض تحويلاً كاملاً للمبلغ المسحوب كافتراضٍ دائم إذا الجملة ذكرت بوضوح إنو جزء بس تحول (متل المثال أعلاه: سُحب 100 لكن بس 90 انصرفت لسامر، فالفرق 10 يضل بالكاش — هيك التحويل بمبلغ 100 كامل هو الصح، والـ 90 معاملة منفصلة تماماً من حساب الكاش).
 
 --- تعديل، حذف، أو استفسار عن معاملة بالوصف الطبيعي (مهم جداً) ---
 - إذا وصف المستخدم معاملة بالكلام بدل رقمها (مثلاً بالتاريخ، الزبون، المبلغ، أو السبب — "بدي عدل الدفعة يلي دفعتها لأحمد أول أمس"، "احذف يلي دفعته لسامر الأسبوع الماضي"، "ليش دفعت ٣٠٠ لسامر بشهر ٧؟")، لا تخمّن ولا تعتمد فقط على السجل النصي المختصر أدناه. استخدم أداة search_transactions بكل ما توفر لديك من معطيات (اسم الزبون/الرحلة/الحساب، نطاق تاريخ، مبلغ تقريبي، كلمة من الوصف) لإيجاد المعاملة أو المعاملات المطابقة أولاً، ثم تصرّف بناءً على نتيجتها.

@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 
-const TYPES = ["", "income", "expense", "payment", "receipt"];
+const TYPES = ["", "income", "expense", "payment", "receipt", "transfer"];
 const STATUSES = ["", "pending", "settled"];
 
 export default function Transactions() {
@@ -159,6 +159,7 @@ export default function Transactions() {
                     "bg-red-500": tx.type === "expense",
                     "bg-blue-500": tx.type === "payment",
                     "bg-emerald-500": tx.type === "receipt",
+                    "bg-purple-500": tx.type === "transfer",
                   })} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -170,7 +171,7 @@ export default function Transactions() {
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="text-end">
                           <span className={cn("text-base font-bold block", typeClass(tx.type))}>
-                            {tx.type === "expense" || tx.type === "payment" ? "-" : "+"}{formatAmount(tx.amount, tx.currency, language)}
+                            {tx.type === "transfer" ? "" : tx.type === "expense" || tx.type === "payment" ? "-" : "+"}{formatAmount(tx.amount, tx.currency, language)}
                           </span>
                           {tx.currency !== primaryCurrency && (
                             <span className="text-[10px] text-muted-foreground">

@@ -17,6 +17,9 @@ export const transactionsTable = pgTable("transactions", {
   // Nullable at the DB level so historical transactions predating this feature stay valid, but
   // the app enforces this as required for every new transaction (manual form + Billy).
   accountId: integer("account_id").references(() => accountsTable.id, { onDelete: "set null" }),
+  // Only set when type === "transfer": the destination account. `accountId` above is then the
+  // source account money left FROM. Null for every other transaction type.
+  toAccountId: integer("to_account_id").references(() => accountsTable.id, { onDelete: "set null" }),
   description: text("description"),
   status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

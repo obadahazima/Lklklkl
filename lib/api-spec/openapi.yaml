@@ -541,7 +541,7 @@ components:
           type: string
         type:
           type: string
-          description: "income | expense | payment | receipt"
+          description: "income | expense | payment | receipt | transfer"
         amount:
           type: number
         currency:
@@ -558,6 +558,11 @@ components:
         accountId:
           type: ["integer", "null"]
         accountName:
+          type: ["string", "null"]
+        toAccountId:
+          type: ["integer", "null"]
+          description: "Destination account for type=transfer only"
+        toAccountName:
           type: ["string", "null"]
         description:
           type: ["string", "null"]
@@ -585,7 +590,10 @@ components:
           type: ["integer", "null"]
         accountId:
           type: integer
-          description: "Required — which cash/debit/credit account this transaction moved through"
+          description: "Required — which cash/debit/credit account this transaction moved through. For type=transfer, this is the source account."
+        toAccountId:
+          type: ["integer", "null"]
+          description: "Required when type=transfer — the destination account. Must differ from accountId."
         description:
           type: ["string", "null"]
         status:
@@ -607,6 +615,8 @@ components:
         tripId:
           type: ["integer", "null"]
         accountId:
+          type: ["integer", "null"]
+        toAccountId:
           type: ["integer", "null"]
         description:
           type: ["string", "null"]
@@ -854,6 +864,18 @@ components:
         tripId:
           type: ["integer", "null"]
           description: "Matched existing trip id (cross-language), null if new/none"
+        accountName:
+          type: ["string", "null"]
+          description: "Matched or mentioned account/card name. For type=transfer, this is the source account."
+        accountId:
+          type: ["integer", "null"]
+          description: "Matched existing account id, null if new/none/not mentioned"
+        toAccountName:
+          type: ["string", "null"]
+          description: "Destination account name — only set when type=transfer"
+        toAccountId:
+          type: ["integer", "null"]
+          description: "Matched existing destination account id — only set when type=transfer"
         detectedLanguage:
           type: ["string", "null"]
           description: "Language detected in the input (ar | en | mixed)"

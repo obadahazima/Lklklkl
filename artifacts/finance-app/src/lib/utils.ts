@@ -29,6 +29,7 @@ export function typeLabel(type: string, lang: Lang = "ar"): string {
     expense: { ar: "مصروف", en: "Expense" },
     payment: { ar: "دفع", en: "Payment" },
     receipt: { ar: "قبض", en: "Receipt" },
+    transfer: { ar: "تحويل", en: "Transfer" },
   };
   return labels[type]?.[lang] ?? type;
 }
@@ -39,6 +40,7 @@ export function typeClass(type: string): string {
     expense: "type-expense",
     payment: "type-payment",
     receipt: "type-receipt",
+    transfer: "type-transfer",
   };
   return classes[type] || "";
 }

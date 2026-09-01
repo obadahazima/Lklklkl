@@ -44,6 +44,10 @@ type ParsedData = {
   clientId?: number | null;
   tripName?: string | null;
   tripId?: number | null;
+  accountName?: string | null;
+  accountId?: number | null;
+  toAccountName?: string | null;
+  toAccountId?: number | null;
   detectedLanguage?: string | null;
   description?: string | null;
   date?: string | null;
@@ -64,6 +68,7 @@ type PendingTx = {
   clientId: number | null | undefined;
   tripId: number | null | undefined;
   accountId: number | null | undefined;
+  toAccountId: number | null | undefined;
 };
 
 export default function NewTransaction() {
@@ -92,6 +97,7 @@ export default function NewTransaction() {
     clientId: "",
     tripId: "",
     accountId: "",
+    toAccountId: "",
     description: "",
     status: "pending",
     date: new Date().toISOString().split("T")[0],
@@ -139,6 +145,13 @@ export default function NewTransaction() {
         if (data.success) {
           setParsed(data);
           setStep("confirm");
+          // Pre-fill the account picker(s) from what parsing matched, without clobbering
+          // any account the user may have already picked manually beforehand.
+          setManualForm((f) => ({
+            ...f,
+            accountId: data.accountId != null ? String(data.accountId) : f.accountId,
+            toAccountId: data.toAccountId != null ? String(data.toAccountId) : f.toAccountId,
+          }));
         } else {
           toast({ title: language === "ar" ? "لم أفهم" : "Not understood", description: data.error || (language === "ar" ? "حاولي مرة أخرى" : "Please try again"), variant: "destructive" });
         }
@@ -307,14 +320,33 @@ export default function NewTransaction() {
       });
       return;
     }
+    if (p.type === "transfer") {
+      if (!p.toAccountId) {
+        toast({
+          title: language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
+          description: language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (p.toAccountId === p.accountId) {
+        toast({
+          title: language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
+          description: language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     createMutation.mutate({
       data: {
         type: p.type,
         amount: p.amount,
         currency: p.currency,
-        clientId: p.clientId ?? null,
-        tripId: p.tripId ?? null,
+        clientId: p.type === "transfer" ? null : (p.clientId ?? null),
+        tripId: p.type === "transfer" ? null : (p.tripId ?? null),
         accountId: p.accountId,
+        toAccountId: p.type === "transfer" ? p.toAccountId ?? null : null,
         description: p.description,
         status: p.status,
         date: p.date,
@@ -325,6 +357,14 @@ export default function NewTransaction() {
   function advanceResolutionChain() {
     const p = pendingTxRef.current;
     if (!p) return;
+
+    // Transfers never involve a client/trip.
+    if (p.type === "transfer") {
+      p.clientId = null;
+      p.tripId = null;
+      savePendingTransaction();
+      return;
+    }
 
     // Skip hidden entity types from settings
     if (!showClients && p.clientId === undefined) p.clientId = null;
@@ -378,6 +418,7 @@ export default function NewTransaction() {
       clientId: undefined,
       tripId: undefined,
       accountId: manualForm.accountId ? parseInt(manualForm.accountId) : null,
+      toAccountId: manualForm.toAccountId ? parseInt(manualForm.toAccountId) : null,
     };
     advanceResolutionChain();
   }
@@ -433,14 +474,33 @@ export default function NewTransaction() {
       });
       return;
     }
+    if (manualForm.type === "transfer") {
+      if (!manualForm.toAccountId) {
+        toast({
+          title: language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
+          description: language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (manualForm.toAccountId === manualForm.accountId) {
+        toast({
+          title: language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
+          description: language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     createMutation.mutate({
       data: {
         type: manualForm.type,
         amount: amt,
         currency: manualForm.currency,
-        clientId: manualForm.clientId ? parseInt(manualForm.clientId) : null,
-        tripId: manualForm.tripId ? parseInt(manualForm.tripId) : null,
+        clientId: manualForm.type === "transfer" ? null : (manualForm.clientId ? parseInt(manualForm.clientId) : null),
+        tripId: manualForm.type === "transfer" ? null : (manualForm.tripId ? parseInt(manualForm.tripId) : null),
         accountId: parseInt(manualForm.accountId),
+        toAccountId: manualForm.type === "transfer" ? parseInt(manualForm.toAccountId) : null,
         description: manualForm.description || null,
         status: manualForm.status,
         date: manualForm.date,
@@ -729,7 +789,17 @@ export default function NewTransaction() {
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("typeLabel")}</label>
                 <select
                   value={manualForm.type}
-                  onChange={(e) => setManualForm({ ...manualForm, type: e.target.value })}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    setManualForm((f) => ({
+                      ...f,
+                      type: newType,
+                      // Transfers don't have a client/trip; clear them so a stale link never lingers.
+                      clientId: newType === "transfer" ? "" : f.clientId,
+                      tripId: newType === "transfer" ? "" : f.tripId,
+                      toAccountId: newType === "transfer" ? f.toAccountId : "",
+                    }));
+                  }}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
                   data-testid="select-type"
                 >
@@ -737,6 +807,7 @@ export default function NewTransaction() {
                   <option value="expense">{t("typeExpense")}</option>
                   <option value="payment">{t("typePayment")}</option>
                   <option value="receipt">{t("typeReceipt")}</option>
+                  <option value="transfer">{t("typeTransfer")}</option>
                 </select>
               </div>
               <div>
@@ -767,7 +838,9 @@ export default function NewTransaction() {
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} <span className="text-destructive">*</span>
+                {manualForm.type === "transfer"
+                  ? (language === "ar" ? "من حساب" : "From account")
+                  : (language === "ar" ? "الحساب/البطاقة" : "Account/Card")} <span className="text-destructive">*</span>
               </label>
               {!showAddAccount ? (
                 <div className="flex gap-2">
@@ -829,7 +902,28 @@ export default function NewTransaction() {
                 </div>
               )}
             </div>
-            {(showClients || showTrips) && (
+            {manualForm.type === "transfer" && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  {language === "ar" ? "إلى حساب" : "To account"} <span className="text-destructive">*</span>
+                </label>
+                <select
+                  value={manualForm.toAccountId}
+                  onChange={(e) => setManualForm({ ...manualForm, toAccountId: e.target.value })}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
+                  data-testid="select-to-account"
+                  required
+                >
+                  <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
+                  {accounts?.filter((a) => String(a.id) !== manualForm.accountId).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {manualForm.type !== "transfer" && (showClients || showTrips) && (
               <div className="grid grid-cols-2 gap-3">
                 {showClients && (
                   <div>
@@ -941,8 +1035,12 @@ export default function NewTransaction() {
                   value: parsed?.currency,
                   badge: parsed?.currency ? currencyClass(parsed.currency) : undefined,
                 },
-                { label: language === "ar" ? "الزبون" : "Client", value: parsed?.clientName },
-                { label: language === "ar" ? "الرحلة" : "Trip", value: parsed?.tripName },
+                parsed?.type === "transfer"
+                  ? { label: language === "ar" ? "من حساب" : "From", value: parsed?.accountName }
+                  : { label: language === "ar" ? "الزبون" : "Client", value: parsed?.clientName },
+                parsed?.type === "transfer"
+                  ? { label: language === "ar" ? "إلى حساب" : "To", value: parsed?.toAccountName }
+                  : { label: language === "ar" ? "الرحلة" : "Trip", value: parsed?.tripName },
                 { label: language === "ar" ? "الوصف" : "Description", value: parsed?.description },
                 {
                   label: language === "ar" ? "التاريخ" : "Date",
@@ -1019,7 +1117,9 @@ export default function NewTransaction() {
 
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              {language === "ar" ? "الحساب/البطاقة" : "Account/Card"} <span className="text-destructive">*</span>
+              {parsed?.type === "transfer"
+                ? (language === "ar" ? "من حساب" : "From account")
+                : (language === "ar" ? "الحساب/البطاقة" : "Account/Card")} <span className="text-destructive">*</span>
             </label>
             <select
               value={manualForm.accountId}
@@ -1036,6 +1136,28 @@ export default function NewTransaction() {
               ))}
             </select>
           </div>
+
+          {parsed?.type === "transfer" && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {language === "ar" ? "إلى حساب" : "To account"} <span className="text-destructive">*</span>
+              </label>
+              <select
+                value={manualForm.toAccountId}
+                onChange={(e) => setManualForm({ ...manualForm, toAccountId: e.target.value })}
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
+                data-testid="select-to-account-confirm"
+                required
+              >
+                <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
+                {accounts?.filter((a) => String(a.id) !== manualForm.accountId).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <button

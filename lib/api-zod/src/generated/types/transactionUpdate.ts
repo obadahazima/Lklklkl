@@ -18,6 +18,8 @@ export interface TransactionUpdate {
   /** @nullable */
   accountId?: number | null;
   /** @nullable */
+  toAccountId?: number | null;
+  /** @nullable */
   description?: string | null;
   status?: string;
 }

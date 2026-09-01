@@ -17,7 +17,7 @@ import { useColors } from "@/hooks/useColors";
 import { useSettings, getCurrencySymbol } from "@/contexts/SettingsContext";
 import { useTr, formatNum } from "@/lib/i18n";
 
-type TxType = "income" | "expense" | "payment" | "receipt";
+type TxType = "income" | "expense" | "payment" | "receipt" | "transfer";
 
 function isIncoming(type: string) {
   return type === "income" || type === "receipt";
@@ -50,6 +50,7 @@ function txLabel(type: TxType, t: ReturnType<typeof useTr>) {
   if (type === "expense") return t("typeExpense");
   if (type === "payment") return t("typePayment");
   if (type === "receipt") return t("typeReceipt");
+  if (type === "transfer") return t("typeTransfer");
   return t("transactions");
 }
 
@@ -332,19 +333,19 @@ export default function DashboardScreen() {
           {!recentTxs || recentTxs.length === 0 ? (
             <View style={[styles.emptyBox, { borderColor: colors.border }]}>
               <Feather name="inbox" size={28} color={colors.mutedForeground} />
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>لا توجد معاملات بعد</Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{t("noTransactions")}</Text>
             </View>
           ) : (
             (recentTxs as any[]).slice(0, 5).map((tx: any) => (
               <View key={tx.id} style={[styles.txRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={[
                   styles.txIcon,
-                  { backgroundColor: isIncoming(tx.type) ? "#dcfce7" : "#fee2e2" }
+                  { backgroundColor: tx.type === "transfer" ? "#ede9fe" : isIncoming(tx.type) ? "#dcfce7" : "#fee2e2" }
                 ]}>
                   <Feather
-                    name={isIncoming(tx.type) ? "arrow-down-left" : "arrow-up-right"}
+                    name={tx.type === "transfer" ? "repeat" : isIncoming(tx.type) ? "arrow-down-left" : "arrow-up-right"}
                     size={16}
-                    color={isIncoming(tx.type) ? "#16a34a" : "#ef4444"}
+                    color={tx.type === "transfer" ? "#7c3aed" : isIncoming(tx.type) ? "#16a34a" : "#ef4444"}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -355,9 +356,9 @@ export default function DashboardScreen() {
                 </View>
                 <Text style={[
                   styles.txAmount,
-                  { color: isIncoming(tx.type) ? "#16a34a" : "#ef4444" }
+                  { color: tx.type === "transfer" ? "#7c3aed" : isIncoming(tx.type) ? "#16a34a" : "#ef4444" }
                 ]}>
-                  {isIncoming(tx.type) ? "+" : "-"}{formatNum(Number(tx.amount))} {tx.currency}
+                  {tx.type === "transfer" ? "" : isIncoming(tx.type) ? "+" : "-"}{formatNum(Number(tx.amount))} {tx.currency}
                 </Text>
               </View>
             ))

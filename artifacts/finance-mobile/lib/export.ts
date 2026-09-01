@@ -45,6 +45,7 @@ const EXPORT_STRINGS = {
     typeExpense: "مصروف",
     typePayment: "دفع",
     typeReceipt: "قبض",
+    typeTransfer: "تحويل",
     noTransactions: "لا توجد معاملات",
     noData: "لا توجد بيانات",
     transactionDetails: "تفاصيل المعاملات",
@@ -69,6 +70,7 @@ const EXPORT_STRINGS = {
     typeExpense: "Expense",
     typePayment: "Payment",
     typeReceipt: "Receipt",
+    typeTransfer: "Transfer",
     noTransactions: "No transactions",
     noData: "No data",
     transactionDetails: "Transaction Details",
@@ -89,6 +91,8 @@ function typeLabel(type: string, lang: Lang): string {
       return s.typePayment;
     case "receipt":
       return s.typeReceipt;
+    case "transfer":
+      return s.typeTransfer;
     default:
       return type;
   }

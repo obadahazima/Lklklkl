@@ -305,6 +305,7 @@ export default function Dashboard() {
                       "bg-red-500": tx.type === "expense",
                       "bg-blue-500": tx.type === "payment",
                       "bg-emerald-500": tx.type === "receipt",
+                      "bg-purple-500": tx.type === "transfer",
                     })}
                   />
                   <div className="flex-1 min-w-0">
@@ -325,7 +326,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-end shrink-0">
                     <p className={cn("text-sm font-bold", typeClass(tx.type))}>
-                      {tx.type === "expense" || tx.type === "payment" ? "-" : "+"}
+                      {tx.type === "transfer" ? "" : tx.type === "expense" || tx.type === "payment" ? "-" : "+"}
                       {formatAmount(tx.amount, tx.currency, language)}
                     </p>
                     {tx.currency !== primaryCurrency && (() => {

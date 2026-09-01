@@ -12,7 +12,7 @@ export interface HealthStatus {
 export interface Transaction {
   id: number;
   date: string;
-  /** income | expense | payment | receipt */
+  /** income | expense | payment | receipt | transfer */
   type: string;
   amount: number;
   /** AED | USD | SYP */
@@ -29,6 +29,13 @@ export interface Transaction {
   accountId?: number | null;
   /** @nullable */
   accountName?: string | null;
+  /**
+     * Destination account for type=transfer only
+     * @nullable
+     */
+  toAccountId?: number | null;
+  /** @nullable */
+  toAccountName?: string | null;
   /** @nullable */
   description?: string | null;
   /** pending | settled */
@@ -45,8 +52,13 @@ export interface TransactionInput {
   clientId?: number | null;
   /** @nullable */
   tripId?: number | null;
-  /** Required — which cash/debit/credit account this transaction moved through */
+  /** Required — which cash/debit/credit account this transaction moved through. For type=transfer, this is the source account. */
   accountId: number;
+  /**
+     * Required when type=transfer — the destination account. Must differ from accountId.
+     * @nullable
+     */
+  toAccountId?: number | null;
   /** @nullable */
   description?: string | null;
   status: string;
@@ -63,6 +75,8 @@ export interface TransactionUpdate {
   tripId?: number | null;
   /** @nullable */
   accountId?: number | null;
+  /** @nullable */
+  toAccountId?: number | null;
   /** @nullable */
   description?: string | null;
   status?: string;
@@ -230,6 +244,26 @@ export interface VoiceParseResult {
      * @nullable
      */
   tripId?: number | null;
+  /**
+     * Matched or mentioned account/card name. For type=transfer, this is the source account.
+     * @nullable
+     */
+  accountName?: string | null;
+  /**
+     * Matched existing account id, null if new/none/not mentioned
+     * @nullable
+     */
+  accountId?: number | null;
+  /**
+     * Destination account name — only set when type=transfer
+     * @nullable
+     */
+  toAccountName?: string | null;
+  /**
+     * Matched existing destination account id — only set when type=transfer
+     * @nullable
+     */
+  toAccountId?: number | null;
   /**
      * Language detected in the input (ar | en | mixed)
      * @nullable

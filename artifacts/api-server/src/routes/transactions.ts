@@ -24,7 +24,7 @@ router.use(requireAuth);
  */
 async function assertOwnedForeignKeys(
   userId: string,
-  ids: { clientId?: number | null; tripId?: number | null; accountId?: number | null },
+  ids: { clientId?: number | null; tripId?: number | null; accountId?: number | null; toAccountId?: number | null },
 ): Promise<string | null> {
   if (ids.clientId != null) {
     const [c] = await db.select({ id: clientsTable.id }).from(clientsTable).where(and(eq(clientsTable.id, ids.clientId), eq(clientsTable.userId, userId)));
@@ -38,6 +38,21 @@ async function assertOwnedForeignKeys(
     const [a] = await db.select({ id: accountsTable.id }).from(accountsTable).where(and(eq(accountsTable.id, ids.accountId), eq(accountsTable.userId, userId)));
     if (!a) return "Invalid accountId";
   }
+  if (ids.toAccountId != null) {
+    const [a] = await db.select({ id: accountsTable.id }).from(accountsTable).where(and(eq(accountsTable.id, ids.toAccountId), eq(accountsTable.userId, userId)));
+    if (!a) return "Invalid toAccountId";
+  }
+  return null;
+}
+
+/** type=transfer requires a toAccountId distinct from accountId; every other type must not set one. */
+function validateTransferFields(type: string, accountId: number | null | undefined, toAccountId: number | null | undefined): string | null {
+  if (type === "transfer") {
+    if (toAccountId == null) return "toAccountId is required for transfer transactions";
+    if (accountId != null && toAccountId === accountId) return "toAccountId must differ from accountId";
+  } else if (toAccountId != null) {
+    return "toAccountId is only allowed for transfer transactions";
+  }
   return null;
 }
 
@@ -45,6 +60,7 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
   let clientName: string | null = null;
   let tripName: string | null = null;
   let accountName: string | null = null;
+  let toAccountName: string | null = null;
 
   if (t.clientId) {
     const [c] = await db.select({ name: clientsTable.name }).from(clientsTable).where(eq(clientsTable.id, t.clientId));
@@ -58,6 +74,10 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
     const [a] = await db.select({ name: accountsTable.name }).from(accountsTable).where(eq(accountsTable.id, t.accountId));
     accountName = a?.name ?? null;
   }
+  if (t.toAccountId) {
+    const [a] = await db.select({ name: accountsTable.name }).from(accountsTable).where(eq(accountsTable.id, t.toAccountId));
+    toAccountName = a?.name ?? null;
+  }
 
   return {
     ...t,
@@ -65,6 +85,7 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect) {
     clientName,
     tripName,
     accountName,
+    toAccountName,
     createdAt: t.createdAt.toISOString(),
   };
 }
@@ -119,9 +140,15 @@ router.post("/transactions", async (req, res): Promise<void> => {
       clientId: parsed.data.clientId,
       tripId: parsed.data.tripId,
       accountId: parsed.data.accountId,
+      toAccountId: parsed.data.toAccountId,
     });
     if (fkError) {
       res.status(400).json({ error: fkError });
+      return;
+    }
+    const transferError = validateTransferFields(parsed.data.type, parsed.data.accountId, parsed.data.toAccountId);
+    if (transferError) {
+      res.status(400).json({ error: transferError });
       return;
     }
     const [tx] = await db
@@ -137,6 +164,7 @@ router.post("/transactions", async (req, res): Promise<void> => {
         clientId: parsed.data.clientId ?? null,
         tripId: parsed.data.tripId ?? null,
         accountId: parsed.data.accountId,
+        toAccountId: parsed.data.toAccountId ?? null,
       })
       .returning();
     res.status(201).json(await enrichTransaction(tx));
@@ -188,11 +216,38 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
       clientId: bodyParsed.data.clientId,
       tripId: bodyParsed.data.tripId,
       accountId: bodyParsed.data.accountId,
+      toAccountId: bodyParsed.data.toAccountId,
     });
     if (fkError) {
       res.status(400).json({ error: fkError });
       return;
     }
+
+    const [existing] = await db
+      .select()
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.id, paramsParsed.data.id), eq(transactionsTable.userId, req.userId)));
+    if (!existing) {
+      res.status(404).json({ error: "Transaction not found" });
+      return;
+    }
+
+    const effectiveType = bodyParsed.data.type ?? existing.type;
+    const effectiveAccountId = bodyParsed.data.accountId !== undefined ? bodyParsed.data.accountId : existing.accountId;
+    // If the caller is switching type away from "transfer" and didn't explicitly send a new
+    // toAccountId, the old destination account is implicitly cleared (see below) — validate
+    // against that same implied value, not the stale existing one, or this would wrongly reject
+    // a perfectly valid "change type from transfer to expense" request.
+    const willClearToAccountId = effectiveType !== "transfer" && bodyParsed.data.toAccountId === undefined;
+    const effectiveToAccountId = willClearToAccountId
+      ? null
+      : bodyParsed.data.toAccountId !== undefined ? bodyParsed.data.toAccountId : existing.toAccountId;
+    const transferError = validateTransferFields(effectiveType, effectiveAccountId, effectiveToAccountId);
+    if (transferError) {
+      res.status(400).json({ error: transferError });
+      return;
+    }
+
     const updateData: Record<string, unknown> = {};
     if (bodyParsed.data.type !== undefined) updateData.type = bodyParsed.data.type;
     if (bodyParsed.data.amount !== undefined) updateData.amount = String(bodyParsed.data.amount);
@@ -203,6 +258,12 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
     if (bodyParsed.data.clientId !== undefined) updateData.clientId = bodyParsed.data.clientId;
     if (bodyParsed.data.tripId !== undefined) updateData.tripId = bodyParsed.data.tripId;
     if (bodyParsed.data.accountId !== undefined) updateData.accountId = bodyParsed.data.accountId;
+    if (bodyParsed.data.toAccountId !== undefined) updateData.toAccountId = bodyParsed.data.toAccountId;
+    // Clearing toAccountId when switching away from transfer, so a stale destination account
+    // never lingers on a transaction that's no longer a transfer.
+    if (willClearToAccountId) {
+      updateData.toAccountId = null;
+    }
 
     const [tx] = await db
       .update(transactionsTable)

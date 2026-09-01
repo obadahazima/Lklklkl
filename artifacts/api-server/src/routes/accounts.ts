@@ -15,17 +15,31 @@ const router = Router();
 
 router.use(requireAuth);
 
-/** current balance = initialBalance + income/receipt through this account - expense/payment through it */
+/**
+ * current balance = initialBalance
+ *   + income/receipt through this account (money in)
+ *   - expense/payment through this account (money out)
+ *   - transfer where this account is the source (accountId) — money left
+ *   + transfer where this account is the destination (toAccountId) — money arrived
+ */
 async function computeBalance(userId: string, accountId: number, initialBalance: number): Promise<number> {
-  const txs = await db
-    .select()
-    .from(transactionsTable)
-    .where(and(eq(transactionsTable.accountId, accountId), eq(transactionsTable.userId, userId)));
-  const delta = txs.reduce((sum, t) => {
+  const [outgoing, incomingTransfers] = await Promise.all([
+    db
+      .select()
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.accountId, accountId), eq(transactionsTable.userId, userId))),
+    db
+      .select()
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.toAccountId, accountId), eq(transactionsTable.userId, userId), eq(transactionsTable.type, "transfer"))),
+  ]);
+  const delta = outgoing.reduce((sum, t) => {
     const amt = Number(t.amount);
+    if (t.type === "transfer") return sum - amt; // money left this account, regardless of income/expense bucket
     return sum + (t.type === "income" || t.type === "receipt" ? amt : -amt);
   }, 0);
-  return Math.round((initialBalance + delta) * 100) / 100;
+  const incomingDelta = incomingTransfers.reduce((sum, t) => sum + Number(t.amount), 0);
+  return Math.round((initialBalance + delta + incomingDelta) * 100) / 100;
 }
 
 router.get("/accounts", async (req, res): Promise<void> => {
