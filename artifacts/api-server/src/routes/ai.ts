@@ -12,6 +12,7 @@ import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration 
 import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { getOverdueClients, DEFAULT_OVERDUE_DAYS } from "../utils/overdue-clients.js";
+import { getExchangeRates, type AllRates } from "../utils/exchange-rates.js";
 
 const router = Router();
 
@@ -250,11 +251,20 @@ type ClientRow = { id: number; name: string; phone: string | null };
 type TripRow   = { id: number; name: string; status: string; isShared: boolean };
 type AccountRow = { id: number; name: string; type: string; currency: string; initialBalance: string };
 
+function convertToCurrency(amount: number, from: string, to: string, rates: AllRates): number {
+  if (from === to) return amount;
+  const fromRate = rates[from];
+  const toRate = rates[to];
+  if (!fromRate || !toRate) return amount;
+  return (amount * fromRate) / toRate;
+}
+
 function buildFinancialContext(
   txs: TxRow[],
   clients: ClientRow[],
   trips: TripRow[],
   accounts: AccountRow[],
+  rates: AllRates,
 ): string {
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
   const tripMap   = new Map(trips.map((t) => [t.id, t.name]));
@@ -296,10 +306,15 @@ function buildFinancialContext(
   const accountSummaries = accounts.map((account) => {
     const outgoing = txs.filter((t) => t.accountId === account.id);
     const incomingTransfers = txs.filter((t) => t.toAccountId === account.id && t.type === "transfer");
-    const income   = outgoing.filter((t) => t.type === "income"  || t.type === "receipt").reduce((s, t) => s + Number(t.amount), 0);
-    const spending = outgoing.filter((t) => t.type === "expense" || t.type === "payment").reduce((s, t) => s + Number(t.amount), 0);
-    const transferredOut = outgoing.filter((t) => t.type === "transfer").reduce((s, t) => s + Number(t.amount), 0);
-    const transferredIn = incomingTransfers.reduce((s, t) => s + Number(t.amount), 0);
+    // Every transaction carries its own currency, which may differ from this account's currency
+    // (e.g. paying "100 USD" out of an AED account) — convert each amount into the account's
+    // own currency before folding it into the balance, otherwise mismatched-currency
+    // transactions would be added/subtracted at face value and silently corrupt the balance.
+    const convert = (amount: number, cur: string) => convertToCurrency(amount, cur, account.currency, rates);
+    const income   = outgoing.filter((t) => t.type === "income"  || t.type === "receipt").reduce((s, t) => s + convert(Number(t.amount), t.currency), 0);
+    const spending = outgoing.filter((t) => t.type === "expense" || t.type === "payment").reduce((s, t) => s + convert(Number(t.amount), t.currency), 0);
+    const transferredOut = outgoing.filter((t) => t.type === "transfer").reduce((s, t) => s + convert(Number(t.amount), t.currency), 0);
+    const transferredIn = incomingTransfers.reduce((s, t) => s + convert(Number(t.amount), t.currency), 0);
     const currentBalance = Number(account.initialBalance) + income - spending - transferredOut + transferredIn;
     const typeAr = account.type === "cash" ? "كاش" : account.type === "credit" ? "بطاقة ائتمان" : "بطاقة دفع";
     return { id: account.id, name: account.name, typeAr, currency: account.currency, currentBalance, txCount: outgoing.length + incomingTransfers.length };
@@ -1397,11 +1412,12 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
   const { question } = parsed.data;
 
   try {
-    const [txs, clients, trips, accounts] = await Promise.all([
+    const [txs, clients, trips, accounts, rates] = await Promise.all([
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, req.userId)),
       db.select().from(clientsTable).where(eq(clientsTable.userId, req.userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, req.userId)),
       db.select().from(accountsTable).where(eq(accountsTable.userId, req.userId)),
+      getExchangeRates(),
     ]);
 
     const context = buildFinancialContext(
@@ -1409,6 +1425,7 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
       clients as ClientRow[],
       trips as TripRow[],
       accounts as AccountRow[],
+      rates,
     );
 
     const todayISO = new Date().toISOString().split("T")[0];

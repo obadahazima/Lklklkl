@@ -10,10 +10,28 @@ import {
   DeleteAccountParams,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { getExchangeRates, type AllRates } from "../utils/exchange-rates.js";
 
 const router = Router();
 
 router.use(requireAuth);
+
+/**
+ * Converts an amount from one currency to another using AED as the pivot
+ * (rates[code] = how many AED one unit of `code` is worth).
+ * Falls back to a 1:1 conversion (with a warning) if either currency has no known rate,
+ * so a missing rate degrades gracefully instead of throwing or silently corrupting the balance.
+ */
+function convertAmount(amount: number, from: string, to: string, rates: AllRates): number {
+  if (from === to) return amount;
+  const fromRate = rates[from];
+  const toRate = rates[to];
+  if (!fromRate || !toRate) {
+    console.warn(`[accounts] Missing exchange rate for ${from} or ${to} — treating as 1:1, balance may be inaccurate.`);
+    return amount;
+  }
+  return (amount * fromRate) / toRate;
+}
 
 /**
  * current balance = initialBalance
@@ -21,8 +39,21 @@ router.use(requireAuth);
  *   - expense/payment through this account (money out)
  *   - transfer where this account is the source (accountId) — money left
  *   + transfer where this account is the destination (toAccountId) — money arrived
+ *
+ * Every transaction is stored with its own currency (a transaction doesn't have to match the
+ * account's currency — e.g. paying "100 USD" out of an AED account is allowed). Before applying
+ * a transaction's amount to this account's balance, it's converted from the transaction's
+ * currency into this account's own currency using the current exchange rate — otherwise a
+ * mismatched-currency transaction would be subtracted/added at face value, which silently
+ * corrupts the balance (e.g. deducting 100 AED for a 100 USD payment).
  */
-async function computeBalance(userId: string, accountId: number, initialBalance: number): Promise<number> {
+async function computeBalance(
+  userId: string,
+  accountId: number,
+  initialBalance: number,
+  accountCurrency: string,
+  rates: AllRates,
+): Promise<number> {
   const [outgoing, incomingTransfers] = await Promise.all([
     db
       .select()
@@ -34,26 +65,32 @@ async function computeBalance(userId: string, accountId: number, initialBalance:
       .where(and(eq(transactionsTable.toAccountId, accountId), eq(transactionsTable.userId, userId), eq(transactionsTable.type, "transfer"))),
   ]);
   const delta = outgoing.reduce((sum, t) => {
-    const amt = Number(t.amount);
+    const amt = convertAmount(Number(t.amount), t.currency, accountCurrency, rates);
     if (t.type === "transfer") return sum - amt; // money left this account, regardless of income/expense bucket
     return sum + (t.type === "income" || t.type === "receipt" ? amt : -amt);
   }, 0);
-  const incomingDelta = incomingTransfers.reduce((sum, t) => sum + Number(t.amount), 0);
+  const incomingDelta = incomingTransfers.reduce(
+    (sum, t) => sum + convertAmount(Number(t.amount), t.currency, accountCurrency, rates),
+    0,
+  );
   return Math.round((initialBalance + delta + incomingDelta) * 100) / 100;
 }
 
 router.get("/accounts", async (req, res): Promise<void> => {
   try {
-    const accounts = await db
-      .select()
-      .from(accountsTable)
-      .where(eq(accountsTable.userId, req.userId))
-      .orderBy(accountsTable.name);
+    const [accounts, rates] = await Promise.all([
+      db
+        .select()
+        .from(accountsTable)
+        .where(eq(accountsTable.userId, req.userId))
+        .orderBy(accountsTable.name),
+      getExchangeRates(),
+    ]);
     const withBalances = await Promise.all(
       accounts.map(async (a) => ({
         ...a,
         initialBalance: Number(a.initialBalance),
-        currentBalance: await computeBalance(req.userId, a.id, Number(a.initialBalance)),
+        currentBalance: await computeBalance(req.userId, a.id, Number(a.initialBalance), a.currency, rates),
         createdAt: a.createdAt.toISOString(),
       })),
     );
@@ -107,10 +144,11 @@ router.get("/accounts/:id", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Account not found" });
       return;
     }
+    const rates = await getExchangeRates();
     res.json({
       ...account,
       initialBalance: Number(account.initialBalance),
-      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance)),
+      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates),
       createdAt: account.createdAt.toISOString(),
     });
   } catch (err) {
@@ -144,10 +182,11 @@ router.patch("/accounts/:id", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Account not found" });
       return;
     }
+    const rates = await getExchangeRates();
     res.json({
       ...account,
       initialBalance: Number(account.initialBalance),
-      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance)),
+      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates),
       createdAt: account.createdAt.toISOString(),
     });
   } catch (err) {
