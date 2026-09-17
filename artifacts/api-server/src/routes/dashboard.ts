@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { transactionsTable, clientsTable, tripsTable } from "@workspace/db";
 import { eq, desc, inArray } from "drizzle-orm";
-import { getExchangeRates, toAed } from "../utils/exchange-rates.js";
+import { getEffectiveRates, toAed } from "../utils/exchange-rates.js";
 import { getOverdueClients, DEFAULT_OVERDUE_DAYS } from "../utils/overdue-clients.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
@@ -30,7 +30,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
       db.select().from(transactionsTable).where(eq(transactionsTable.userId, req.userId)),
       db.select().from(clientsTable).where(eq(clientsTable.userId, req.userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, req.userId)),
-      getExchangeRates(),
+      getEffectiveRates(req.userId),
     ]);
 
     const distinctCurrencies = [

@@ -10,7 +10,7 @@ import {
   DeleteClientParams,
   GetClientStatementParams,
 } from "@workspace/api-zod";
-import { getExchangeRates, toAed } from "../utils/exchange-rates.js";
+import { getEffectiveRates, toAed } from "../utils/exchange-rates.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = Router();
@@ -144,7 +144,7 @@ router.get("/clients/:id/statement", async (req, res): Promise<void> => {
         .select()
         .from(clientsTable)
         .where(and(eq(clientsTable.id, parsed.data.id), eq(clientsTable.userId, req.userId))),
-      getExchangeRates(),
+      getEffectiveRates(req.userId),
     ]);
     if (!client) {
       res.status(404).json({ error: "Client not found" });

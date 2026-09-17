@@ -10,7 +10,7 @@ import {
   DeleteAccountParams,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth.js";
-import { getExchangeRates, type AllRates } from "../utils/exchange-rates.js";
+import { getEffectiveRates, type AllRates } from "../utils/exchange-rates.js";
 
 const router = Router();
 
@@ -84,7 +84,7 @@ router.get("/accounts", async (req, res): Promise<void> => {
         .from(accountsTable)
         .where(eq(accountsTable.userId, req.userId))
         .orderBy(accountsTable.name),
-      getExchangeRates(),
+      getEffectiveRates(req.userId),
     ]);
     const withBalances = await Promise.all(
       accounts.map(async (a) => ({
@@ -144,7 +144,7 @@ router.get("/accounts/:id", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Account not found" });
       return;
     }
-    const rates = await getExchangeRates();
+    const rates = await getEffectiveRates(req.userId);
     res.json({
       ...account,
       initialBalance: Number(account.initialBalance),
@@ -182,7 +182,7 @@ router.patch("/accounts/:id", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Account not found" });
       return;
     }
-    const rates = await getExchangeRates();
+    const rates = await getEffectiveRates(req.userId);
     res.json({
       ...account,
       initialBalance: Number(account.initialBalance),

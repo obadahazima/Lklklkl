@@ -12,7 +12,7 @@ import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration 
 import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { getOverdueClients, DEFAULT_OVERDUE_DAYS } from "../utils/overdue-clients.js";
-import { getExchangeRates, type AllRates } from "../utils/exchange-rates.js";
+import { getEffectiveRates, type AllRates } from "../utils/exchange-rates.js";
 
 const router = Router();
 
@@ -1417,7 +1417,7 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
       db.select().from(clientsTable).where(eq(clientsTable.userId, req.userId)),
       db.select().from(tripsTable).where(eq(tripsTable.userId, req.userId)),
       db.select().from(accountsTable).where(eq(accountsTable.userId, req.userId)),
-      getExchangeRates(),
+      getEffectiveRates(req.userId),
     ]);
 
     const context = buildFinancialContext(

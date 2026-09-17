@@ -1,3 +1,7 @@
+import { db } from "@workspace/db";
+import { userSettingsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+
 export type AllRates = Record<string, number>;
 
 const FALLBACK_RATES: AllRates = {
@@ -50,4 +54,27 @@ export function toAed(amount: number, currency: string, rates: AllRates): number
     return amount;
   }
   return amount * rate;
+}
+
+/**
+ * Returns the rates that should actually be used for THIS user's money math — respecting the
+ * exchange-rate mode they picked in Settings (mirrors the web/mobile settings context):
+ *   - "manual": the user typed in their own fixed rates (settings.manualRates) — use those as-is,
+ *     never override them with a live lookup, since the whole point of manual mode is that the
+ *     user doesn't want the numbers moving day to day.
+ *   - "auto" (or no settings saved yet): fall back to the live, cached exchange rate (getExchangeRates()).
+ * Same AED-pivot convention as getExchangeRates(): rates[code] = how many AED one unit of `code` is worth.
+ */
+export async function getEffectiveRates(userId: string): Promise<AllRates> {
+  try {
+    const rows = await db.select().from(userSettingsTable).where(eq(userSettingsTable.userId, userId)).limit(1);
+    const settings = rows[0]?.settings as { exchangeRateMode?: string; manualRates?: Record<string, number> } | undefined;
+    if (settings?.exchangeRateMode === "manual" && settings.manualRates && typeof settings.manualRates === "object") {
+      return { AED: 1, ...settings.manualRates };
+    }
+  } catch {
+    // If the settings lookup itself fails for some reason, don't let that break balance
+    // calculations — just fall through to the live/auto rates below.
+  }
+  return getExchangeRates();
 }
