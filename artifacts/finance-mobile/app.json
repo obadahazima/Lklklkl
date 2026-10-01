@@ -17,7 +17,17 @@
       "supportsTablet": false
     },
     "android": {
-      "package": "com.obhazima.billybillsai"
+      "package": "com.obhazima.billybillsai",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -43,7 +53,12 @@
           }
         }
       ],
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Billy Bills AI uses the microphone only when you record a voice command for the assistant."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

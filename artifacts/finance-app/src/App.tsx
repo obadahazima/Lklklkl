@@ -21,6 +21,7 @@ import Accounts from "@/pages/accounts";
 import Chat from "@/pages/chat";
 import Settings from "@/pages/settings";
 import Landing from "@/pages/landing";
+import { PrivacyPage, TermsPage, DeleteAccountPage } from "@/pages/legal";
 
 setBaseUrl("https://workspaceapi-server-production-85e3.up.railway.app");
 
@@ -196,6 +197,9 @@ function AppRoutes() {
       <Route path="/" component={HomeRoute} />
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/delete-account" component={DeleteAccountPage} />
       <Route path="/transactions">
         <ProtectedRoute><Transactions /></ProtectedRoute>
       </Route>

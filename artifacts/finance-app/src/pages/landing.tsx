@@ -61,7 +61,8 @@ const content = {
     finalCtaTitle: "جاهز أن يعمل بيلي معك؟",
     finalCtaDesc: "يُفتح حسابك خلال دقيقتين، بلا بطاقة ائتمان",
     finalCtaBtn: "ابدأ الآن مجاناً",
-    footerLinks: "الخصوصية · الشروط",
+    privacyLabel: "سياسة الخصوصية",
+    termsLabel: "الشروط",
   },
   en: {
     login: "Log in",
@@ -103,7 +104,8 @@ const content = {
     finalCtaTitle: "Ready to let Billy work with you?",
     finalCtaDesc: "Your account is ready in 2 minutes, no card needed",
     finalCtaBtn: "Start free now",
-    footerLinks: "Privacy · Terms",
+    privacyLabel: "Privacy",
+    termsLabel: "Terms",
   },
 } as const;
 
@@ -327,7 +329,11 @@ export default function Landing() {
       {/* Footer */}
       <div className="px-6 py-4 border-t border-border flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground">Billy Bills AI © 2026</p>
-        <p className="text-[11px] text-muted-foreground">{t.footerLinks}</p>
+        <p className="text-[11px] text-muted-foreground flex gap-2">
+          <Link href="/privacy" className="hover:underline">{t.privacyLabel}</Link>
+          <span>·</span>
+          <Link href="/terms" className="hover:underline">{t.termsLabel}</Link>
+        </p>
       </div>
     </div>
   );

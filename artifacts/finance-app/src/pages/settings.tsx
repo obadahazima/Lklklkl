@@ -1,4 +1,4 @@
-import { useAuth } from "@clerk/react";
+import { useAuth, useClerk } from "@clerk/react";
 import { useState, useEffect, useRef } from "react";
 import { useSettings } from "@/contexts/settings-context";
 import { tr, AVAILABLE_CURRENCIES, getCurrencyName } from "@/lib/i18n";
@@ -16,6 +16,35 @@ export default function Settings() {
   const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, theme } = settings;
   const { toast } = useToast();
   const { getToken } = useAuth();
+  const { signOut } = useClerk();
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    const ok = window.confirm(
+      language === "ar"
+        ? "سيتم حذف حسابك وكل بياناتك (حسابات، معاملات، زبائن، رحلات، محادثات) نهائياً ولا يمكن التراجع. هل أنت متأكد؟"
+        : "This permanently deletes your account and ALL your data (accounts, transactions, clients, trips, chats). It cannot be undone. Are you sure?"
+    );
+    if (!ok) return;
+    const typed = window.prompt(language === "ar" ? "للتأكيد اكتب DELETE" : "Type DELETE to confirm");
+    if (typed !== "DELETE") return;
+    setDeleting(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.app/api/me", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
+      if (!res.ok) throw new Error("failed");
+      localStorage.clear();
+      try { await signOut(); } catch {}
+      window.location.href = "/";
+    } catch {
+      setDeleting(false);
+      toast({ title: language === "ar" ? "فشل حذف الحساب، حاول مرة أخرى" : "Failed to delete account, please try again", variant: "destructive" });
+    }
+  };
   const t = (k: Parameters<typeof tr>[1], vars?: Record<string, string>) => tr(language, k, vars);
 
   const [localRates, setLocalRates] = useState<Record<string, number>>({ ...manualRates });
@@ -542,6 +571,25 @@ const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.
               : "⚠️ Data will be added to your current account"}
           </p>
         </div>
+      </section>
+      <section className="bg-card border border-destructive/30 rounded-2xl p-4 space-y-3">
+        <h3 className="font-semibold text-destructive">{language === "ar" ? "حذف الحساب" : "Delete account"}</h3>
+        <p className="text-xs text-muted-foreground">
+          {language === "ar"
+            ? "يحذف حسابك وكل بياناتك نهائياً. صدّر نسخة احتياطية أولاً إن أردت الاحتفاظ بها."
+            : "Permanently deletes your account and all data. Download a backup first if you want a copy."}
+        </p>
+        <button
+          onClick={handleDeleteAccount}
+          disabled={deleting}
+          className="w-full py-2.5 px-4 rounded-xl text-sm font-semibold border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50"
+        >
+          {deleting ? (language === "ar" ? "جارٍ الحذف..." : "Deleting...") : (language === "ar" ? "حذف حسابي نهائياً" : "Delete my account")}
+        </button>
+        <p className="text-[11px] text-muted-foreground flex gap-3">
+          <a href={`${import.meta.env.BASE_URL}privacy`} className="hover:underline">{language === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}</a>
+          <a href={`${import.meta.env.BASE_URL}terms`} className="hover:underline">{language === "ar" ? "شروط الاستخدام" : "Terms of Use"}</a>
+        </p>
       </section>
     </div>
   );

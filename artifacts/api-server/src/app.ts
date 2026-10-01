@@ -1,5 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
@@ -8,6 +10,16 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+// Railway sits behind a proxy; needed so rate limiting sees the real client IP.
+app.set("trust proxy", 1);
+app.use(helmet());
+
+const generalLimiter = rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: true, legacyHeaders: false });
+// AI endpoints cost real money (Gemini) — keep them much tighter.
+const aiLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+// Account deletion: very few attempts needed.
+const deleteLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
 
 app.use(
   pinoHttp({
@@ -64,6 +76,9 @@ app.use(
   })),
 );
 
+app.use("/api", generalLimiter);
+app.use("/api/ai", aiLimiter);
+app.use("/api/me", deleteLimiter);
 app.use("/api", router);
 
 export default app;

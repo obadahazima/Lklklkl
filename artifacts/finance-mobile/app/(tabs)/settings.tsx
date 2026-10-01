@@ -5,6 +5,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
+import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -25,6 +26,8 @@ import { useSettings, AVAILABLE_CURRENCIES } from "@/contexts/SettingsContext";
 import type { AppTheme } from "@/contexts/SettingsContext";
 
 const MAX_CURRENCIES = 5;
+// TODO(owner): set EXPO_PUBLIC_WEB_URL to your deployed website (where /privacy, /terms live).
+const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://YOUR-WEB-DOMAIN.com";
 const API_BASE_URL = "https://workspaceapi-server-production-85e3.up.railway.app";
 const AUTO_BACKUP_KEY = "finance_app_last_auto_backup";
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -123,6 +126,53 @@ export default function SettingsScreen() {
     } finally {
       setBackupLoading(false);
     }
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      isAr ? "حذف الحساب نهائياً" : "Delete account permanently",
+      isAr
+        ? "سيتم حذف حسابك وكل بياناتك (حسابات، معاملات، زبائن، رحلات، محادثات) ولا يمكن التراجع. صدّر نسخة احتياطية أولاً إن أردت."
+        : "Your account and ALL your data (accounts, transactions, clients, trips, chats) will be permanently deleted. This cannot be undone. Export a backup first if you want a copy.",
+      [
+        { text: isAr ? "إلغاء" : "Cancel", style: "cancel" },
+        {
+          text: isAr ? "متابعة" : "Continue",
+          style: "destructive",
+          onPress: () =>
+            Alert.alert(
+              isAr ? "تأكيد أخير" : "Final confirmation",
+              isAr ? "هل أنت متأكد تماماً من حذف حسابك؟" : "Are you absolutely sure you want to delete your account?",
+              [
+                { text: isAr ? "إلغاء" : "Cancel", style: "cancel" },
+                {
+                  text: isAr ? "احذف حسابي" : "Delete my account",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      const token = await getToken();
+                      const res = await fetch(`${API_BASE_URL}/api/me`, {
+                        method: "DELETE",
+                        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ confirm: "DELETE" }),
+                      });
+                      if (!res.ok) throw new Error("failed");
+                      await AsyncStorage.clear();
+                      try { await signOut(); } catch {}
+                      router.replace("/");
+                    } catch {
+                      Alert.alert(
+                        isAr ? "خطأ" : "Error",
+                        isAr ? "فشل حذف الحساب، حاول مرة أخرى" : "Failed to delete account, please try again"
+                      );
+                    }
+                  },
+                },
+              ]
+            ),
+        },
+      ]
+    );
   }
 
   async function handleRestore() {
@@ -623,6 +673,25 @@ export default function SettingsScreen() {
           <Feather name="log-out" size={18} color="#ef4444" />
           <Text style={styles.signOutText}>
             {isAr ? "تسجيل الخروج" : "Sign Out"}
+          </Text>
+        </Pressable>
+
+        {/* Legal + delete account */}
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, marginTop: 20 }}>
+          <Pressable onPress={() => WebBrowser.openBrowserAsync(`${WEB_URL}/privacy`)}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, textDecorationLine: "underline" }}>
+              {isAr ? "سياسة الخصوصية" : "Privacy Policy"}
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => WebBrowser.openBrowserAsync(`${WEB_URL}/terms`)}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, textDecorationLine: "underline" }}>
+              {isAr ? "شروط الاستخدام" : "Terms of Use"}
+            </Text>
+          </Pressable>
+        </View>
+        <Pressable onPress={handleDeleteAccount} style={{ marginTop: 14, marginBottom: 24, alignItems: "center", padding: 10 }}>
+          <Text style={{ color: "#ef4444", fontSize: 13, fontWeight: "600" }}>
+            {isAr ? "حذف الحساب" : "Delete Account"}
           </Text>
         </Pressable>
       </ScrollView>

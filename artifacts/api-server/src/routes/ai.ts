@@ -720,10 +720,10 @@ const deleteTransactionDeclaration: FunctionDeclaration = {
     "احذف معاملة موجودة نهائياً. استخدمها فقط عندما يطلب المستخدم صراحةً حذف/إلغاء معاملة محددة، ويجب أن تكون متأكداً 100% من هوية المعاملة (id) قبل الحذف.",
   parameters: {
     type: SchemaType.OBJECT,
-    properties: {
+    properties: { confirmed: { type: SchemaType.BOOLEAN, description: "true فقط بعد تأكيد المستخدم الصريح لهذا الحذف بالذات" },
       id: { type: SchemaType.NUMBER, description: "معرّف المعاملة (id) المطلوب حذفها" },
     },
-    required: ["id"],
+    required: ["confirmed", "id"],
   },
 };
 
@@ -808,8 +808,8 @@ const deleteClientDeclaration: FunctionDeclaration = {
     "احذف زبوناً نهائياً. إجراء لا رجعة فيه (معاملاته السابقة تبقى لكن تفقد ربطها بالزبون). استخدمها فقط بعد تأكيد صريح جداً من المستخدم لعملية الحذف تحديداً.",
   parameters: {
     type: SchemaType.OBJECT,
-    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الزبون (id)" } },
-    required: ["id"],
+    properties: { confirmed: { type: SchemaType.BOOLEAN, description: "true فقط بعد تأكيد المستخدم الصريح لهذا الحذف بالذات" }, id: { type: SchemaType.NUMBER, description: "معرّف الزبون (id)" } },
+    required: ["confirmed", "id"],
   },
 };
 
@@ -853,8 +853,8 @@ const deleteTripDeclaration: FunctionDeclaration = {
     "احذف رحلة نهائياً. إجراء لا رجعة فيه (معاملاتها السابقة تبقى لكن تفقد ربطها بالرحلة). استخدمها فقط بعد تأكيد صريح جداً من المستخدم لعملية الحذف تحديداً.",
   parameters: {
     type: SchemaType.OBJECT,
-    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الرحلة (id)" } },
-    required: ["id"],
+    properties: { confirmed: { type: SchemaType.BOOLEAN, description: "true فقط بعد تأكيد المستخدم الصريح لهذا الحذف بالذات" }, id: { type: SchemaType.NUMBER, description: "معرّف الرحلة (id)" } },
+    required: ["confirmed", "id"],
   },
 };
 
@@ -900,8 +900,8 @@ const deleteAccountDeclaration: FunctionDeclaration = {
     "احذف حساب/بطاقة نهائياً. إجراء لا رجعة فيه (معاملاته السابقة تبقى لكن تفقد ربطها بالحساب). استخدمها فقط بعد تأكيد صريح جداً من المستخدم لعملية الحذف تحديداً.",
   parameters: {
     type: SchemaType.OBJECT,
-    properties: { id: { type: SchemaType.NUMBER, description: "معرّف الحساب (id)" } },
-    required: ["id"],
+    properties: { confirmed: { type: SchemaType.BOOLEAN, description: "true فقط بعد تأكيد المستخدم الصريح لهذا الحذف بالذات" }, id: { type: SchemaType.NUMBER, description: "معرّف الحساب (id)" } },
+    required: ["confirmed", "id"],
   },
 };
 
@@ -1051,6 +1051,18 @@ async function executeTool(
       .returning();
     if (!tx) return { error: "المعاملة غير موجودة" };
     return { success: true, transaction: { ...tx, amount: Number(tx.amount) } };
+  }
+
+  // Destructive tools need an explicit `confirmed: true`, which the model may only set after the
+  // user has clearly confirmed THIS specific deletion in chat. Enforced here, not just in the prompt.
+  if (
+    ["delete_transaction", "delete_client", "delete_trip", "delete_account"].includes(name) &&
+    args.confirmed !== true
+  ) {
+    return {
+      error:
+        "CONFIRMATION_REQUIRED: لم يتم الحذف. اسأل المستخدم صراحةً هل يريد حذف هذا العنصر تحديداً، وإذا أكد بوضوح استدعِ الأداة مرة أخرى مع confirmed=true.",
+    };
   }
 
   if (name === "delete_transaction") {
@@ -1431,6 +1443,7 @@ router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
     const todayISO = new Date().toISOString().split("T")[0];
 
     const systemInstruction = `أنت "بيلي" 🤖 — المساعد المالي الذكي الشخصي داخل هذا التطبيق، لتاجر يعمل بين الإمارات والولايات المتحدة وسوريا. أسلوبك ودود ومباشر وواثق، وتحكي عربي طبيعي مفهوم (فصحى ميسّرة مع لمسة لهجة شامية عند الحاجة). إذا سألك أحد عن اسمك، قل إنك "بيلي".
+قواعد أمان إلزامية: (1) لا تحذف أي معاملة أو زبون أو رحلة أو حساب إلا بعد أن يؤكد المستخدم صراحةً في رسالته الحالية حذف هذا العنصر تحديداً (اذكر له اسمه/مبلغه قبل السؤال)، وعندها فقط مرّر confirmed=true. (2) أنت مساعد لتنظيم السجلات وقد تخطئ؛ لست محاسباً قانونياً ولا مستشاراً مالياً أو ضريبياً، فإذا طُلب منك رأي قانوني أو ضريبي أو استثماري فوضّح ذلك باختصار ونبّه المستخدم لمراجعة مختص.
 مهمتك: الإجابة على الأسئلة المالية بدقة بناءً على البيانات الحالية المقدمة أدناه، وأيضاً تنفيذ عمليات فعلية (إضافة/تعديل/حذف) على المعاملات والزبائن والرحلات والاستديوهات عند الطلب — عندك صلاحية كاملة على بيانات هذا الحساب عبر الأدوات المتوفرة لك.
 تاريخ اليوم: ${todayISO}
 

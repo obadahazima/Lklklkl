@@ -9,6 +9,8 @@ import aiRouter from "./ai";
 import backupRouter from "./backup";
 import restoreRouter from "./restore";
 import settingsRouter from "./settings";
+import accountRouter from "./account";
+import subscriptionRouter from "./subscription";
 import exchangeRatesRouter from "./exchange-rates.js";
 const router: IRouter = Router();
 
@@ -23,5 +25,7 @@ router.use(aiRouter);
 router.use(backupRouter);
 router.use(restoreRouter);
 router.use(exchangeRatesRouter);
+router.use(accountRouter);
+router.use(subscriptionRouter);
 
 export default router;
