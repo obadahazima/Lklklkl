@@ -7,6 +7,7 @@ import {
   accountsTable,
   aiMessagesTable,
 } from "@workspace/db";
+import { aiQuota } from "../lib/aiQuota.js";
 import { ParseVoiceInputBody, AiQueryBody, TranscribeVoiceBody } from "@workspace/api-zod";
 import { GoogleGenerativeAI, SchemaType, type Content, type FunctionDeclaration } from "@google/generative-ai";
 import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
@@ -402,7 +403,7 @@ function buildFinancialContext(
   return lines.join("\n");
 }
 
-router.post("/ai/parse-voice", requireAuth, async (req, res): Promise<void> => {
+router.post("/ai/parse-voice", requireAuth, aiQuota, async (req, res): Promise<void> => {
   const parsed = ParseVoiceInputBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -620,7 +621,7 @@ ${currencyHints}
   }
 });
 
-router.post("/ai/transcribe-voice", requireAuth, async (req, res): Promise<void> => {
+router.post("/ai/transcribe-voice", requireAuth, aiQuota, async (req, res): Promise<void> => {
   const parsed = TranscribeVoiceBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -1414,7 +1415,7 @@ router.delete("/ai/history", requireAuth, async (req, res): Promise<void> => {
 const CONFIRMATION_PATTERN = /\b(تم|تمت|أضفت|حذفت|عدّلت|عدلت|سجّلت|سجلت|أنجزت|done|added|deleted|updated)\b/i;
 const ACTION_INTENT_PATTERN = /(أضف|ضيف|سجّل|سجل|احذف|امسح|عدّل|عدل|غيّر|غير|add\b|delete\b|remove\b|update\b|edit\b)/i;
 
-router.post("/ai/query", requireAuth, async (req, res): Promise<void> => {
+router.post("/ai/query", requireAuth, aiQuota, async (req, res): Promise<void> => {
   const parsed = AiQueryBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

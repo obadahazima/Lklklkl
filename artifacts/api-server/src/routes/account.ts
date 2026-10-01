@@ -9,6 +9,7 @@ import {
   aiMessagesTable,
   userSettingsTable,
   subscriptionsTable,
+  aiUsageTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
@@ -35,6 +36,7 @@ router.delete("/me", requireAuth, async (req, res): Promise<void> => {
       await tx.delete(aiMessagesTable).where(eq(aiMessagesTable.userId, uid));
       await tx.delete(userSettingsTable).where(eq(userSettingsTable.userId, uid));
       await tx.delete(subscriptionsTable).where(eq(subscriptionsTable.userId, uid));
+      await tx.delete(aiUsageTable).where(eq(aiUsageTable.userId, uid));
     });
     await clerkClient.users.deleteUser(uid);
     res.status(204).end();

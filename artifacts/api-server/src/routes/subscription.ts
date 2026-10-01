@@ -5,13 +5,16 @@ import { subscriptionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { getSubscription } from "../lib/subscription.js";
+import { aiUsageToday } from "../lib/aiQuota.js";
 
 const router = Router();
 
 /** The single place every client (mobile, web) asks "is this user premium?". */
 router.get("/subscription/status", requireAuth, async (req, res): Promise<void> => {
   try {
-    res.json(await getSubscription(req.userId));
+    const [sub, ai] = await Promise.all([getSubscription(req.userId), aiUsageToday(req.userId)]);
+    // ai.limit === null means no free-tier limit is configured; premium users ignore it.
+    res.json({ ...sub, ai });
   } catch (err) {
     req.log.error({ err }, "Failed to read subscription");
     res.status(500).json({ error: "Failed to read subscription" });
