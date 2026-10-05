@@ -18,6 +18,8 @@ app.use(helmet());
 const generalLimiter = rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: true, legacyHeaders: false });
 // AI endpoints cost real money (Gemini) — keep them much tighter.
 const aiLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+// Support chat: cheap but public-facing, keep it modest.
+const supportLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 // Account deletion: very few attempts needed.
 const deleteLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
 
@@ -78,6 +80,7 @@ app.use(
 
 app.use("/api", generalLimiter);
 app.use("/api/ai", aiLimiter);
+app.use("/api/support", supportLimiter);
 app.use("/api/me", deleteLimiter);
 app.use("/api", router);
 

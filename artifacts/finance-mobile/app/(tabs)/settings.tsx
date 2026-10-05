@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
 import { WEB_URL } from "@/constants/legal";
+import { SupportChat } from "@/components/SupportChat";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -32,6 +33,7 @@ const AUTO_BACKUP_KEY = "finance_app_last_auto_backup";
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export default function SettingsScreen() {
+  const [supportOpen, setSupportOpen] = React.useState(false);
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { signOut } = useClerk();
@@ -675,6 +677,14 @@ export default function SettingsScreen() {
           </Text>
         </Pressable>
 
+        {/* Support */}
+        <Pressable
+          onPress={() => setSupportOpen(true)}
+          style={{ marginTop: 20, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 13, alignItems: "center" }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>{isAr ? "تواصل مع الدعم" : "Contact support"}</Text>
+        </Pressable>
+        <SupportChat visible={supportOpen} onClose={() => setSupportOpen(false)} />
         {/* Legal + delete account */}
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, marginTop: 20 }}>
           <Pressable onPress={() => WebBrowser.openBrowserAsync(`${WEB_URL}/privacy`)}>

@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link } from "wouter";
 
-// TODO(owner): fill these in before publishing. Google Play requires a real contact address.
-const SUPPORT_EMAIL = "support@YOUR-DOMAIN.com";
-const OPERATOR = "[Your name / company name]";
-const COUNTRY = "[Your country of registration]";
+const SUPPORT_EMAIL = "onhazima@gmail.com";
+const OPERATOR = "Obada Hazima";
+const COUNTRY = "the United Arab Emirates";
+const COUNTRY_AR = "الإمارات العربية المتحدة";
 const UPDATED = "2026-10-01";
 
 type Lang = "ar" | "en";
@@ -21,7 +21,7 @@ const privacy: Record<Lang, Doc> = {
         p: [
           "Account data: name, email address and sign-in identifiers (including Google or Apple sign-in), handled by our authentication provider.",
           "Financial records you enter: accounts, balances, transactions, currencies, notes, trips, and clients (client name, phone number, notes).",
-          "AI assistant data: your chat messages with the assistant and the actions it performs, and voice recordings you choose to send for transcription.",
+          "AI assistant data: your chat messages with the assistant and the actions it performs, voice recordings you choose to send for transcription, and messages you send to the in-app Support chat (processed by Google Gemini, not stored on our servers).",
           "Settings and preferences (language, currencies, exchange rates).",
           "Basic technical logs (request method, path and status code) used for security and debugging. We do not use advertising or analytics trackers.",
         ],
@@ -58,13 +58,13 @@ const privacy: Record<Lang, Doc> = {
   ar: {
     title: "سياسة الخصوصية",
     sections: [
-      { h: "1. من نحن", p: [`تطبيق Billy Bills AI ("التطبيق") تشغّله ${OPERATOR}، ${COUNTRY}. للتواصل: ${SUPPORT_EMAIL}.`] },
+      { h: "1. من نحن", p: [`تطبيق Billy Bills AI ("التطبيق") تشغّله ${OPERATOR}، ${COUNTRY_AR}. للتواصل: ${SUPPORT_EMAIL}.`] },
       {
         h: "2. البيانات التي نجمعها",
         p: [
           "بيانات الحساب: الاسم والبريد الإلكتروني ومعرّفات تسجيل الدخول (بما فيها الدخول عبر Google أو Apple)، وتُعالج عبر مزوّد المصادقة.",
           "السجلات المالية التي تدخلها: الحسابات والأرصدة والمعاملات والعملات والملاحظات والرحلات والزبائن (اسم الزبون ورقم هاتفه وملاحظاته).",
-          "بيانات المساعد الذكي: رسائلك مع المساعد والإجراءات التي ينفذها، والتسجيلات الصوتية التي ترسلها لتحويلها إلى نص.",
+          "بيانات المساعد الذكي: رسائلك مع المساعد والإجراءات التي ينفذها، والتسجيلات الصوتية التي ترسلها لتحويلها إلى نص، ورسائلك إلى دردشة الدعم داخل التطبيق (تُعالج عبر Google Gemini ولا تُحفظ على خوادمنا).",
           "الإعدادات والتفضيلات (اللغة والعملات وأسعار الصرف).",
           "سجلات تقنية أساسية (نوع الطلب والمسار ورمز الحالة) لأغراض الأمان وإصلاح الأعطال. لا نستخدم أدوات تتبع إعلانية أو تحليلية.",
         ],
@@ -112,7 +112,7 @@ const terms: Record<Lang, Doc> = {
       { h: "6. Paid features", p: ["Some features may become paid subscriptions in the future. If so, the price, billing period, renewal and cancellation terms will be shown clearly before you pay, and purchases made through Google Play are also subject to Google Play's terms and refund rules."] },
       { h: "7. Termination", p: ["You may delete your account at any time from Settings. We may suspend or end access if these terms are violated or to protect the service."] },
       { h: "8. Disclaimer and liability", p: ["The App is provided \"as is\" and \"as available\", without warranties of any kind. To the maximum extent permitted by law, we are not liable for indirect or consequential losses, lost profits, or data loss, and our total liability is limited to the amount you paid us in the previous 12 months (or zero if you paid nothing)."] },
-      { h: "9. Changes and governing law", p: [`We may update these terms; continued use means acceptance. These terms are governed by the laws of ${COUNTRY}, without affecting any mandatory rights you have under your local law. Contact: ${SUPPORT_EMAIL}.`] },
+      { h: "9. Changes and governing law", p: [`We may update these terms; continued use means acceptance. These terms are governed by the laws of ${COUNTRY_AR}, without affecting any mandatory rights you have under your local law. Contact: ${SUPPORT_EMAIL}.`] },
     ],
   },
   ar: {
@@ -129,7 +129,7 @@ const terms: Record<Lang, Doc> = {
       { h: "6. الميزات المدفوعة", p: ["قد تصبح بعض الميزات اشتراكات مدفوعة مستقبلاً. وفي هذه الحالة سيُعرض السعر ومدة الفوترة والتجديد وشروط الإلغاء بوضوح قبل الدفع، وتخضع المشتريات عبر Google Play أيضاً لشروط Google Play وسياسة الاسترجاع الخاصة بها."] },
       { h: "7. الإنهاء", p: ["يمكنك حذف حسابك في أي وقت من الإعدادات. ويجوز لنا تعليق الوصول أو إنهاؤه عند مخالفة هذه الشروط أو لحماية الخدمة."] },
       { h: "8. إخلاء المسؤولية وحدودها", p: ["يُقدَّم التطبيق \"كما هو\" و\"حسب التوفر\" دون أي ضمانات. وبالحد الأقصى الذي يسمح به القانون، لا نتحمل مسؤولية الخسائر غير المباشرة أو التبعية أو الأرباح الفائتة أو فقدان البيانات، وتقتصر مسؤوليتنا الإجمالية على المبلغ الذي دفعته لنا خلال الأشهر الـ12 السابقة (أو صفر إن لم تدفع شيئاً)."] },
-      { h: "9. التعديلات والقانون الواجب التطبيق", p: [`قد نعدّل هذه الشروط، واستمرارك في الاستخدام يعني قبولها. تخضع هذه الشروط لقوانين ${COUNTRY} دون المساس بأي حقوق إلزامية لك بموجب قانونك المحلي. للتواصل: ${SUPPORT_EMAIL}.`] },
+      { h: "9. التعديلات والقانون الواجب التطبيق", p: [`قد نعدّل هذه الشروط، واستمرارك في الاستخدام يعني قبولها. تخضع هذه الشروط لقوانين ${COUNTRY_AR} دون المساس بأي حقوق إلزامية لك بموجب قانونك المحلي. للتواصل: ${SUPPORT_EMAIL}.`] },
     ],
   },
 };

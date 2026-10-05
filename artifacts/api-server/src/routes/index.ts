@@ -10,6 +10,7 @@ import backupRouter from "./backup";
 import restoreRouter from "./restore";
 import settingsRouter from "./settings";
 import accountRouter from "./account";
+import supportRouter from "./support";
 import consentRouter from "./consent";
 import subscriptionRouter from "./subscription";
 import exchangeRatesRouter from "./exchange-rates.js";
@@ -29,5 +30,6 @@ router.use(exchangeRatesRouter);
 router.use(accountRouter);
 router.use(subscriptionRouter);
 router.use(consentRouter);
+router.use(supportRouter);
 
 export default router;

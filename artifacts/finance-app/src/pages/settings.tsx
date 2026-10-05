@@ -5,6 +5,7 @@ import { tr, AVAILABLE_CURRENCIES, getCurrencyName } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Check, Globe, Coins, Star, RefreshCw, ChevronDown, X, Plus, LayoutList, Sun, Moon, Download, Upload, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SupportChat } from "@/components/support-chat";
 
 const AUTO_BACKUP_KEY = "hisabat_last_auto_backup";
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -18,6 +19,7 @@ export default function Settings() {
   const { getToken } = useAuth();
   const { signOut } = useClerk();
   const [deleting, setDeleting] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
 
   const handleDeleteAccount = async () => {
     const ok = window.confirm(
@@ -572,6 +574,22 @@ const res = await fetch("https://workspaceapi-server-production-85e3.up.railway.
           </p>
         </div>
       </section>
+      <section className="bg-card border border-border rounded-2xl p-4 space-y-3">
+        <h3 className="font-semibold">{language === "ar" ? "الدعم" : "Support"}</h3>
+        <p className="text-xs text-muted-foreground">
+          {language === "ar"
+            ? "عندك سؤال أو مشكلة؟ اسأل مساعد الدعم، وإذا ما قدر يساعدك بتتواصل مع شخص مباشرة."
+            : "Have a question or problem? Ask the support assistant, and reach a person directly if it can't help."}
+        </p>
+        <button
+          onClick={() => setSupportOpen(true)}
+          className="w-full py-2.5 px-4 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90"
+        >
+          {language === "ar" ? "تواصل مع الدعم" : "Contact support"}
+        </button>
+      </section>
+      <SupportChat open={supportOpen} onClose={() => setSupportOpen(false)} />
+
       <section className="bg-card border border-destructive/30 rounded-2xl p-4 space-y-3">
         <h3 className="font-semibold text-destructive">{language === "ar" ? "حذف الحساب" : "Delete account"}</h3>
         <p className="text-xs text-muted-foreground">
