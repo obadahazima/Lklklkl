@@ -8,6 +8,7 @@ import { shadcn } from "@clerk/themes";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
+import { ConsentGate } from "@/components/consent-gate";
 import { SettingsProvider } from "@/contexts/settings-context";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
@@ -169,7 +170,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Show when="signed-in">
-        <Layout>{children}</Layout>
+        <ConsentGate><Layout>{children}</Layout></ConsentGate>
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />
@@ -182,7 +183,7 @@ function HomeRoute() {
   return (
     <>
       <Show when="signed-in">
-        <Layout><Dashboard /></Layout>
+        <ConsentGate><Layout><Dashboard /></Layout></ConsentGate>
       </Show>
       <Show when="signed-out">
         <Landing />

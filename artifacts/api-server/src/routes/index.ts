@@ -10,6 +10,7 @@ import backupRouter from "./backup";
 import restoreRouter from "./restore";
 import settingsRouter from "./settings";
 import accountRouter from "./account";
+import consentRouter from "./consent";
 import subscriptionRouter from "./subscription";
 import exchangeRatesRouter from "./exchange-rates.js";
 const router: IRouter = Router();
@@ -27,5 +28,6 @@ router.use(restoreRouter);
 router.use(exchangeRatesRouter);
 router.use(accountRouter);
 router.use(subscriptionRouter);
+router.use(consentRouter);
 
 export default router;

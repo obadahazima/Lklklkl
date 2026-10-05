@@ -24,6 +24,7 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useTr } from "@/lib/i18n";
 import { HelpOverlay } from "@/components/HelpOverlay";
 import { FloatingAssistant } from "@/components/FloatingAssistant";
+import { ConsentGate } from "@/components/ConsentGate";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded, getToken } = useAuth();
@@ -44,7 +45,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return <Redirect href="/(auth)/sign-in" />;
   }
 
-  return <>{children}</>;
+  return <ConsentGate>{children}</ConsentGate>;
 }
 
 function NativeTabLayout() {

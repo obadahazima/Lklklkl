@@ -6,6 +6,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
+import { WEB_URL } from "@/constants/legal";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -26,8 +27,6 @@ import { useSettings, AVAILABLE_CURRENCIES } from "@/contexts/SettingsContext";
 import type { AppTheme } from "@/contexts/SettingsContext";
 
 const MAX_CURRENCIES = 5;
-// TODO(owner): set EXPO_PUBLIC_WEB_URL to your deployed website (where /privacy, /terms live).
-const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://YOUR-WEB-DOMAIN.com";
 const API_BASE_URL = "https://workspaceapi-server-production-85e3.up.railway.app";
 const AUTO_BACKUP_KEY = "finance_app_last_auto_backup";
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
