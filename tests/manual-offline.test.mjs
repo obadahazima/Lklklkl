@@ -25,7 +25,7 @@ function memoryStorage() {
   const records=new Map();let owner=null,tail=Promise.resolve(),fail=false;
   return {records,fail:(value)=>{fail=value;},read:async(owner)=>clone(records.get(owner)??core.emptyLedger()),update(owner,change){const task=tail.catch(()=>{}).then(()=>{if(fail)throw Error('quota');const next=change(clone(records.get(owner)??core.emptyLedger()));records.set(owner,clone(next));return clone(next);});tail=task;return task;},async activeOwner(value){if(value!==undefined)owner=value;return owner;}};
 }
-for(const [field,value] of [['date','2026-02-31'],['amount',0],['amount',-2],['amount',12.555],['amount',Infinity],['type','unknown'],['status','unknown'],['accountId',0]]) {
+for(const [field,value] of [['date','2026-02-31'],['amount',0],['amount',-2],['amount',12.555],['amount',12.55001],['amount',0.00001],['amount',Infinity],['type','unknown'],['status','unknown'],['accountId',0]]) {
   test(`manual validation rejects ${field}=${value}`,()=>assert.ok(manual.transactionError({...base,[field]:value})));
 }
 test('manual validation accepts leap dates, Arabic-normalized decimals and distinct transfers',()=>{
@@ -112,6 +112,8 @@ test('server rejects invalid dates, precision and account-owner mismatches befor
   const server=transactionServer();
   assert.equal((await server.call({...base,date:'2026-02-31'})).status,400);
   assert.equal((await server.call({...base,amount:1.555})).status,400);
+  assert.equal((await server.call({...base,amount:12.55001})).status,400);
+  assert.equal((await server.call({...base,amount:0.00001})).status,400);
   assert.equal((await server.call(base,'a','b')).status,403);
   assert.equal(server.records.get(server.tables.transactionsTable).length,0);
 });

@@ -16,7 +16,7 @@ export function transactionError(value: {
 }): string | null {
   if (!isCalendarDate(value.date)) return "invalid_date";
   if (!(TRANSACTION_TYPES as readonly unknown[]).includes(value.type)) return "invalid_type";
-  if (typeof value.amount !== "number" || !Number.isFinite(value.amount) || value.amount <= 0 || value.amount >= 1e13 || Math.abs(value.amount * 100 - Math.round(value.amount * 100)) > 0.01) return "invalid_amount";
+  if (typeof value.amount !== "number" || !Number.isFinite(value.amount) || value.amount <= 0 || value.amount >= 1e13 || Number(value.amount.toFixed(2)) !== value.amount) return "invalid_amount";
   if (typeof value.currency !== "string" || !/^[A-Z]{3}$/.test(value.currency)) return "invalid_currency";
   if (value.status !== "pending" && value.status !== "settled") return "invalid_status";
   if (!Number.isInteger(value.accountId) || Number(value.accountId) <= 0) return "account_required";

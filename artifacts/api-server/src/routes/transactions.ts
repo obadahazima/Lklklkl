@@ -139,7 +139,7 @@ router.post("/transactions", async (req, res): Promise<void> => {
   if (!validISODate(input.date) || !["income", "expense", "payment", "receipt", "transfer"].includes(input.type)
     || !["pending", "settled"].includes(input.status) || !/^[A-Z]{3}$/.test(input.currency)
     || !Number.isFinite(input.amount) || input.amount <= 0 || input.amount >= 1e13
-    || Math.abs(input.amount * 100 - Math.round(input.amount * 100)) > 0.01
+    || Number(input.amount.toFixed(2)) !== input.amount
     || !Number.isInteger(input.accountId) || input.accountId <= 0) {
     res.status(400).json({ error: "Invalid transaction date, amount, currency, status or account" });
     return;
@@ -215,7 +215,7 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
     || (bodyParsed.data.type !== undefined && !["income", "expense", "payment", "receipt", "transfer"].includes(bodyParsed.data.type))
     || (bodyParsed.data.status !== undefined && !["pending", "settled"].includes(bodyParsed.data.status))
     || (bodyParsed.data.currency !== undefined && !/^[A-Z]{3}$/.test(bodyParsed.data.currency))
-    || (bodyParsed.data.amount !== undefined && (!Number.isFinite(bodyParsed.data.amount) || bodyParsed.data.amount <= 0 || bodyParsed.data.amount >= 1e13 || Math.abs(bodyParsed.data.amount * 100 - Math.round(bodyParsed.data.amount * 100)) > 0.01))) {
+    || (bodyParsed.data.amount !== undefined && (!Number.isFinite(bodyParsed.data.amount) || bodyParsed.data.amount <= 0 || bodyParsed.data.amount >= 1e13 || Number(bodyParsed.data.amount.toFixed(2)) !== bodyParsed.data.amount))) {
     res.status(400).json({ error: "Invalid transaction fields" });
     return;
   }
