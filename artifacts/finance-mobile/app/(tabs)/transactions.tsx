@@ -1,4 +1,5 @@
 import {
+  localISODate, normalizeAmountInput, normalizeEntityName, voiceAccountSelection,
   useListTransactions,
   useCreateTransaction,
   useUpdateTransaction,
@@ -80,7 +81,7 @@ function formatDate(d: string, lang: string) {
   }
 }
 
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+const norm = normalizeEntityName;
 
 type ResolutionState =
   | { kind: "idle" }
@@ -111,7 +112,7 @@ function emptyForm(primaryCurrency = "AED"): FormState {
     toAccountId: "",
     description: "",
     status: "pending",
-    date: new Date().toISOString().slice(0, 10),
+    date: localISODate(),
   };
 }
 
@@ -273,7 +274,7 @@ export default function TransactionsScreen() {
 
   const handleUpdate = async () => {
     if (!editingTx) return;
-    const amt = parseFloat(editForm.amount);
+    const amt = normalizeAmountInput(editForm.amount);
     if (!amt || amt <= 0) {
       Alert.alert(t("saveError"), t("saveErrorDesc"));
       return;
@@ -370,22 +371,29 @@ export default function TransactionsScreen() {
   const editAccountName = accounts?.find((a) => String(a.id) === editForm.accountId)?.name;
   const editToAccountName = accounts?.find((a) => String(a.id) === editForm.toAccountId)?.name;
 
-  const parseMutation = useParseVoiceInput({
-    mutation: {
-      onSuccess: (data) => {
-        if (data.success) {
-          applyParsed(data);
-        } else {
-          if (voiceSheetFlowRef.current) setVoiceSheetStep("recording");
-          Alert.alert(t("notUnderstood"), data.error || t("tryAgain"));
-        }
-      },
-      onError: () => {
-        if (voiceSheetFlowRef.current) setVoiceSheetStep("recording");
-        Alert.alert(t("saveError"), t("tryAgain"));
-      },
-    },
-  });
+  const parseRequestRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  useEffect(() => () => { ++parseRequestRef.current; }, []);
+  const parseMutation = useParseVoiceInput();
+
+  async function analyzeVoiceText(text: string) {
+    const request = ++parseRequestRef.current;
+    try {
+      const data = await parseMutation.mutateAsync({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency, referenceDate: localISODate() } });
+      if (request !== parseRequestRef.current) return;
+      if (data.success) applyParsed(data);
+      else {
+        // Keep the text available for editing/retry, including clarification questions.
+        if (voiceSheetFlowRef.current) setVoiceSheetStep("result");
+        Alert.alert(t("notUnderstood"), data.error || t("tryAgain"));
+      }
+    } catch (err) {
+      if (request !== parseRequestRef.current) return;
+      if (voiceSheetFlowRef.current) setVoiceSheetStep("result");
+      const detail = (err as { data?: { message?: string; error?: string } }).data;
+      Alert.alert(t("saveError"), detail?.message || detail?.error || t("tryAgain"));
+    }
+  }
 
   const createClientMutation = useCreateClient({
     mutation: {
@@ -451,10 +459,12 @@ export default function TransactionsScreen() {
     setForm((f) => ({
       ...f,
       type: nextType ?? f.type,
-      amount: data.amount != null ? String(data.amount) : f.amount,
+      amount: data.amount != null ? String(data.amount) : "",
+      ...voiceAccountSelection(data, accounts ?? []),
+      status: data.status === "settled" ? "settled" : "pending",
       currency: data.currency || f.currency,
       description: data.description ?? f.description,
-      date: data.date || new Date().toISOString().slice(0, 10),
+      date: data.date || localISODate(),
     }));
     parsedDateDetectedRef.current = !!data.date;
     parsedRef.current = data;
@@ -492,7 +502,8 @@ export default function TransactionsScreen() {
       } else if (!name) {
         r.clientId = null;
       } else {
-        const exact = clients?.find((c) => norm(c.name) === norm(name));
+        const exactMatches = clients?.filter((c) => norm(c.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) {
           r.clientId = exact.id;
         } else {
@@ -515,7 +526,8 @@ export default function TransactionsScreen() {
       } else if (!name) {
         r.tripId = null;
       } else {
-        const exact = trips?.find((tp) => norm(tp.name) === norm(name));
+        const exactMatches = trips?.filter((tp) => norm(tp.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) {
           r.tripId = exact.id;
         } else {
@@ -536,7 +548,7 @@ export default function TransactionsScreen() {
   function handleParseText() {
     const text = aiText.trim();
     if (!text) return;
-    parseMutation.mutate({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+    void analyzeVoiceText(text);
   }
 
   async function handleMic() {
@@ -544,7 +556,7 @@ export default function TransactionsScreen() {
       const text = await voice.stopAndTranscribe();
       if (text) {
         setAiText(text);
-        parseMutation.mutate({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+        void analyzeVoiceText(text);
       } else if (voice.error === "permission_denied") {
         Alert.alert(t("micPermissionDenied"));
       } else if (voice.error) {
@@ -557,6 +569,7 @@ export default function TransactionsScreen() {
   }
 
   async function openVoiceSheet() {
+    if (voice.state !== "idle" || parseMutation.isPending) return;
     resetForm();
     setVoiceEditField(null);
     voiceSheetFlowRef.current = true;
@@ -571,10 +584,12 @@ export default function TransactionsScreen() {
     if (voice.state !== "recording") return;
     setVoiceSheetStep("processing");
     setVoiceSheetVisible(true);
+    const request = parseRequestRef.current;
     const text = await voice.stopAndTranscribe();
+    if (request !== parseRequestRef.current || !voiceSheetFlowRef.current) return;
     if (text) {
       setAiText(text);
-      parseMutation.mutate({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+      void analyzeVoiceText(text);
     } else {
       setVoiceSheetVisible(false);
       voiceSheetFlowRef.current = false;
@@ -587,20 +602,22 @@ export default function TransactionsScreen() {
   }
 
   function closeVoiceSheet() {
+    if (saveInFlightRef.current) return;
+    ++parseRequestRef.current;
     voiceSheetFlowRef.current = false;
     setVoiceSheetVisible(false);
     setVoiceEditField(null);
     resetForm();
-    if (voice.state === "recording") {
-      voice.cancelRecording();
-    }
+    if (voice.state !== "idle") void voice.cancelRecording();
   }
 
   async function handleVoiceConfirmSave() {
     if (!form.amount) return;
-    voiceSheetFlowRef.current = false;
-    setVoiceSheetVisible(false);
-    await handleCreate();
+    const saved = await handleCreate();
+    if (saved) {
+      voiceSheetFlowRef.current = false;
+      setVoiceSheetVisible(false);
+    }
   }
 
   const filtered = (transactions ?? []).filter((tx: any) => {
@@ -614,24 +631,28 @@ export default function TransactionsScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const resetForm = () => {
-    setForm(emptyForm(primaryCurrency));
+    ++parseRequestRef.current;
+    const next = emptyForm(primaryCurrency);
+    if (accounts?.length === 1) next.accountId = String(accounts[0].id);
+    setForm(next);
     setAiText("");
     parsedRef.current = null;
     resolveRef.current = {};
   };
 
-  const handleCreate = async () => {
-    const amt = parseFloat(form.amount);
+  const handleCreate = async (): Promise<boolean> => {
+    if (saveInFlightRef.current) return false;
+    const amt = normalizeAmountInput(form.amount);
     if (!form.amount || isNaN(amt) || amt <= 0) {
       Alert.alert(language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", language === "ar" ? "الرجاء إدخال مبلغ أكبر من الصفر" : "Please enter an amount greater than zero");
-      return;
+      return false;
     }
     if (!form.accountId) {
       Alert.alert(
         language === "ar" ? "لازم تحدد الحساب" : "Account required",
         language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
       );
-      return;
+      return false;
     }
     if (form.type === "transfer") {
       if (!form.toAccountId) {
@@ -639,16 +660,17 @@ export default function TransactionsScreen() {
           language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
           language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
         );
-        return;
+        return false;
       }
       if (form.toAccountId === form.accountId) {
         Alert.alert(
           language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
           language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
         );
-        return;
+        return false;
       }
     }
+    saveInFlightRef.current = true;
     try {
       const payload: TransactionInput = {
         type: form.type,
@@ -669,8 +691,12 @@ export default function TransactionsScreen() {
       qc.invalidateQueries({ queryKey: getListTransactionsQueryKey({}) });
       qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       refetch();
+      return true;
     } catch {
       Alert.alert(t("saveError"), t("saveErrorDesc"));
+      return false;
+    } finally {
+      saveInFlightRef.current = false;
     }
   };
 
@@ -1075,7 +1101,12 @@ export default function TransactionsScreen() {
                       <Text style={[{ color: colors.mutedForeground, fontSize: 11, marginBottom: 4, textAlign: "right" }]}>
                         {language === "ar" ? "✅ تم التحليل من:" : "✅ Analyzed from:"}
                       </Text>
-                      <Text style={[{ color: colors.foreground, textAlign: "right", fontSize: 13, lineHeight: 20 }]}>{aiText}</Text>
+                      <TextInput multiline value={aiText} onChangeText={setAiText} editable={!parseMutation.isPending && !creating}
+                        style={{ color: colors.foreground, textAlign: language === "ar" ? "right" : "left", fontSize: 13, lineHeight: 20 }} />
+                      <Pressable disabled={parseMutation.isPending || creating || !aiText.trim()}
+                        onPress={() => { setVoiceSheetStep("processing"); void analyzeVoiceText(aiText.trim()); }} style={{ paddingVertical: 8 }}>
+                        <Text style={{ color: colors.primary }}>{language === "ar" ? "تحليل النص المعدّل" : "Analyze edited text"}</Text>
+                      </Pressable>
                     </View>
                   )}
 
@@ -1330,6 +1361,14 @@ export default function TransactionsScreen() {
                     <Feather name="edit-2" size={12} color={colors.mutedForeground} />
                   </Pressable>
 
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {(["pending", "settled"] as const).map((status) => (
+                      <Pressable key={status} onPress={() => setForm((f) => ({ ...f, status }))}
+                        style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: form.status === status ? colors.primary : colors.border }}>
+                        <Text style={{ color: colors.foreground, textAlign: "center" }}>{status === "settled" ? t("statusSettled") : t("statusPending")}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
                   <Pressable
                     style={[
                       styles.saveBtn,
@@ -1337,7 +1376,7 @@ export default function TransactionsScreen() {
                       (!form.amount || creating) && { opacity: 0.5 },
                     ]}
                     onPress={handleVoiceConfirmSave}
-                    disabled={!form.amount || creating}
+                    disabled={!form.amount || creating || parseMutation.isPending}
                   >
                     {creating ? (
                       <ActivityIndicator color="#fff" />
@@ -1645,7 +1684,7 @@ export default function TransactionsScreen() {
                 <Pressable
                   style={[styles.saveBtn, { backgroundColor: colors.primary }, (!form.amount || creating) && { opacity: 0.5 }]}
                   onPress={handleCreate}
-                  disabled={!form.amount || creating}
+                  disabled={!form.amount || creating || parseMutation.isPending}
                 >
                   {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t("save")}</Text>}
                 </Pressable>

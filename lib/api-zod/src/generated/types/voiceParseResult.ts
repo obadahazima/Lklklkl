@@ -5,11 +5,14 @@
  * Financial management API for cross-border trader
  * OpenAPI spec version: 0.1.0
  */
+import type { VoiceParseResultStatus } from './voiceParseResultStatus';
 
 export interface VoiceParseResult {
   success: boolean;
   /** @nullable */
   type?: string | null;
+  /** @nullable */
+  status?: VoiceParseResultStatus;
   /** @nullable */
   amount?: number | null;
   /** @nullable */

@@ -254,7 +254,7 @@ export function FloatingAssistant() {
 
             <div className="flex items-center gap-2">
               <input
-                ref={(el) => (inputRef.current = el)}
+                ref={(el) => { inputRef.current = el; }}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

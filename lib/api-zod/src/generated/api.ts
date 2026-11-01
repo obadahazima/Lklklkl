@@ -399,15 +399,21 @@ export const DeleteAccountParams = zod.object({
 /**
  * @summary Parse voice/text input and extract structured transaction data
  */
+export const parseVoiceInputBodyTextMax = 10000;
+
+
+
 export const ParseVoiceInputBody = zod.object({
-  "text": zod.string(),
+  "text": zod.string().min(1).max(parseVoiceInputBodyTextMax),
   "currencies": zod.array(zod.string()).nullish().describe('User\'s active currency list, used to prefer a matching currency over the raw detected one'),
-  "primaryCurrency": zod.string().nullish().describe('User\'s preferred default currency, used as a fallback when no currency is detected\/matched')
+  "primaryCurrency": zod.string().nullish().describe('User\'s preferred default currency, used as a fallback when no currency is detected\/matched'),
+  "referenceDate": zod.string().optional().describe('Caller local calendar date in YYYY-MM-DD for relative spoken dates')
 })
 
 export const ParseVoiceInputResponse = zod.object({
   "success": zod.boolean(),
   "type": zod.string().nullish(),
+  "status": zod.union([zod.literal('pending'),zod.literal('settled'),zod.literal(null)]).nullish(),
   "amount": zod.number().nullish(),
   "currency": zod.string().nullish(),
   "clientName": zod.string().nullish(),
@@ -429,8 +435,13 @@ export const ParseVoiceInputResponse = zod.object({
 /**
  * @summary Transcribe recorded audio to text using AI
  */
+export const transcribeVoiceBodyAudioBase64Min = 4;
+export const transcribeVoiceBodyAudioBase64Max = 18000000;
+
+
+
 export const TranscribeVoiceBody = zod.object({
-  "audioBase64": zod.string().describe('Base64-encoded audio data'),
+  "audioBase64": zod.string().min(transcribeVoiceBodyAudioBase64Min).max(transcribeVoiceBodyAudioBase64Max).describe('Base64-encoded audio data'),
   "mimeType": zod.string().describe('Audio mime type (e.g. audio\/m4a, audio\/mp4, audio\/wav)')
 })
 

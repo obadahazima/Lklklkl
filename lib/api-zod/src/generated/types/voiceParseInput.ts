@@ -7,6 +7,10 @@
  */
 
 export interface VoiceParseInput {
+  /**
+     * @minLength 1
+     * @maxLength 10000
+     */
   text: string;
   /**
      * User's active currency list, used to prefer a matching currency over the raw detected one
@@ -18,4 +22,6 @@ export interface VoiceParseInput {
      * @nullable
      */
   primaryCurrency?: string | null;
+  /** Caller local calendar date in YYYY-MM-DD for relative spoken dates */
+  referenceDate?: string;
 }

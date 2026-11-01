@@ -418,7 +418,7 @@ export default function Chat() {
             )}
           </button>
           <input
-            ref={(el) => (inputRef.current = el)}
+            ref={(el) => { inputRef.current = el; }}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}

@@ -36,7 +36,7 @@ const KNOWN_WRONG_RATES: Record<string, { maxCorrect: number; correct: number }>
 };
 
 function correctRates(rates: Record<string, number>): Record<string, number> {
-  const fixed = { ...rates, AED: 1 };
+  const fixed: Record<string, number> = { ...rates, AED: 1 };
   for (const [code, { maxCorrect, correct }] of Object.entries(KNOWN_WRONG_RATES)) {
     if (fixed[code] !== undefined && fixed[code] > maxCorrect) {
       fixed[code] = correct;

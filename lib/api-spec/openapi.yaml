@@ -833,6 +833,8 @@ components:
       properties:
         text:
           type: string
+          minLength: 1
+          maxLength: 10000
         currencies:
           type: ["array", "null"]
           items:
@@ -842,6 +844,10 @@ components:
           type: ["string", "null"]
           description: "User's preferred default currency, used as a fallback when no currency is detected/matched"
 
+        referenceDate:
+          type: string
+          description: "Caller local calendar date in YYYY-MM-DD for relative spoken dates"
+
     VoiceParseResult:
       type: object
       required: [success]
@@ -850,6 +856,9 @@ components:
           type: boolean
         type:
           type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+          enum: [pending, settled, null]
         amount:
           type: ["number", "null"]
         currency:
@@ -895,6 +904,8 @@ components:
       properties:
         audioBase64:
           type: string
+          minLength: 4
+          maxLength: 18000000
           description: "Base64-encoded audio data"
         mimeType:
           type: string

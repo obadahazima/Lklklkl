@@ -18,7 +18,7 @@ import {
   useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>["tabBar"]>>[0];
 import { useColors } from "@/hooks/useColors";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTr } from "@/lib/i18n";

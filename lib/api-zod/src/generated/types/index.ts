@@ -34,5 +34,6 @@ export * from './tripPnl';
 export * from './tripUpdate';
 export * from './voiceParseInput';
 export * from './voiceParseResult';
+export * from './voiceParseResultStatus';
 export * from './voiceTranscribeInput';
 export * from './voiceTranscribeResult';

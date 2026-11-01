@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   useParseVoiceInput,
+  transcribeVoice, localISODate, normalizeAmountInput, normalizeEntityName, voiceAccountSelection, voiceBlobPayload,
   useCreateTransaction,
   useCreateClient,
   useCreateTrip,
@@ -50,6 +51,7 @@ type ParsedData = {
   toAccountId?: number | null;
   detectedLanguage?: string | null;
   description?: string | null;
+  status?: "pending" | "settled" | null;
   date?: string | null;
   rawText?: string | null;
 };
@@ -145,6 +147,7 @@ export default function NewTransaction() {
   const [tripResolution, setTripResolution] = useState<TripResolutionState>({ kind: "idle" });
 
   const pendingTxRef = useRef<PendingTx | null>(null);
+  const saveInFlightRef = useRef(false);
 
   const [manualForm, setManualForm] = useState({
     type: "expense",
@@ -156,7 +159,7 @@ export default function NewTransaction() {
     toAccountId: "",
     description: "",
     status: "pending",
-    date: new Date().toISOString().split("T")[0],
+    date: localISODate(),
   });
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
@@ -164,6 +167,24 @@ export default function NewTransaction() {
   const [addAccountTarget, setAddAccountTarget] = useState<"accountId" | "toAccountId">("accountId");
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  const parseRequestRef = useRef(0);
+  const recordingBusyRef = useRef(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      ++parseRequestRef.current;
+      recognitionRef.current?.abort();
+      const recorder = mediaRecorderRef.current;
+      if (recorder?.state === "recording") recorder.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   const { data: clients } = useListClients();
   const { data: trips } = useListTrips();
@@ -203,37 +224,26 @@ export default function NewTransaction() {
     });
   }
 
-  const parseMutation = useParseVoiceInput({
-    mutation: {
-      onSuccess: (data) => {
-        if (data.success) {
-          setParsed(data);
-          setStep("confirm");
-          // Pre-fill the account picker(s) from what parsing matched, without clobbering
-          // any account the user may have already picked manually beforehand.
-          setManualForm((f) => ({
-            ...f,
-            accountId: data.accountId != null ? String(data.accountId) : f.accountId,
-            toAccountId: data.toAccountId != null ? String(data.toAccountId) : f.toAccountId,
-          }));
-        } else {
-          toast({ title: language === "ar" ? "لم أفهم" : "Not understood", description: data.error || (language === "ar" ? "حاولي مرة أخرى" : "Please try again"), variant: "destructive" });
-        }
-      },
-      onError: (err: unknown) => {
-        const apiErr = err as { status?: number; data?: { message?: string } };
-        if (apiErr?.status === 429) {
-          toast({
-            title: "⏳ " + (language === "ar" ? "حصة الذكاء الاصطناعي" : "AI Quota"),
-            description: apiErr.data?.message ?? (language === "ar" ? "انتهت الحصة، جربي غداً" : "Quota exceeded, try tomorrow"),
-            variant: "destructive",
-          });
-        } else {
-          toast({ title: language === "ar" ? "خطأ في التحليل" : "Analysis Error", description: language === "ar" ? "حاولي مرة أخرى" : "Please try again", variant: "destructive" });
-        }
-      },
-    },
-  });
+  const parseMutation = useParseVoiceInput();
+
+  async function analyzeText(text: string) {
+    const request = ++parseRequestRef.current;
+    try {
+      const data = await parseMutation.mutateAsync({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency, referenceDate: localISODate() } });
+      if (!mountedRef.current || request !== parseRequestRef.current) return;
+      if (data.success) {
+        setParsed(data);
+        setStep("confirm");
+        setManualForm((f) => ({ ...f, ...voiceAccountSelection(data, accounts ?? []) }));
+      } else {
+        toast({ title: language === "ar" ? "بدنا توضيح" : "Please clarify", description: data.error || (language === "ar" ? "عدّل النص وأعد التحليل" : "Edit the text and try again"), variant: "destructive" });
+      }
+    } catch (err) {
+      if (!mountedRef.current || request !== parseRequestRef.current) return;
+      const detail = (err as { data?: { message?: string; error?: string } }).data;
+      toast({ title: language === "ar" ? "خطأ في التحليل" : "Analysis error", description: detail?.message || detail?.error || (language === "ar" ? "حاول مرة أخرى" : "Please try again"), variant: "destructive" });
+    }
+  }
 
   const createClientMutation = useCreateClient({
     mutation: {
@@ -266,6 +276,7 @@ export default function NewTransaction() {
 
   const createMutation = useCreateTransaction({
     mutation: {
+      onSettled: () => { saveInFlightRef.current = false; },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
@@ -279,83 +290,111 @@ export default function NewTransaction() {
     },
   });
 
-  function toggleVoiceRecording() {
+  async function toggleVoiceRecording() {
+    if (recordingBusyRef.current || isTranscribing || parseMutation.isPending) return;
     if (isRecording) {
       recognitionRef.current?.stop();
-      setIsRecording(false);
+      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
       return;
     }
-
     type SpeechRecognitionCtor = new () => SpeechRecognition;
-    const w = window as Window & {
-      SpeechRecognition?: SpeechRecognitionCtor;
-      webkitSpeechRecognition?: SpeechRecognitionCtor;
-    };
+    const w = window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor };
     const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-
-    if (!Ctor) {
-      toast({
-        title: language === "ar" ? "الصوت غير مدعوم" : "Voice not supported",
-        description: language === "ar" ? "متصفحك لا يدعم التسجيل الصوتي — استخدم خانة النص أدناه" : "Your browser doesn't support voice recording — use the text field below",
-        variant: "destructive",
-      });
+    if (Ctor) {
+      const recognition = new Ctor();
+      recognition.lang = language === "ar" ? "ar-AE" : "en-US";
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.continuous = true;
+      let finalTranscript = "";
+      let interimTranscript = "";
+      let failed = false;
+      recordingBusyRef.current = true;
+      recognition.onstart = () => { recordingBusyRef.current = false; if (mountedRef.current) setIsRecording(true); };
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        finalTranscript = "";
+        interimTranscript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + " ";
+          else interimTranscript += event.results[i][0].transcript + " ";
+        }
+        if (mountedRef.current) setTextInput((finalTranscript + interimTranscript).trim());
+      };
+      recognition.onend = () => {
+        if (recognitionRef.current !== recognition) return;
+        recordingBusyRef.current = false;
+        recognitionRef.current = null;
+        if (!mountedRef.current) return;
+        setIsRecording(false);
+        const text = (finalTranscript + interimTranscript).trim();
+        // Keep the last interim words too; stopping early must not discard an amount.
+        if (!failed && text) { setTextInput(text); void analyzeText(text); }
+      };
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (recognitionRef.current !== recognition) return;
+        failed = true;
+        recordingBusyRef.current = false;
+        if (!mountedRef.current) return;
+        setIsRecording(false);
+        toast({ title: language === "ar" ? "تعذّر التسجيل" : "Recording error", description: event.error === "not-allowed"
+          ? (language === "ar" ? "اسمح باستخدام الميكروفون من إعدادات المتصفح" : "Allow microphone access in browser settings")
+          : (language === "ar" ? "النص المسموع محفوظ؛ عدّله واضغط تحليل أو أعد التسجيل" : "Edit the captured text and analyze it, or record again"), variant: "destructive" });
+      };
+      recognitionRef.current = recognition;
+      try { recognition.start(); } catch { recordingBusyRef.current = false; recognitionRef.current = null; toast({ title: language === "ar" ? "تعذّر بدء التسجيل" : "Could not start recording", variant: "destructive" }); }
       return;
     }
-
-    const recognition = new Ctor();
-    recognition.lang = language === "ar" ? "ar-AE" : "en-US";
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    recognition.continuous = true;
-
-    let finalTranscript = "";
-
-    recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => {
-      setIsRecording(false);
-      if (finalTranscript.trim()) {
-        setTextInput(finalTranscript.trim());
-        parseMutation.mutate({ data: { text: finalTranscript.trim(), currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
-      }
-    };
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      finalTranscript = "";
-      for (let i = 0; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript + " ";
-        }
-      }
-      setTextInput(finalTranscript.trim());
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      setIsRecording(false);
-      if ((event as unknown as { error: string }).error === "not-allowed") {
-        toast({
-          title: language === "ar" ? "إذن الميكروفون مرفوض" : "Microphone permission denied",
-          description: language === "ar" ? "يرجى السماح للتطبيق باستخدام الميكروفون من إعدادات المتصفح" : "Please allow microphone access in your browser settings",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: language === "ar" ? "خطأ في التسجيل" : "Recording error",
-          description: language === "ar" ? "لم نتمكن من التسجيل — حاولي مرة أخرى" : "Could not record — please try again",
-          variant: "destructive",
-        });
-      }
-    };
-
-    recognition.start();
-    recognitionRef.current = recognition;
+    // Browsers without SpeechRecognition can still upload real audio for transcription.
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast({ title: language === "ar" ? "الصوت غير مدعوم؛ استخدم خانة النص" : "Voice unavailable; use text input", variant: "destructive" });
+      return;
+    }
+    recordingBusyRef.current = true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
+      mediaStreamRef.current = stream;
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((mime) => MediaRecorder.isTypeSupported(mime));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current = null;
+        if (!mountedRef.current) return;
+        setIsRecording(false);
+        setIsTranscribing(true);
+        const request = ++parseRequestRef.current;
+        try {
+          const result = await transcribeVoice(await voiceBlobPayload(new Blob(chunks, { type: recorder.mimeType || "audio/webm" })));
+          if (!mountedRef.current || request !== parseRequestRef.current) return;
+          if (!result.success || !result.text) throw new Error(result.error || "لم يتم التعرف على كلام");
+          setTextInput(result.text);
+          await analyzeText(result.text);
+        } catch (err) {
+          if (mountedRef.current && request === parseRequestRef.current) toast({ title: language === "ar" ? "تعذّر تحويل الصوت" : "Transcription failed", description: (err as Error).message, variant: "destructive" });
+        } finally { if (mountedRef.current) setIsTranscribing(false); }
+      };
+      recorder.onerror = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (mountedRef.current) { setIsRecording(false); toast({ title: language === "ar" ? "فشل التسجيل، حاول مجدداً" : "Recording failed; try again", variant: "destructive" }); }
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setTextInput("");
+      setIsRecording(true);
+    } catch {
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+      toast({ title: language === "ar" ? "تعذّر التسجيل، تحقّق من إذن الميكروفون" : "Check microphone permission", variant: "destructive" });
+    } finally { recordingBusyRef.current = false; }
   }
 
   function handleParseText() {
-    if (!textInput.trim()) return;
-    parseMutation.mutate({ data: { text: textInput, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+    if (textInput.trim() && !isRecording && !isTranscribing && !parseMutation.isPending) void analyzeText(textInput.trim());
   }
 
-  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const norm = normalizeEntityName;
 
   function findSimilarClients(name: string): { id: number; name: string }[] {
     if (!clients || !name) return [];
@@ -375,7 +414,7 @@ export default function NewTransaction() {
 
   function savePendingTransaction() {
     const p = pendingTxRef.current;
-    if (!p) return;
+    if (!p || saveInFlightRef.current) return;
     if (!p.accountId) {
       toast({
         title: language === "ar" ? "لازم تحدد الحساب" : "Account required",
@@ -402,6 +441,7 @@ export default function NewTransaction() {
         return;
       }
     }
+    saveInFlightRef.current = true;
     createMutation.mutate({
       data: {
         type: p.type,
@@ -441,7 +481,8 @@ export default function NewTransaction() {
       if (aiId != null) { p.clientId = aiId; }
       else if (!name) { p.clientId = null; }
       else {
-        const exact = clients?.find((c) => norm(c.name) === norm(name));
+        const exactMatches = clients?.filter((c) => norm(c.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) { p.clientId = exact.id; }
         else {
           const similar = findSimilarClients(name);
@@ -457,7 +498,8 @@ export default function NewTransaction() {
       if (aiId != null) { p.tripId = aiId; }
       else if (!name) { p.tripId = null; }
       else {
-        const exact = trips?.find((t) => norm(t.name) === norm(name));
+        const exactMatches = trips?.filter((t) => norm(t.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) { p.tripId = exact.id; }
         else {
           const similar = findSimilarTrips(name);
@@ -472,13 +514,17 @@ export default function NewTransaction() {
 
   function handleConfirm() {
     if (!parsed) return;
+    if (!Number.isFinite(parsed.amount) || !parsed.amount || parsed.amount <= 0) {
+      toast({ title: language === "ar" ? "أدخل مبلغاً صحيحاً أكبر من الصفر" : "Enter a valid positive amount", variant: "destructive" });
+      return;
+    }
     pendingTxRef.current = {
       type: parsed.type || "expense",
       amount: parsed.amount || 0,
-      currency: parsed.currency || "AED",
+      currency: parsed.currency || settings.primaryCurrency,
       description: parsed.description ?? null,
-      status: "pending",
-      date: parsed.date || new Date().toISOString().split("T")[0],
+      status: parsed.status === "settled" ? "settled" : "pending",
+      date: parsed.date || localISODate(),
       clientId: undefined,
       tripId: undefined,
       accountId: manualForm.accountId ? parseInt(manualForm.accountId) : null,
@@ -525,7 +571,7 @@ export default function NewTransaction() {
 
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const amt = parseFloat(manualForm.amount);
+    const amt = normalizeAmountInput(manualForm.amount);
     if (!manualForm.amount || isNaN(amt) || amt <= 0) {
       toast({ title: language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", description: language === "ar" ? "أدخل مبلغاً أكبر من الصفر" : "Enter an amount greater than zero", variant: "destructive" });
       return;
@@ -786,18 +832,18 @@ export default function NewTransaction() {
             </p>
             <button
               onClick={toggleVoiceRecording}
-              disabled={parseMutation.isPending}
+              disabled={(parseMutation.isPending || isTranscribing)}
               className={cn(
                 "w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 select-none",
                 isRecording
                   ? "bg-red-500 scale-105 animate-recording"
-                  : parseMutation.isPending
+                  : (parseMutation.isPending || isTranscribing)
                   ? "bg-muted cursor-not-allowed"
                   : "bg-primary hover:bg-primary/90 active:scale-95"
               )}
               data-testid="btn-voice-record"
             >
-              {parseMutation.isPending ? (
+              {(parseMutation.isPending || isTranscribing) ? (
                 <Loader2 className="w-9 h-9 text-white animate-spin" />
               ) : isRecording ? (
                 <MicOff className="w-9 h-9 text-white" />
@@ -810,7 +856,7 @@ export default function NewTransaction() {
                 {t("recording")}
               </p>
             )}
-            {parseMutation.isPending && (
+            {(parseMutation.isPending || isTranscribing) && (
               <p className="text-muted-foreground text-sm mt-4">{t("analyzing")}</p>
             )}
           </div>
@@ -830,11 +876,11 @@ export default function NewTransaction() {
               />
               <button
                 onClick={handleParseText}
-                disabled={parseMutation.isPending || !textInput.trim()}
+                disabled={parseMutation.isPending || isTranscribing || isRecording || !textInput.trim()}
                 className="bg-primary text-primary-foreground px-4 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 whitespace-nowrap"
                 data-testid="btn-parse-text"
               >
-                {parseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("analyzeBtn")}
+                {(parseMutation.isPending || isTranscribing) ? <Loader2 className="w-4 h-4 animate-spin" /> : t("analyzeBtn")}
               </button>
             </div>
           </div>
@@ -1111,7 +1157,7 @@ export default function NewTransaction() {
                   <input
                     type="number"
                     value={parsed?.amount ?? ""}
-                    onChange={(e) => setParsed((p) => (p ? { ...p, amount: e.target.value === "" ? null : parseFloat(e.target.value) } : p))}
+                    onChange={(e) => setParsed((p) => (p ? { ...p, amount: e.target.value === "" ? null : normalizeAmountInput(e.target.value) } : p))}
                     placeholder="0.00"
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm font-semibold text-primary bg-background"
                     data-testid="input-amount-confirm"
@@ -1204,12 +1250,20 @@ export default function NewTransaction() {
               </div>
 
               <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
+                <select value={parsed?.status ?? "pending"} onChange={(e) => setParsed((p) => p ? { ...p, status: e.target.value as "pending" | "settled" } : p)}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" data-testid="select-status-confirm">
+                  <option value="pending">{t("statusPending")}</option>
+                  <option value="settled">{t("statusSettled")}</option>
+                </select>
+              </div>
+              <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">
                   {language === "ar" ? "التاريخ" : "Date"}
                 </label>
                 <input
                   type="date"
-                  value={parsed?.date ?? new Date().toISOString().split("T")[0]}
+                  value={parsed?.date ?? localISODate()}
                   onChange={(e) => setParsed((p) => (p ? { ...p, date: e.target.value } : p))}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
                   data-testid="input-date-confirm"

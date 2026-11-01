@@ -209,6 +209,10 @@ export interface AccountUpdate {
 }
 
 export interface VoiceParseInput {
+  /**
+     * @minLength 1
+     * @maxLength 10000
+     */
   text: string;
   /**
      * User's active currency list, used to prefer a matching currency over the raw detected one
@@ -220,12 +224,27 @@ export interface VoiceParseInput {
      * @nullable
      */
   primaryCurrency?: string | null;
+  /** Caller local calendar date in YYYY-MM-DD for relative spoken dates */
+  referenceDate?: string;
 }
+
+/**
+ * @nullable
+ */
+export type VoiceParseResultStatus = typeof VoiceParseResultStatus[keyof typeof VoiceParseResultStatus] | null;
+
+
+export const VoiceParseResultStatus = {
+  pending: 'pending',
+  settled: 'settled',
+} as const;
 
 export interface VoiceParseResult {
   success: boolean;
   /** @nullable */
   type?: string | null;
+  /** @nullable */
+  status?: VoiceParseResultStatus;
   /** @nullable */
   amount?: number | null;
   /** @nullable */
@@ -283,7 +302,11 @@ export interface VoiceParseResult {
 }
 
 export interface VoiceTranscribeInput {
-  /** Base64-encoded audio data */
+  /**
+     * Base64-encoded audio data
+     * @minLength 4
+     * @maxLength 18000000
+     */
   audioBase64: string;
   /** Audio mime type (e.g. audio/m4a, audio/mp4, audio/wav) */
   mimeType: string;
