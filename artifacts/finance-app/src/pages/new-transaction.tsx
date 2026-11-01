@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
+import { useAuth } from "@clerk/react";
+import { webLedger } from "@/lib/offline-ledger";
+import { OfflineQueuePanel } from "@/components/offline-ledger";
 import {
-  useParseVoiceInput,
+  useParseVoiceInput, useManualDraft, useOfflineLedger, transactionError, manualErrorMessage,
   transcribeVoice, localISODate, normalizeAmountInput, normalizeEntityName, voiceAccountSelection, voiceBlobPayload,
   useCreateTransaction,
   useCreateClient,
@@ -135,6 +138,10 @@ export default function NewTransaction() {
   const queryClient = useQueryClient();
   const { settings } = useSettings();
   const { language, showClients, showTrips } = settings;
+  const { userId } = useAuth();
+  const offline = useOfflineLedger(webLedger, userId);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const saveAnotherRef = useRef(false);
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
   const [step, setStep] = useState<"input" | "confirm">("input");
@@ -149,7 +156,7 @@ export default function NewTransaction() {
   const pendingTxRef = useRef<PendingTx | null>(null);
   const saveInFlightRef = useRef(false);
 
-  const [manualForm, setManualForm] = useState({
+  const [manualForm, setManualForm, draft] = useManualDraft(webLedger, userId, {
     type: "expense",
     amount: "",
     currency: settings.primaryCurrency,
@@ -161,6 +168,7 @@ export default function NewTransaction() {
     status: "pending",
     date: localISODate(),
   });
+  useEffect(() => { if (draft.ready) amountInputRef.current?.focus(); }, [draft.ready]);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountType, setNewAccountType] = useState("cash");
@@ -186,9 +194,12 @@ export default function NewTransaction() {
     };
   }, []);
 
-  const { data: clients } = useListClients();
-  const { data: trips } = useListTrips();
-  const { data: accounts } = useListAccounts();
+  const { data: clientsRemote } = useListClients();
+  const clients = clientsRemote ?? offline.record.references.clients;
+  const { data: tripsRemote } = useListTrips();
+  const trips = tripsRemote ?? offline.record.references.trips;
+  const { data: accountsRemote } = useListAccounts();
+  const accounts = accountsRemote ?? offline.record.references.accounts;
 
   // If there's exactly one account, default to it so most users never have to touch this field.
   useEffect(() => {
@@ -196,7 +207,7 @@ export default function NewTransaction() {
       setManualForm((f) => ({ ...f, accountId: String(accounts[0].id) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts]);
+  }, [accounts, draft.ready]);
 
   const createAccountMutation = useCreateAccount({
     mutation: {
@@ -569,56 +580,36 @@ export default function NewTransaction() {
     advanceResolutionChain();
   }
 
-  function handleManualSubmit(e: React.FormEvent) {
+  async function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const amt = normalizeAmountInput(manualForm.amount);
-    if (!manualForm.amount || isNaN(amt) || amt <= 0) {
-      toast({ title: language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", description: language === "ar" ? "أدخل مبلغاً أكبر من الصفر" : "Enter an amount greater than zero", variant: "destructive" });
-      return;
-    }
-    if (!manualForm.accountId) {
-      toast({
-        title: language === "ar" ? "لازم تحدد الحساب" : "Account required",
-        description: language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (manualForm.type === "transfer") {
-      if (!manualForm.toAccountId) {
-        toast({
-          title: language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
-          description: language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (manualForm.toAccountId === manualForm.accountId) {
-        toast({
-          title: language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
-          description: language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-    createMutation.mutate({
-      data: {
-        type: manualForm.type,
-        amount: amt,
-        currency: manualForm.currency,
-        clientId: manualForm.type === "transfer" ? null : (manualForm.clientId ? parseInt(manualForm.clientId) : null),
-        tripId: manualForm.type === "transfer" ? null : (manualForm.tripId ? parseInt(manualForm.tripId) : null),
-        accountId: parseInt(manualForm.accountId),
-        toAccountId: manualForm.type === "transfer" ? parseInt(manualForm.toAccountId) : null,
-        description: manualForm.description || null,
-        status: manualForm.status,
-        date: manualForm.date,
-      },
-    });
+    if (saveInFlightRef.current || !draft.ready || !userId) return;
+    const payload = {
+      type: manualForm.type, amount: normalizeAmountInput(manualForm.amount), currency: manualForm.currency,
+      clientId: manualForm.type === "transfer" ? null : (manualForm.clientId ? Number(manualForm.clientId) : null),
+      tripId: manualForm.type === "transfer" ? null : (manualForm.tripId ? Number(manualForm.tripId) : null),
+      accountId: Number(manualForm.accountId), toAccountId: manualForm.type === "transfer" ? Number(manualForm.toAccountId) : null,
+      description: manualForm.description || null, status: manualForm.status, date: manualForm.date,
+    };
+    const error = transactionError(payload) ?? (!settings.currencies.includes(payload.currency) ? "invalid_currency" : null);
+    if (error) { toast({ title: manualErrorMessage(error, language === "ar"), variant: "destructive" }); return; }
+    saveInFlightRef.current = true;
+    setSavingLocal(true);
+    try {
+      await webLedger.enqueue(userId, payload, draft.id);
+      const next = { ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", date: localISODate() };
+      const nextDraft = { id: webLedger.uuid(), values: next };
+      await webLedger.saveDraft(userId, nextDraft.id, next).catch(() => {});
+      draft.restore(nextDraft);
+      toast({ title: language === "ar" ? "حُفظت المعاملة على الجهاز" : "Saved on this device", description: language === "ar" ? "ستظهر بحسابك بعد المزامنة؛ يمكنك متابعة الإدخال" : "It will appear in your account after syncing. You can keep entering transactions." });
+      if (saveAnotherRef.current) requestAnimationFrame(() => amountInputRef.current?.focus());
+      else setLocation("/transactions");
+    } catch {
+      toast({ title: language === "ar" ? "تعذر الحفظ المحلي؛ بياناتك ما زالت بالنموذج" : "Local save failed; your form is still here", variant: "destructive" });
+    } finally { saveInFlightRef.current = false; setSavingLocal(false); saveAnotherRef.current = false; }
   }
 
-  const isLoading = createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createAccountMutation.isPending;
+  const [savingLocal, setSavingLocal] = useState(false);
+  const isLoading = savingLocal || createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createAccountMutation.isPending;
   const ChevronBack = language === "ar" ? ChevronRight : ChevronLeft;
 
   return (
@@ -637,6 +628,8 @@ export default function NewTransaction() {
         </div>
       </div>
 
+      <OfflineQueuePanel owner={userId} ar={language === "ar"} onRecover={(recovered) => { draft.restore(recovered); setStep("input"); }} />
+      {draft.error && <p role="alert" className="text-red-600">{language === "ar" ? "تعذر حفظ المسودة محلياً؛ أبقِ الصفحة مفتوحة" : "Draft storage unavailable; keep this page open"}</p>}
       {/* ── Client Resolution Modal ── */}
       {clientResolution.kind !== "idle" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -822,6 +815,8 @@ export default function NewTransaction() {
       {/* ── Step: Input ── */}
       {step === "input" ? (
         <div className="space-y-5">
+          <details className="rounded-xl border border-border p-3">
+            <summary className="cursor-pointer font-medium">{language === "ar" ? "مساعدة بالصوت أو بجملة مكتوبة (تحتاج إنترنت)" : "Voice or text assistance (internet required)"}</summary>
           {/* Voice toggle button */}
           <div className="flex flex-col items-center py-8 bg-card border border-border rounded-2xl shadow-sm">
             <p className="text-sm text-muted-foreground mb-2 text-center px-4">
@@ -892,8 +887,25 @@ export default function NewTransaction() {
             <div className="flex-1 h-px bg-border" />
           </div>
 
+          </details>
           {/* Manual form */}
-          <form onSubmit={handleManualSubmit} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+          <form onSubmit={handleManualSubmit} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); saveAnotherRef.current = true; event.currentTarget.requestSubmit(); } }} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+            <fieldset disabled={savingLocal || !draft.ready} className="contents">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("amountLabel")}</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                ref={amountInputRef}
+                autoFocus
+                value={manualForm.amount}
+                onChange={(e) => setManualForm({ ...manualForm, amount: e.target.value })}
+                placeholder="0.00"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
+                data-testid="input-amount"
+                required
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("typeLabel")}</label>
@@ -933,18 +945,6 @@ export default function NewTransaction() {
                   ))}
                 </select>
               </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("amountLabel")}</label>
-              <input
-                type="number"
-                value={manualForm.amount}
-                onChange={(e) => setManualForm({ ...manualForm, amount: e.target.value })}
-                placeholder="0.00"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
-                data-testid="input-amount"
-                required
-              />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
@@ -1105,13 +1105,20 @@ export default function NewTransaction() {
             </div>
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !draft.ready}
+              onClick={() => { saveAnotherRef.current = false; }}
               className="w-full bg-primary text-primary-foreground py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
               data-testid="btn-submit-manual"
             >
               {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
               {t("newTransaction")}
             </button>
+            <button type="submit" disabled={isLoading || !draft.ready} onClick={() => { saveAnotherRef.current = true; }} className="w-full border border-primary text-primary py-3 rounded-xl font-semibold">
+              {language === "ar" ? "حفظ وإضافة أخرى · Ctrl+Enter" : "Save & add another · Ctrl+Enter"}
+            </button>
+            <button type="button" disabled={isLoading} onClick={() => draft.reset({ ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", date: localISODate() })} className="w-full text-sm text-muted-foreground py-2">{language === "ar" ? "مسودة جديدة (مسح الحقول)" : "New draft (clear fields)"}</button>
+            <p className="text-xs text-muted-foreground">{language === "ar" ? "تُحفظ المسودة تلقائياً على هذا الجهاز" : "Draft saved automatically on this device"}</p>
+            </fieldset>
           </form>
         </div>
       ) : (

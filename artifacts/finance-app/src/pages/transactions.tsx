@@ -1,6 +1,9 @@
+import { useAuth } from "@clerk/react";
+import { webLedger } from "@/lib/offline-ledger";
+import { OfflineQueuePanel } from "@/components/offline-ledger";
 import { useState } from "react";
 import {
-  useListTransactions,
+  useListTransactions, useOfflineLedger,
   useDeleteTransaction,
   useUpdateTransaction,
   useListClients,
@@ -29,6 +32,8 @@ export default function Transactions() {
   const [status, setStatus] = useState("");
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const { toast } = useToast();
+  const { userId } = useAuth();
+  const offline = useOfflineLedger(webLedger, userId);
   const queryClient = useQueryClient();
   const { settings } = useSettings();
   const { language, currencies, primaryCurrency, manualRates, showClients, showTrips } = settings;
@@ -47,9 +52,11 @@ export default function Transactions() {
     type: type || undefined,
     status: status || undefined,
   };
-  const { data: txs, isLoading } = useListTransactions(params, {
+  const { data: remoteTxs, isLoading } = useListTransactions(params, {
     query: { queryKey: getListTransactionsQueryKey(params) },
   });
+
+  const txs = remoteTxs ?? offline.record.references.transactions?.filter((tx) => (!currency || tx.currency === currency) && (!type || tx.type === type) && (!status || tx.status === status));
 
   const deleteMutation = useDeleteTransaction({
     mutation: {
@@ -92,6 +99,7 @@ export default function Transactions() {
         </Link>
       </div>
 
+      <OfflineQueuePanel owner={userId} ar={language === "ar"} cached={!remoteTxs && !!txs?.length} />
       {/* Filters */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         <div className="flex items-center gap-1 text-muted-foreground shrink-0">
@@ -132,7 +140,7 @@ export default function Transactions() {
 
       {/* List */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-        {isLoading ? (
+        {isLoading && !txs?.length ? (
           <div className="divide-y divide-border">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="p-4 animate-pulse">

@@ -1,7 +1,10 @@
+import { useAuth } from "@clerk/expo";
+import { mobileLedger } from "@/lib/offline-ledger";
+import { OfflineQueuePanel } from "@/components/OfflineLedger";
 import {
+  useManualDraft, useOfflineLedger, transactionError, manualErrorMessage,
   localISODate, normalizeAmountInput, normalizeEntityName, voiceAccountSelection,
   useListTransactions,
-  useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
   useListClients,
@@ -187,6 +190,12 @@ export default function TransactionsScreen() {
   const { language, primaryCurrency, showClients, showTrips } = settings;
   const t = useTr(language);
   const voice = useVoiceRecording(language);
+  const { userId } = useAuth();
+  const offline = useOfflineLedger(mobileLedger, userId);
+  const amountInputRef = useRef<TextInput>(null);
+  const saveAnotherRef = useRef(false);
+  const [savingLocal, setSavingLocal] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const params = useLocalSearchParams<{ openAdd?: string; openVoice?: string }>();
 
   const [showModal, setShowModal] = useState(false);
@@ -204,7 +213,7 @@ export default function TransactionsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.openVoice]);
 
-  const [form, setForm] = useState<FormState>(() => emptyForm(primaryCurrency));
+  const [form, setForm, draft] = useManualDraft(mobileLedger, userId, emptyForm(primaryCurrency));
   const [aiText, setAiText] = useState("");
 
   const [filterType, setFilterType] = useState<string>("all");
@@ -231,11 +240,15 @@ export default function TransactionsScreen() {
   const voiceSheetFlowRef = useRef(false);
   const [voiceEditField, setVoiceEditField] = useState<null | "type" | "amount" | "date" | "description">(null);
 
-  const { data: transactions, isLoading, refetch } = useListTransactions({});
-  const { data: clients } = useListClients();
-  const { data: trips } = useListTrips();
-  const { data: accounts } = useListAccounts();
-  const { mutateAsync: createTx, isPending: creating } = useCreateTransaction();
+  const { data: transactionsRemote, isLoading, refetch } = useListTransactions({});
+  const transactions = transactionsRemote ?? offline.record.references.transactions;
+  const { data: clientsRemote } = useListClients();
+  const clients = clientsRemote ?? offline.record.references.clients;
+  const { data: tripsRemote } = useListTrips();
+  const trips = tripsRemote ?? offline.record.references.trips;
+  const { data: accountsRemote } = useListAccounts();
+  const accounts = accountsRemote ?? offline.record.references.accounts;
+  const creating = savingLocal;
   const { mutateAsync: deleteTx } = useDeleteTransaction();
   const { mutateAsync: updateTx, isPending: updating } = useUpdateTransaction();
 
@@ -245,7 +258,7 @@ export default function TransactionsScreen() {
       setForm((f) => (f.accountId ? f : { ...f, accountId: String(accounts[0].id) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts]);
+  }, [accounts, draft.ready]);
 
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<FormState>(() => emptyForm(primaryCurrency));
@@ -569,6 +582,7 @@ export default function TransactionsScreen() {
   }
 
   async function openVoiceSheet() {
+    if (form.amount) { setShowModal(true); Alert.alert(language === "ar" ? "عندك مسودة؛ احفظها أو ابدأ مسودة جديدة أولاً" : "Save or clear your current draft first"); return; }
     if (voice.state !== "idle" || parseMutation.isPending) return;
     resetForm();
     setVoiceEditField(null);
@@ -634,70 +648,42 @@ export default function TransactionsScreen() {
     ++parseRequestRef.current;
     const next = emptyForm(primaryCurrency);
     if (accounts?.length === 1) next.accountId = String(accounts[0].id);
-    setForm(next);
+    draft.reset(next);
     setAiText("");
     parsedRef.current = null;
     resolveRef.current = {};
   };
 
   const handleCreate = async (): Promise<boolean> => {
-    if (saveInFlightRef.current) return false;
-    const amt = normalizeAmountInput(form.amount);
-    if (!form.amount || isNaN(amt) || amt <= 0) {
-      Alert.alert(language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", language === "ar" ? "الرجاء إدخال مبلغ أكبر من الصفر" : "Please enter an amount greater than zero");
-      return false;
-    }
-    if (!form.accountId) {
-      Alert.alert(
-        language === "ar" ? "لازم تحدد الحساب" : "Account required",
-        language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
-      );
-      return false;
-    }
-    if (form.type === "transfer") {
-      if (!form.toAccountId) {
-        Alert.alert(
-          language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
-          language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
-        );
-        return false;
-      }
-      if (form.toAccountId === form.accountId) {
-        Alert.alert(
-          language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
-          language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
-        );
-        return false;
-      }
-    }
+    if (saveInFlightRef.current || !draft.ready || !userId) return false;
+    const payload: TransactionInput = {
+      type: form.type, amount: normalizeAmountInput(form.amount), currency: form.currency,
+      clientId: form.type === "transfer" ? null : (form.clientId ? Number(form.clientId) : null),
+      tripId: form.type === "transfer" ? null : (form.tripId ? Number(form.tripId) : null),
+      accountId: Number(form.accountId), toAccountId: form.type === "transfer" ? Number(form.toAccountId) : null,
+      description: form.description || null, status: form.status, date: form.date,
+    };
+    const error = transactionError(payload) ?? (!settings.currencies.includes(payload.currency) ? "invalid_currency" : null);
+    if (error) { Alert.alert(manualErrorMessage(error, language === "ar")); return false; }
     saveInFlightRef.current = true;
+    setSavingLocal(true);
     try {
-      const payload: TransactionInput = {
-        type: form.type,
-        amount: amt,
-        currency: form.currency,
-        clientId: form.type === "transfer" ? null : (form.clientId ? parseInt(form.clientId, 10) : null),
-        tripId: form.type === "transfer" ? null : (form.tripId ? parseInt(form.tripId, 10) : null),
-        accountId: parseInt(form.accountId, 10),
-        toAccountId: form.type === "transfer" ? parseInt(form.toAccountId, 10) : null,
-        description: form.description || null,
-        status: form.status,
-        date: form.date,
-      };
-      await createTx({ data: payload });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowModal(false);
-      resetForm();
-      qc.invalidateQueries({ queryKey: getListTransactionsQueryKey({}) });
-      qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-      refetch();
+      await mobileLedger.enqueue(userId, payload, draft.id);
+      const next = { ...form, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", date: localISODate() };
+      const nextDraft = { id: mobileLedger.uuid(), values: next };
+      await mobileLedger.saveDraft(userId, nextDraft.id, next).catch(() => {});
+      draft.restore(nextDraft);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (saveAnotherRef.current) setTimeout(() => amountInputRef.current?.focus(), 0);
+      else {
+        setShowModal(false);
+        Alert.alert(language === "ar" ? "حُفظت على الجهاز" : "Saved on this device", language === "ar" ? "ستُرسل لحسابك عند توفر الاتصال؛ يمكنك متابعة الإدخال" : "It will sync to your account when connected. You can keep entering transactions.");
+      }
       return true;
     } catch {
-      Alert.alert(t("saveError"), t("saveErrorDesc"));
+      Alert.alert(language === "ar" ? "تعذر الحفظ المحلي؛ أبقِ النموذج مفتوحاً" : "Local save failed; keep this form open");
       return false;
-    } finally {
-      saveInFlightRef.current = false;
-    }
+    } finally { saveInFlightRef.current = false; setSavingLocal(false); saveAnotherRef.current = false; }
   };
 
   const handleDelete = (id: string) => {
@@ -905,6 +891,7 @@ export default function TransactionsScreen() {
         </View>
       </View>
 
+      <OfflineQueuePanel owner={userId} ar={language === "ar"} cached={!transactionsRemote && !!transactions?.length} onRecover={(recovered) => { draft.restore(recovered); setShowModal(true); }} />
       <View style={[styles.filterBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {["all", ...TX_TYPES].map((ty) => (
@@ -953,7 +940,7 @@ export default function TransactionsScreen() {
         </ScrollView>
       </View>
 
-      {isLoading ? (
+      {isLoading && !transactions?.length ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -1376,7 +1363,7 @@ export default function TransactionsScreen() {
                       (!form.amount || creating) && { opacity: 0.5 },
                     ]}
                     onPress={handleVoiceConfirmSave}
-                    disabled={!form.amount || creating || parseMutation.isPending}
+                    disabled={!form.amount || creating || savingLocal || !draft.ready || parseMutation.isPending}
                   >
                     {creating ? (
                       <ActivityIndicator color="#fff" />
@@ -1447,9 +1434,23 @@ export default function TransactionsScreen() {
                 <View style={{ width: 72 }} />
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                {/* AI parse */}
-                <View style={[styles.aiBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <ScrollView pointerEvents={savingLocal ? "none" : "auto"} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("amountLabel")}</Text>
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  autoFocus
+                  ref={amountInputRef}
+                  editable={!savingLocal && draft.ready}
+                  value={form.amount}
+                  onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colors.mutedForeground}
+                  textAlign="right"
+                />
+
+                <Pressable onPress={() => setShowAI((value) => !value)} style={{ paddingVertical: 10 }}><Text style={{ color: colors.primary }}>{language === "ar" ? "مساعدة بيلي الاختيارية (تحتاج إنترنت)" : "Optional Billy assistance (internet required)"}</Text></Pressable>
+                {showAI && <View style={[styles.aiBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
                   <Text style={[styles.fieldLabel, { color: colors.foreground, marginTop: 0 }]}>{t("orTypeDirectly")}</Text>
                   <View style={styles.aiRow}>
                     <Pressable
@@ -1499,7 +1500,7 @@ export default function TransactionsScreen() {
                   {parseMutation.isPending && (
                     <Text style={[styles.aiStatus, { color: colors.mutedForeground }]}>{t("analyzing")}</Text>
                   )}
-                </View>
+                </View>}
 
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("typeLabel")}</Text>
                 <View style={styles.segRow}>
@@ -1527,17 +1528,6 @@ export default function TransactionsScreen() {
                     </Pressable>
                   ))}
                 </View>
-
-                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("amountLabel")}</Text>
-                <TextInput
-                  style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
-                  value={form.amount}
-                  onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  placeholderTextColor={colors.mutedForeground}
-                  textAlign="right"
-                />
 
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("currencyLabel")}</Text>
                 <Pressable
@@ -1664,6 +1654,7 @@ export default function TransactionsScreen() {
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("dateLabel")}</Text>
                 <TextInput
                   style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  editable={!savingLocal && draft.ready}
                   value={form.date}
                   onChangeText={(v) => setForm((f) => ({ ...f, date: v }))}
                   placeholder="YYYY-MM-DD"
@@ -1674,6 +1665,7 @@ export default function TransactionsScreen() {
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("descriptionLabel")}</Text>
                 <TextInput
                   style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  editable={!savingLocal && draft.ready}
                   value={form.description}
                   onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
                   placeholder={language === "ar" ? "وصف اختياري" : "Optional description"}
@@ -1684,10 +1676,15 @@ export default function TransactionsScreen() {
                 <Pressable
                   style={[styles.saveBtn, { backgroundColor: colors.primary }, (!form.amount || creating) && { opacity: 0.5 }]}
                   onPress={handleCreate}
-                  disabled={!form.amount || creating || parseMutation.isPending}
+                  disabled={!form.amount || creating || savingLocal || !draft.ready || parseMutation.isPending}
                 >
                   {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t("save")}</Text>}
                 </Pressable>
+                <Pressable disabled={savingLocal || !draft.ready || !form.amount} style={{ padding: 14, alignItems: "center" }} onPress={() => { saveAnotherRef.current = true; void handleCreate(); }}>
+                  <Text style={{ color: colors.primary }}>{language === "ar" ? "حفظ وإضافة أخرى" : "Save & add another"}</Text>
+                </Pressable>
+                <Pressable disabled={savingLocal} onPress={resetForm} style={{ padding: 10, alignItems: "center" }}><Text style={{ color: colors.mutedForeground }}>{language === "ar" ? "مسودة جديدة (مسح الحقول)" : "New draft (clear fields)"}</Text></Pressable>
+                <Text style={{ color: draft.error ? "#dc2626" : colors.mutedForeground, paddingBottom: 12 }}>{draft.error ? (language === "ar" ? "تعذر حفظ المسودة؛ أبقِ النموذج مفتوحاً" : "Draft storage unavailable; keep this form open") : (language === "ar" ? "المسودة محفوظة تلقائياً على هذا الجهاز" : "Draft saved automatically on this device")}</Text>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>

@@ -103,10 +103,10 @@ test("failed/invalid mobile save leaves review open; success closes afterwards",
     assert.deepEqual(events,saved?["save",false]:["save"]);
   }
 });
-test("mobile does not submit twice while a save is in flight", async () => {
+test("mobile does not queue twice while a local save is in flight", async () => {
   let calls=0,release;
   const pending=new Promise(resolve=>{release=resolve;});
-  const save=handler(mobilePath,"handleCreate",{form:{amount:"١٬٥٠٠٫٥٠",type:"expense",currency:"AED",accountId:"11",date:"2026-11-01",status:"settled"},saveInFlightRef:{current:false},normalizeAmountInput:ui.normalizeAmountInput,Alert:{alert:()=>{}},t:k=>k,language:"ar",createTx:async({data})=>{calls++;assert.equal(data.amount,1500.5);await pending;},Haptics:{notificationAsync:()=>{},NotificationFeedbackType:{Success:1}},setShowModal:()=>{},resetForm:()=>{},qc:{invalidateQueries:()=>{}},getListTransactionsQueryKey:()=>[],getGetDashboardSummaryQueryKey:()=>[],refetch:()=>{}});
+  const save=handler(mobilePath,"handleCreate",{form:{amount:"١٬٥٠٠٫٥٠",type:"expense",currency:"AED",accountId:"11",date:"2026-11-01",status:"settled"},draft:{ready:true,id:"draft-1",restore:()=>{}},userId:"user-1",settings:{currencies:["AED"]},transactionError:()=>null,manualErrorMessage:()=>"error",saveInFlightRef:{current:false},normalizeAmountInput:ui.normalizeAmountInput,Alert:{alert:()=>{}},language:"ar",mobileLedger:{enqueue:async(_owner,data)=>{calls++;assert.equal(data.amount,1500.5);await pending;},uuid:()=>"draft-2",saveDraft:async()=>{}},setSavingLocal:()=>{},saveAnotherRef:{current:false},localISODate:()=>"2026-11-01",Haptics:{notificationAsync:()=>Promise.resolve(),NotificationFeedbackType:{Success:1}},setShowModal:()=>{}});
   const first=save();assert.equal(await save(),false);release();assert.equal(await first,true);assert.equal(calls,1);
 });
 test("website keeps interim speech when stopping before final recognition", async () => {

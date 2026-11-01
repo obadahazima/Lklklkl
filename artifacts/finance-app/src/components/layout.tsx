@@ -1,3 +1,5 @@
+import { webLedger } from "@/lib/offline-ledger";
+import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
@@ -31,6 +33,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { language, showClients, showTrips } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
   const { signOut } = useClerk();
+  const { toast } = useToast();
   const { user } = useUser();
 
   useEffect(() => {
@@ -171,7 +174,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           )}
           <button
-            onClick={() => signOut({ redirectUrl: basePath || "/" })}
+            onClick={async () => { try { await webLedger.activate(null); await signOut({ redirectUrl: basePath || "/" }); } catch { toast({ title: language === "ar" ? "تعذر تسجيل الخروج، حاول مجدداً" : "Sign out failed; try again", variant: "destructive" }); } }}
             className="w-full flex items-center gap-2 text-sidebar-foreground/60 hover:text-white hover:bg-sidebar-accent/40 rounded-xl px-3 py-2 text-sm transition-colors"
           >
             <LogOut className="w-4 h-4 shrink-0" />

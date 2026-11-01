@@ -1,3 +1,4 @@
+import { mobileLedger } from "@/lib/offline-ledger";
 import { useAuth, useClerk, useUser } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
@@ -129,7 +130,7 @@ export function ConsentGate({ children }: { children: React.ReactNode }) {
         >
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{t.accept}</Text>}
         </Pressable>
-        <Pressable onPress={() => signOut()} style={{ alignItems: "center", padding: 10 }}>
+        <Pressable onPress={async () => { try { await mobileLedger.activate(null); await signOut(); } catch { setErr(true); } }} style={{ alignItems: "center", padding: 10 }}>
           <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{t.decline}</Text>
         </Pressable>
       </ScrollView>

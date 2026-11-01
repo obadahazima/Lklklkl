@@ -576,6 +576,10 @@ components:
       type: object
       required: [date, type, amount, currency, status, accountId]
       properties:
+        clientRequestId:
+          type: string
+          pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          description: "Stable client-generated UUID used to deduplicate retries"
         date:
           type: string
         type:

@@ -1,3 +1,5 @@
+import { resourceCache } from "@clerk/expo/resource-cache";
+import { OfflineSyncBridge } from "@/components/OfflineLedger";
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -74,6 +76,7 @@ export default function RootLayout() {
     <ClerkProvider
       publishableKey={publishableKey}
       tokenCache={tokenCache}
+      __experimental_resourceCache={resourceCache}
       {...(proxyUrl ? { proxyUrl } : {})}
     >
       <ClerkLoaded>
@@ -81,6 +84,7 @@ export default function RootLayout() {
           <ErrorBoundary>
             <SettingsProvider>
               <ClerkTokenBridge />
+              <OfflineSyncBridge />
               <QueryClientProvider client={queryClient}>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>

@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { OfflineSyncBridge } from "@/components/offline-ledger";
+import { OfflineEntry } from "@/components/offline-entry";
+import { useEffect, useRef, useState } from "react";
 import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -47,9 +49,6 @@ function stripBase(path: string): string {
     : path;
 }
 
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
-}
 
 const clerkAppearance = {
   theme: shadcn,
@@ -234,6 +233,7 @@ function AppRoutes() {
 }
 
 function ClerkProviderWithRoutes() {
+  if (!clerkPubKey) throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
   const [, setLocation] = useLocation();
 
   return (
@@ -265,6 +265,7 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <SettingsProvider>
           <AuthTokenSetter />
+          <OfflineSyncBridge />
           <ClerkQueryClientCacheInvalidator />
           <TooltipProvider>
             <AppRoutes />
@@ -277,6 +278,15 @@ function ClerkProviderWithRoutes() {
 }
 
 function App() {
+  // Cold offline start must not wait for Clerk's network-loaded resources. This local-only
+  // form can queue entries but cannot send them until normal authentication resumes.
+  const [offlineBoot, setOfflineBoot] = useState(() => !navigator.onLine);
+  useEffect(() => {
+    const connected = () => setOfflineBoot(false);
+    window.addEventListener("online", connected);
+    return () => window.removeEventListener("online", connected);
+  }, []);
+  if (offlineBoot || window.location.pathname === `${basePath}/offline`) return <OfflineEntry />;
   return (
     <WouterRouter base={basePath}>
       <ClerkProviderWithRoutes />

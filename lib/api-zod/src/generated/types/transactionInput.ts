@@ -7,6 +7,11 @@
  */
 
 export interface TransactionInput {
+  /**
+     * Stable client-generated UUID used to deduplicate retries
+     * @pattern ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+     */
+  clientRequestId?: string;
   date: string;
   type: string;
   amount: number;

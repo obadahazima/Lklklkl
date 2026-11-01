@@ -52,7 +52,11 @@ export const ListTransactionsResponse = zod.array(ListTransactionsResponseItem)
 /**
  * @summary Create a transaction
  */
+export const createTransactionBodyClientRequestIdRegExp = new RegExp('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+
+
 export const CreateTransactionBody = zod.object({
+  "clientRequestId": zod.string().regex(createTransactionBodyClientRequestIdRegExp).optional().describe('Stable client-generated UUID used to deduplicate retries'),
   "date": zod.string(),
   "type": zod.string(),
   "amount": zod.number(),

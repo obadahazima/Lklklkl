@@ -1,9 +1,10 @@
+import { webLedger } from "@/lib/offline-ledger";
 import { useState } from "react";
 import { useAuth, useClerk, useUser } from "@clerk/react";
 import { useSettings } from "@/contexts/settings-context";
 
 // Keep in sync with api-server/src/lib/legalVersion.ts. Bump when Terms/Privacy change.
-export const TERMS_VERSION = "2026-10-01";
+export const TERMS_VERSION = "2026-11-01";
 const API = "https://workspaceapi-server-production-85e3.up.railway.app";
 
 const T = {
@@ -106,7 +107,7 @@ export function ConsentGate({ children }: { children: React.ReactNode }) {
         >
           {t.accept}
         </button>
-        <button onClick={() => signOut()} className="w-full text-xs text-muted-foreground hover:underline">
+        <button onClick={async () => { try { await webLedger.activate(null); await signOut(); } catch { setErr(true); } }} className="w-full text-xs text-muted-foreground hover:underline">
           {t.decline}
         </button>
       </div>

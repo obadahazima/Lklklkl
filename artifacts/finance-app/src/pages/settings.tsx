@@ -1,3 +1,4 @@
+import { webLedger } from "@/lib/offline-ledger";
 import { useAuth, useClerk } from "@clerk/react";
 import { useState, useEffect, useRef } from "react";
 import { useSettings } from "@/contexts/settings-context";
@@ -16,7 +17,7 @@ export default function Settings() {
   const { settings, updateSettings } = useSettings();
   const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, theme } = settings;
   const { toast } = useToast();
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const { signOut } = useClerk();
   const [deleting, setDeleting] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -39,6 +40,7 @@ export default function Settings() {
         body: JSON.stringify({ confirm: "DELETE" }),
       });
       if (!res.ok) throw new Error("failed");
+      if (userId) await webLedger.erase(userId);
       localStorage.clear();
       try { await signOut(); } catch {}
       window.location.href = "/";

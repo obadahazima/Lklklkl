@@ -1,3 +1,4 @@
+import { mobileLedger } from "@/lib/offline-ledger";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth, useClerk } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
@@ -37,7 +38,7 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { signOut } = useClerk();
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const router = useRouter();
   const { settings, updateSettings } = useSettings();
   const { language, currencies, primaryCurrency, exchangeRateMode, manualRates, showClients, showTrips, theme, autoBackup } = settings;
@@ -158,7 +159,8 @@ export default function SettingsScreen() {
                         body: JSON.stringify({ confirm: "DELETE" }),
                       });
                       if (!res.ok) throw new Error("failed");
-                      await AsyncStorage.clear();
+                      if (userId) await mobileLedger.erase(userId);
+                      await AsyncStorage.multiRemove(["finance_app_settings", "billy.ledger.active-owner", AUTO_BACKUP_KEY]);
                       try { await signOut(); } catch {}
                       router.replace("/");
                     } catch {
@@ -657,6 +659,7 @@ export default function SettingsScreen() {
                   style: "destructive",
                   onPress: async () => {
                     try {
+                      await mobileLedger.activate(null);
                       await signOut();
                       router.replace("/");
                     } catch {
