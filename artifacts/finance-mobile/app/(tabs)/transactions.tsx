@@ -891,6 +891,25 @@ export default function TransactionsScreen() {
         </View>
       </View>
 
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction"}
+        disabled={parseMutation.isPending || (voice.state !== "idle" && voice.state !== "recording")}
+        onPress={voice.state === "recording" ? handleVoiceSheetStop : openVoiceSheet}
+        style={({ pressed }) => ({ margin: 16, marginBottom: 12, padding: 20, minHeight: 112, borderRadius: 20, backgroundColor: voice.state === "recording" ? "#dc2626" : colors.primary, flexDirection: "row", alignItems: "center", gap: 16, opacity: pressed || parseMutation.isPending || (voice.state !== "idle" && voice.state !== "recording") ? 0.7 : 1 })}
+      >
+        <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" }}>
+          <Feather name={voice.state === "recording" ? "square" : "mic"} size={30} color="#fff" />
+        </View>
+        <View style={{ flex: 1, gap: 5 }}>
+          <Text style={{ color: "#fff", fontSize: 21, fontWeight: "700", textAlign: language === "ar" ? "right" : "left" }}>{voice.state === "recording"
+            ? (language === "ar" ? "إيقاف التسجيل" : "Stop recording")
+            : parseMutation.isPending || voice.state === "transcribing"
+            ? (language === "ar" ? "جاري فهم معاملتك…" : "Understanding your transaction…")
+            : (language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction")}</Text>
+          <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, textAlign: language === "ar" ? "right" : "left" }}>{language === "ar" ? "اضغط واحكي، وراجع التفاصيل قبل الحفظ" : "Tap, speak, and review before saving"}</Text>
+        </View>
+      </Pressable>
       <OfflineQueuePanel owner={userId} ar={language === "ar"} cached={!transactionsRemote && !!transactions?.length} onRecover={(recovered) => { draft.restore(recovered); setShowModal(true); }} />
       <View style={[styles.filterBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>

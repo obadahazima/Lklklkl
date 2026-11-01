@@ -168,7 +168,6 @@ export default function NewTransaction() {
     status: "pending",
     date: localISODate(),
   });
-  useEffect(() => { if (draft.ready) amountInputRef.current?.focus(); }, [draft.ready]);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountType, setNewAccountType] = useState("cash");
@@ -815,29 +814,22 @@ export default function NewTransaction() {
       {/* ── Step: Input ── */}
       {step === "input" ? (
         <div className="space-y-5">
-          <details className="rounded-xl border border-border p-3">
-            <summary className="cursor-pointer font-medium">{language === "ar" ? "مساعدة بالصوت أو بجملة مكتوبة (تحتاج إنترنت)" : "Voice or text assistance (internet required)"}</summary>
           {/* Voice toggle button */}
-          <div className="flex flex-col items-center py-8 bg-card border border-border rounded-2xl shadow-sm">
-            <p className="text-sm text-muted-foreground mb-2 text-center px-4">
-              {t("voiceHint")}
-            </p>
-            <p className="text-xs text-muted-foreground/70 mb-5 text-center px-4">
-              {t("voiceExample")}
-            </p>
+          <section className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 sm:p-5 space-y-3" aria-label={language === "ar" ? "إضافة معاملة بالصوت" : "Add a transaction by voice"}>
             <button
+              type="button"
               onClick={toggleVoiceRecording}
               disabled={(parseMutation.isPending || isTranscribing)}
+              aria-pressed={isRecording}
               className={cn(
-                "w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 select-none",
+                "w-full min-h-32 rounded-2xl flex items-center justify-center gap-4 px-4 py-5 text-white shadow-lg transition-colors select-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:opacity-70",
                 isRecording
-                  ? "bg-red-500 scale-105 animate-recording"
-                  : (parseMutation.isPending || isTranscribing)
-                  ? "bg-muted cursor-not-allowed"
+                  ? "bg-red-600 hover:bg-red-700"
                   : "bg-primary hover:bg-primary/90 active:scale-95"
               )}
               data-testid="btn-voice-record"
             >
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white/20">
               {(parseMutation.isPending || isTranscribing) ? (
                 <Loader2 className="w-9 h-9 text-white animate-spin" />
               ) : isRecording ? (
@@ -845,7 +837,21 @@ export default function NewTransaction() {
               ) : (
                 <Mic className="w-9 h-9 text-white" />
               )}
+              </span>
+              <span className="text-start space-y-1">
+                <span className="block text-xl sm:text-2xl font-bold">{(parseMutation.isPending || isTranscribing)
+                  ? (language === "ar" ? "جاري فهم معاملتك…" : "Understanding your transaction…")
+                  : isRecording
+                  ? (language === "ar" ? "إيقاف التسجيل وتحليل المعاملة" : "Stop recording and analyze")
+                  : (language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction")}</span>
+                <span className="block text-sm text-white/90">{isRecording
+                  ? (language === "ar" ? "اضغط لما تخلّص الحكي" : "Tap when you finish speaking")
+                  : (language === "ar" ? "اضغط واحكي، وبيلي بيرتّب التفاصيل" : "Tap and speak. Billy fills in the details.")}</span>
+              </span>
             </button>
+            <p className="text-sm text-muted-foreground text-center">{t("voiceExample")}</p>
+            <p className="text-xs text-muted-foreground text-center">{language === "ar" ? "التسجيل والتحليل بيحتاجوا إنترنت · بتراجع المعاملة قبل حفظها" : "Internet required · Review your transaction before saving"}</p>
+            {textInput && <p className="rounded-xl bg-card p-3 text-sm break-words" aria-live="polite">{textInput}</p>}
             {isRecording && (
               <p className="text-red-500 text-sm mt-4 font-semibold animate-pulse">
                 {t("recording")}
@@ -854,9 +860,11 @@ export default function NewTransaction() {
             {(parseMutation.isPending || isTranscribing) && (
               <p className="text-muted-foreground text-sm mt-4">{t("analyzing")}</p>
             )}
-          </div>
+          </section>
 
           {/* Text input */}
+          <details className="rounded-xl border border-border p-3">
+            <summary className="cursor-pointer text-sm font-medium">{language === "ar" ? "أو اكتب المعاملة بجملة" : "Or describe your transaction in text"}</summary>
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">{t("orTypeDirectly")}</p>
             <div className="flex gap-2">
@@ -879,6 +887,7 @@ export default function NewTransaction() {
               </button>
             </div>
           </div>
+          </details>
 
           {/* Divider */}
           <div className="flex items-center gap-3">
@@ -887,7 +896,6 @@ export default function NewTransaction() {
             <div className="flex-1 h-px bg-border" />
           </div>
 
-          </details>
           {/* Manual form */}
           <form onSubmit={handleManualSubmit} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); saveAnotherRef.current = true; event.currentTarget.requestSubmit(); } }} className="bg-card border border-border rounded-2xl p-4 space-y-3">
             <fieldset disabled={savingLocal || !draft.ready} className="contents">
@@ -897,7 +905,6 @@ export default function NewTransaction() {
                 type="text"
                 inputMode="decimal"
                 ref={amountInputRef}
-                autoFocus
                 value={manualForm.amount}
                 onChange={(e) => setManualForm({ ...manualForm, amount: e.target.value })}
                 placeholder="0.00"
