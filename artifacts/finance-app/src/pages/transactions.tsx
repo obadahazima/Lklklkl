@@ -1,9 +1,11 @@
+import { QueryFeedback } from "@/components/query-feedback";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from "@clerk/react";
 import { webLedger } from "@/lib/offline-ledger";
 import { OfflineQueuePanel } from "@/components/offline-ledger";
 import { useState } from "react";
 import {
-  useListTransactions, useOfflineLedger,
+  useListTransactions, useOfflineLedger, useListAccounts, normalizeAmountInput, transactionError, manualErrorMessage,
   useDeleteTransaction,
   useUpdateTransaction,
   useListClients,
@@ -52,7 +54,7 @@ export default function Transactions() {
     type: type || undefined,
     status: status || undefined,
   };
-  const { data: remoteTxs, isLoading } = useListTransactions(params, {
+  const { data: remoteTxs, isLoading, isError, refetch } = useListTransactions(params, {
     query: { queryKey: getListTransactionsQueryKey(params) },
   });
 
@@ -89,7 +91,7 @@ export default function Transactions() {
       <div className="flex items-center justify-between pt-2">
         <div>
           <h1 className="text-2xl font-bold">{t("transactions")}</h1>
-          <p className="text-muted-foreground text-sm">{txs?.length ?? 0} {t("transactionCount")}</p>
+          <p className="text-muted-foreground text-sm">{txs?.length ?? "—"} {t("transactionCount")}</p>
         </div>
         <Link href="/transactions/new">
           <button className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-semibold" data-testid="btn-add-transaction">
@@ -100,6 +102,7 @@ export default function Transactions() {
       </div>
 
       <OfflineQueuePanel owner={userId} ar={language === "ar"} cached={!remoteTxs && !!txs?.length} />
+      {isError && <QueryFeedback ar={language === "ar"} retry={refetch} cached={!!txs} />}
       {/* Filters */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         <div className="flex items-center gap-1 text-muted-foreground shrink-0">
@@ -109,7 +112,7 @@ export default function Transactions() {
           value={currency}
           onChange={(e) => setCurrency(e.target.value)}
           className="text-xs border border-border rounded-lg px-2 py-1.5 bg-card text-foreground shrink-0"
-          data-testid="filter-currency"
+          aria-label={t("currencyLabel")} data-testid="filter-currency"
         >
           <option value="">{t("allCurrencies")}</option>
           {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -118,7 +121,7 @@ export default function Transactions() {
           value={type}
           onChange={(e) => setType(e.target.value)}
           className="text-xs border border-border rounded-lg px-2 py-1.5 bg-card text-foreground shrink-0"
-          data-testid="filter-type"
+          aria-label={t("typeLabel")} data-testid="filter-type"
         >
           <option value="">{t("allTypes")}</option>
           {TYPES.filter(Boolean).map((tp) => (
@@ -129,18 +132,19 @@ export default function Transactions() {
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           className="text-xs border border-border rounded-lg px-2 py-1.5 bg-card text-foreground shrink-0"
-          data-testid="filter-status"
+          aria-label={t("statusLabel2")} data-testid="filter-status"
         >
           <option value="">{t("allStatuses")}</option>
           {STATUSES.filter(Boolean).map((s) => (
             <option key={s} value={s}>{statusLabel(s, language)}</option>
           ))}
         </select>
+        {(currency || type || status) && <button type="button" onClick={() => { setCurrency(""); setType(""); setStatus(""); }} className="text-sm text-primary underline shrink-0 px-2">{language === "ar" ? "مسح الفلاتر" : "Clear filters"}</button>}
       </div>
 
       {/* List */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-        {isLoading && !txs?.length ? (
+        {isError && !txs ? null : isLoading && !txs?.length ? (
           <div className="divide-y divide-border">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="p-4 animate-pulse">
@@ -170,7 +174,7 @@ export default function Transactions() {
                     "bg-purple-500": tx.type === "transfer",
                   })} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={cn("text-sm font-bold", typeClass(tx.type))}>{typeLabel(tx.type, language)}</span>
                         <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", currencyClass(tx.currency))}>{tx.currency}</span>
@@ -189,14 +193,14 @@ export default function Transactions() {
                         </div>
                         <button
                           onClick={() => setEditingTx(tx)}
-                          className="text-muted-foreground hover:text-primary transition-colors p-1"
+                          aria-label={language === "ar" ? "تعديل المعاملة" : "Edit transaction"} className="text-muted-foreground hover:text-primary transition-colors p-2"
                           data-testid={`btn-edit-tx-${tx.id}`}
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => window.confirm(t("deleteTransactionConfirm")) && deleteMutation.mutate({ id: tx.id })}
-                          className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                          aria-label={language === "ar" ? "حذف المعاملة" : "Delete transaction"} disabled={deleteMutation.isPending} className="text-muted-foreground hover:text-destructive transition-colors p-2"
                           data-testid={`btn-delete-tx-${tx.id}`}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -267,10 +271,16 @@ function EditTransactionModal({
     description: string | null;
     clientId: number | null;
     tripId: number | null;
+    accountId: number;
+    toAccountId: number | null;
   }) => void;
 }) {
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
+  const { data: accounts, isError: accountsError, refetch: retryAccounts } = useListAccounts();
+  const { toast } = useToast();
   const [form, setForm] = useState({
+    accountId: tx.accountId == null ? "" : String(tx.accountId),
+    toAccountId: tx.toAccountId == null ? "" : String(tx.toAccountId),
     type: tx.type,
     amount: String(tx.amount),
     currency: tx.currency,
@@ -282,43 +292,34 @@ function EditTransactionModal({
   });
 
   function handleSubmit() {
-    const amountNum = parseFloat(form.amount);
-    if (!amountNum || amountNum <= 0) return;
-    onSave({
-      type: form.type,
-      amount: amountNum,
-      currency: form.currency,
-      status: form.status,
-      date: form.date,
-      description: form.description.trim() ? form.description.trim() : null,
-      clientId: form.clientId ? Number(form.clientId) : null,
-      tripId: form.tripId ? Number(form.tripId) : null,
-    });
+    if (isSaving) return;
+    const patch = {
+      type: form.type, amount: normalizeAmountInput(form.amount), currency: form.currency,
+      status: form.status, date: form.date, description: form.description.trim() || null,
+      accountId: Number(form.accountId), toAccountId: form.type === "transfer" ? Number(form.toAccountId) : null,
+      clientId: form.type === "transfer" ? null : (form.clientId ? Number(form.clientId) : null),
+      tripId: form.type === "transfer" ? null : (form.tripId ? Number(form.tripId) : null),
+    };
+    const error = transactionError(patch);
+    if (error) { toast({ title: manualErrorMessage(error, language === "ar"), variant: "destructive" }); return; }
+    onSave(patch);
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div
-        className={cn(
-          "bg-card w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto",
-          language === "ar" ? "text-right" : "text-left"
-        )}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card">
-          <h2 className="font-bold text-lg">{t("editTransaction")}</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1" data-testid="btn-close-edit-modal">
-            <X className="w-5 h-5" />
-          </button>
+    <Dialog open onOpenChange={(open) => { if (!open && !isSaving) onClose(); }}>
+      <DialogContent dir={language === "ar" ? "rtl" : "ltr"} aria-describedby="edit-transaction-description" className="block w-[94vw] max-w-md p-0 gap-0 rounded-2xl max-h-[90dvh] overflow-y-auto bg-card">
+        <div className="p-4 px-12 border-b border-border sticky top-0 bg-card">
+          <DialogTitle>{t("editTransaction")}</DialogTitle>
+          <DialogDescription id="edit-transaction-description" className="sr-only">{language === "ar" ? "راجع بيانات المعاملة ثم احفظ التعديلات" : "Review the transaction and save your changes"}</DialogDescription>
         </div>
-
-        <div className="p-4 space-y-4">
+        <fieldset disabled={isSaving} className="p-4 space-y-4">
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">{t("typeLabel2")}</label>
+            <label htmlFor="edit-type" className="text-xs text-muted-foreground mb-1 block">{t("typeLabel2")}</label>
             <select
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
               className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-              data-testid="edit-tx-type"
+              id="edit-type" data-testid="edit-tx-type"
             >
               {TYPES.filter(Boolean).map((tp) => (
                 <option key={tp} value={tp}>{typeLabel(tp, language)}</option>
@@ -326,24 +327,30 @@ function EditTransactionModal({
             </select>
           </div>
 
+          {accountsError && <QueryFeedback ar={language === "ar"} retry={retryAccounts} cached={!!accounts} />}
+          <div className="space-y-3">
+            <label className="block text-sm">{language === "ar" ? "الحساب المصدر" : "Source account"}<select value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))} className="mt-1 w-full rounded-lg border border-border bg-background p-3"><option value="">{language === "ar" ? "اختر حساباً" : "Choose an account"}</option>{!accounts?.some(a => String(a.id) === form.accountId) && tx.accountId != null && <option value={String(tx.accountId)}>{tx.accountName || (language === "ar" ? "الحساب الحالي" : "Current account")}</option>}{accounts?.map(a => <option key={a.id} value={a.id}>{a.name} · {a.currency}</option>)}</select></label>
+            {form.type === "transfer" && <label className="block text-sm">{language === "ar" ? "الحساب الوجهة" : "Destination account"}<select value={form.toAccountId} onChange={e => setForm(f => ({ ...f, toAccountId: e.target.value }))} className="mt-1 w-full rounded-lg border border-border bg-background p-3"><option value="">{language === "ar" ? "اختر حساباً مختلفاً" : "Choose a different account"}</option>{!accounts?.some(a => String(a.id) === form.toAccountId) && tx.toAccountId != null && <option value={String(tx.toAccountId)}>{tx.toAccountName || (language === "ar" ? "الوجهة الحالية" : "Current destination")}</option>}{accounts?.filter(a => String(a.id) !== form.accountId).map(a => <option key={a.id} value={a.id}>{a.name} · {a.currency}</option>)}</select></label>}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">{t("amountLabel")}</label>
+              <label htmlFor="edit-amount" className="text-xs text-muted-foreground mb-1 block">{t("amountLabel")}</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={form.amount}
                 onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
                 className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-                data-testid="edit-tx-amount"
+                id="edit-amount" data-testid="edit-tx-amount"
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">{t("currencyLabel")}</label>
+              <label htmlFor="edit-currency" className="text-xs text-muted-foreground mb-1 block">{t("currencyLabel")}</label>
               <select
                 value={form.currency}
                 onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
                 className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-                data-testid="edit-tx-currency"
+                id="edit-currency" data-testid="edit-tx-currency"
               >
                 {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -352,12 +359,12 @@ function EditTransactionModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">{t("statusLabel2")}</label>
+              <label htmlFor="edit-status" className="text-xs text-muted-foreground mb-1 block">{t("statusLabel2")}</label>
               <select
                 value={form.status}
                 onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
                 className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-                data-testid="edit-tx-status"
+                id="edit-status" data-testid="edit-tx-status"
               >
                 {STATUSES.filter(Boolean).map((s) => (
                   <option key={s} value={s}>{statusLabel(s, language)}</option>
@@ -365,25 +372,25 @@ function EditTransactionModal({
               </select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">{t("dateLabel")}</label>
+              <label htmlFor="edit-date" className="text-xs text-muted-foreground mb-1 block">{t("dateLabel")}</label>
               <input
                 type="date"
                 value={form.date}
                 onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
                 className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-                data-testid="edit-tx-date"
+                id="edit-date" data-testid="edit-tx-date"
               />
             </div>
           </div>
 
-          {showClients && (
+          {form.type !== "transfer" && showClients && (
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">{t("clientLabel")}</label>
+              <label htmlFor="edit-client" className="text-xs text-muted-foreground mb-1 block">{t("clientLabel")}</label>
               <select
                 value={form.clientId}
                 onChange={(e) => setForm((f) => ({ ...f, clientId: e.target.value }))}
                 className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-                data-testid="edit-tx-client"
+                id="edit-client" data-testid="edit-tx-client"
               >
                 <option value="">{t("noneOption")}</option>
                 {clients?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -391,14 +398,14 @@ function EditTransactionModal({
             </div>
           )}
 
-          {showTrips && (
+          {form.type !== "transfer" && showTrips && (
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">{t("tripLabel")}</label>
+              <label htmlFor="edit-trip" className="text-xs text-muted-foreground mb-1 block">{t("tripLabel")}</label>
               <select
                 value={form.tripId}
                 onChange={(e) => setForm((f) => ({ ...f, tripId: e.target.value }))}
                 className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
-                data-testid="edit-tx-trip"
+                id="edit-trip" data-testid="edit-tx-trip"
               >
                 <option value="">{t("noneOption")}</option>
                 {trips?.map((tr) => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
@@ -407,15 +414,15 @@ function EditTransactionModal({
           )}
 
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">{t("descriptionLabel")}</label>
+            <label htmlFor="edit-description" className="text-xs text-muted-foreground mb-1 block">{t("descriptionLabel")}</label>
             <textarea
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm min-h-[70px]"
-              data-testid="edit-tx-description"
+              id="edit-description" data-testid="edit-tx-description"
             />
           </div>
-        </div>
+        </fieldset>
 
         <div className="flex gap-3 p-4 border-t border-border sticky bottom-0 bg-card">
           <button
@@ -431,10 +438,10 @@ function EditTransactionModal({
             className="flex-1 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50"
             data-testid="btn-save-edit"
           >
-            {isSaving ? "..." : t("save")}
+            {isSaving ? t("saving") : t("save")}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

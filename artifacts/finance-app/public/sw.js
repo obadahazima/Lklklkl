@@ -1,4 +1,4 @@
-const CACHE_NAME = 'billy-bills-v3';
+const CACHE_NAME = 'billy-bills-v4';
 const APP_SHELL = ['/', '/index.html', '/favicon.ico', '/logo-symbol-128.png'];
 
 self.addEventListener('install', (event) => {

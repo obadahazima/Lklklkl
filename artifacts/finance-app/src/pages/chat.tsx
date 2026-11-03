@@ -113,6 +113,7 @@ export default function Chat() {
         let pendingCount = 0;
         const balances: Record<string, number> = {};
         for (const t of txs) {
+          if (t.type === "transfer") continue;
           const amt = Number(t.amount) || 0;
           balances[t.currency] = (balances[t.currency] || 0) + (t.type === "income" || t.type === "receipt" ? amt : -amt);
           if (t.status === "pending") pendingCount++;

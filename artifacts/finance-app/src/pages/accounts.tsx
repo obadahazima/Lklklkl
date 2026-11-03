@@ -1,6 +1,7 @@
+import { QueryFeedback } from "@/components/query-feedback";
 import { useState } from "react";
 import {
-  useListAccounts,
+  useListAccounts, normalizeAmountInput,
   useCreateAccount,
   useUpdateAccount,
   useDeleteAccount,
@@ -38,7 +39,7 @@ export default function Accounts() {
   const { language, primaryCurrency } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
-  const { data: accounts, isLoading } = useListAccounts();
+  const { data: accounts, isLoading, isError, refetch } = useListAccounts();
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
 
@@ -92,15 +93,19 @@ export default function Accounts() {
   }
 
   function handleSave() {
-    if (!name.trim()) return;
+    if (!name.trim() || createMutation.isPending || updateMutation.isPending) return;
+    const raw = initialBalance.trim();
+    const magnitude = normalizeAmountInput(raw.startsWith("-") ? raw.slice(1) : raw || "0");
+    const balance = raw.startsWith("-") ? -magnitude : magnitude;
+    if (!Number.isFinite(balance) || Math.abs(balance) >= 1e13) { toast({ title: language === "ar" ? "راجع الرصيد الافتتاحي؛ أدخل رقماً صحيحاً بمنزلتين عشريتين كحد أقصى" : "Enter a valid opening balance with at most two decimal places", variant: "destructive" }); return; }
     if (editingId) {
       updateMutation.mutate({
         id: editingId,
-        data: { name: name.trim(), type, currency, color, initialBalance: parseFloat(initialBalance) || 0 },
+        data: { name: name.trim(), type, currency, color, initialBalance: balance },
       });
     } else {
       createMutation.mutate({
-        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: parseFloat(initialBalance) || 0 },
+        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: balance },
       });
     }
   }
@@ -124,7 +129,7 @@ export default function Accounts() {
         <div>
           <h1 className="text-2xl font-bold">{language === "ar" ? "الحسابات" : "Accounts"}</h1>
           <p className="text-muted-foreground text-sm">
-            {accounts?.length ?? 0} {language === "ar" ? "حساب" : "accounts"}
+            {accounts?.length ?? "—"} {language === "ar" ? "حساب" : "accounts"}
           </p>
         </div>
         <button
@@ -152,7 +157,7 @@ export default function Accounts() {
             <h2 className="font-bold text-sm">
               {editingId ? (language === "ar" ? "تعديل الحساب" : "Edit account") : (language === "ar" ? "إضافة حساب" : "Add account")}
             </h2>
-            <button onClick={resetForm} className="text-muted-foreground">
+            <button aria-label={language === "ar" ? "إغلاق النموذج" : "Close form"} onClick={resetForm} className="text-muted-foreground">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -188,11 +193,11 @@ export default function Accounts() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              <label htmlFor="accounts-field-1" className="text-xs font-medium text-muted-foreground mb-1 block">
                 {language === "ar" ? "الرصيد الابتدائي (اختياري)" : "Initial balance (optional)"}
               </label>
-              <input
-                type="number"
+              <input id="accounts-field-1"
+                type="text" inputMode="decimal"
                 value={initialBalance}
                 onChange={(e) => setInitialBalance(e.target.value)}
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -226,19 +231,22 @@ export default function Accounts() {
               className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
               data-testid="btn-save-account"
             >
-              {t("save")}
+              {createMutation.isPending || updateMutation.isPending ? t("saving") : t("save")}
             </button>
           </div>
         </div>
       )}
 
+      {isError && accounts && <QueryFeedback ar={language === "ar"} retry={refetch} cached />}
       <div className="grid grid-cols-1 gap-3">
-        {isLoading ? (
+        {isError && !accounts ? <QueryFeedback ar={language === "ar"} retry={refetch} /> : isLoading ? (
           [1, 2, 3].map((i) => <div key={i} className="h-20 bg-card rounded-2xl border border-border animate-pulse" />)
         ) : accounts?.length === 0 ? (
           <div className="bg-card border border-border rounded-2xl p-10 text-center">
             <Wallet className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-muted-foreground">{language === "ar" ? "ما في حسابات بعد" : "No accounts yet"}</p>
+            <p className="text-sm text-muted-foreground mt-2">{language === "ar" ? "ضيف حساب الكاش أو البطاقة اللي بتستخدمها، وبعدها سجّل أول معاملة." : "Add the cash wallet or card you use, then record your first transaction."}</p>
+            <button onClick={() => { resetForm(); setShowForm(true); }} className="mt-4 rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold">{language === "ar" ? "إضافة أول حساب" : "Add your first account"}</button>
           </div>
         ) : (
           accounts?.map((account) => {
@@ -261,10 +269,10 @@ export default function Accounts() {
                   <span className={cn("text-sm font-bold", account.currentBalance >= 0 ? "text-green-600" : "text-red-600")}>
                     {account.currentBalance.toFixed(2)} {account.currency}
                   </span>
-                  <button onClick={() => startEdit(account)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground" data-testid={`btn-edit-account-${account.id}`}>
+                  <button onClick={() => startEdit(account)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground" aria-label={language === "ar" ? "تعديل" : "Edit"} data-testid={`btn-edit-account-${account.id}`}>
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => handleDelete(account.id)} className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive" data-testid={`btn-delete-account-${account.id}`}>
+                  <button onClick={() => handleDelete(account.id)} className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive" aria-label={language === "ar" ? "حذف" : "Delete"} disabled={deleteMutation.isPending} data-testid={`btn-delete-account-${account.id}`}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>

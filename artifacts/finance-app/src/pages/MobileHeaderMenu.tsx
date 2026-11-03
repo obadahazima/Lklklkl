@@ -17,12 +17,14 @@ export default function MobileHeaderMenu({ className = "", lang, isDark, t, upda
         onClick={() => setOpen((v) => !v)}
         className="p-2 rounded-md bg-transparent border border-border text-muted-foreground"
         aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-controls="landing-mobile-menu"
       >
         {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-lg z-50">
+        <div id="landing-mobile-menu" className="absolute end-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-lg z-50">
           <div className="flex flex-col p-2 gap-2">
             <button
               onClick={() => {

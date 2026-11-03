@@ -1,3 +1,4 @@
+import { QueryFeedback } from "@/components/query-feedback";
 import { useState } from "react";
 import {
   useListClients,
@@ -35,8 +36,8 @@ export default function Clients() {
   const { language, primaryCurrency } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
-  const { data: clients, isLoading } = useListClients();
-  const { data: txs } = useListTransactions({});
+  const { data: clients, isLoading, isError, refetch } = useListClients();
+  const { data: txs, isError: balancesError, refetch: retryBalances } = useListTransactions({});
 
   // Balance per client, converted to the primary currency (respects
   // exchange-rate mode: auto live rates or manual rates from settings).
@@ -129,7 +130,7 @@ export default function Clients() {
       <div className="flex items-center justify-between pt-2">
         <div>
           <h1 className="text-2xl font-bold">{t("clients")}</h1>
-          <p className="text-muted-foreground text-sm">{clients?.length ?? 0} {t("clientCount")}</p>
+          <p className="text-muted-foreground text-sm">{clients?.length ?? "—"} {t("clientCount")}</p>
         </div>
         <button
           onClick={() => { resetForm(); setShowAdd(true); }}
@@ -148,7 +149,7 @@ export default function Clients() {
             <h2 className="font-bold text-sm">
               {editingId ? (language === "ar" ? "تعديل الزبون" : "Edit client") : t("addClientTitle")}
             </h2>
-            <button onClick={resetForm} className="text-muted-foreground hover:text-foreground">
+            <button aria-label={language === "ar" ? "إغلاق النموذج" : "Close form"} onClick={resetForm} className="text-muted-foreground hover:text-foreground">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -194,9 +195,11 @@ export default function Clients() {
         </div>
       )}
 
+      {isError && clients && <QueryFeedback ar={language === "ar"} retry={refetch} cached />}
+      {balancesError && <QueryFeedback ar={language === "ar"} retry={retryBalances} cached={!!txs} />}
       {/* List */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-        {isLoading ? (
+        {isError && !clients ? <QueryFeedback ar={language === "ar"} retry={refetch} /> : isLoading ? (
           <div className="divide-y divide-border">
             {[1, 2, 3].map((i) => <div key={i} className="p-4 animate-pulse"><div className="h-4 bg-muted rounded w-1/3" /></div>)}
           </div>
@@ -204,6 +207,7 @@ export default function Clients() {
           <div className="p-10 text-center">
             <Users className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-muted-foreground">{t("noClients")}</p>
+            <button onClick={() => setShowAdd(true)} className="mt-4 rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold">{language === "ar" ? "إضافة أول زبون" : "Add your first client"}</button>
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -223,7 +227,8 @@ export default function Clients() {
                   </div>
                 </Link>
                 <div className="flex flex-col items-end gap-1.5">
-                  {balance !== 0 && (
+                  {!txs && <span className="text-xs text-muted-foreground">{language === "ar" ? "الرصيد غير متاح حالياً" : "Balance currently unavailable"}</span>}
+                  {txs && balance !== 0 && (
                     <span
                       className={cn("text-xs font-bold whitespace-nowrap", balance > 0 ? "text-green-600" : "text-red-600")}
                       data-testid={`client-balance-${client.id}`}
@@ -243,14 +248,14 @@ export default function Clients() {
                     <button
                       onClick={() => startEdit(client)}
                       className="text-muted-foreground hover:text-primary p-1"
-                      data-testid={`btn-edit-client-${client.id}`}
+                      aria-label={language === "ar" ? "تعديل" : "Edit"} data-testid={`btn-edit-client-${client.id}`}
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => window.confirm(t("deleteClientConfirm")) && deleteMutation.mutate({ id: client.id })}
-                      className="text-muted-foreground hover:text-destructive p-1"
-                      data-testid={`btn-delete-client-${client.id}`}
+                      className="text-muted-foreground hover:text-destructive p-2"
+                      aria-label={language === "ar" ? "حذف" : "Delete"} disabled={deleteMutation.isPending} data-testid={`btn-delete-client-${client.id}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

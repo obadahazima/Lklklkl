@@ -58,7 +58,7 @@ function OfflineManualForm({ owner }: { owner: string }) {
       <label className="block">التاريخ<input type="date" className={fieldClass} value={form.date} onChange={(event) => update("date",event.target.value)} required /></label>
       <label className="block">الحالة<select className={fieldClass} value={form.status} onChange={(event) => update("status",event.target.value)}><option value="pending">معلقة</option><option value="settled">مسددة</option></select></label>
       <label className="block">الوصف<input className={fieldClass} value={form.description} onChange={(event) => update("description",event.target.value)} /></label>
-      <button disabled={saving || !draft.ready || !accounts.length} className="w-full p-3 rounded-xl bg-blue-600 text-white disabled:opacity-50">حفظ وإضافة أخرى</button>
+      <button disabled={saving || !draft.ready || !accounts.length} className="w-full p-3 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">حفظ وإضافة أخرى</button>
     </form>
     {(message || draft.error) && <p role="status">{message || "تعذر حفظ المسودة محلياً"}</p>}
   </main>;

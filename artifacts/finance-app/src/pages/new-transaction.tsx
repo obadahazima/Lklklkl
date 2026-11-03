@@ -844,7 +844,7 @@ export default function NewTransaction() {
                   : isRecording
                   ? (language === "ar" ? "إيقاف التسجيل وتحليل المعاملة" : "Stop recording and analyze")
                   : (language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction")}</span>
-                <span className="block text-sm text-white/90">{isRecording
+                <span className="block text-sm opacity-90">{isRecording
                   ? (language === "ar" ? "اضغط لما تخلّص الحكي" : "Tap when you finish speaking")
                   : (language === "ar" ? "اضغط واحكي، وبيلي بيرتّب التفاصيل" : "Tap and speak. Billy fills in the details.")}</span>
               </span>
@@ -900,8 +900,8 @@ export default function NewTransaction() {
           <form onSubmit={handleManualSubmit} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); saveAnotherRef.current = true; event.currentTarget.requestSubmit(); } }} className="bg-card border border-border rounded-2xl p-4 space-y-3">
             <fieldset disabled={savingLocal || !draft.ready} className="contents">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("amountLabel")}</label>
-              <input
+              <label htmlFor="new-transaction-field-1" className="text-xs font-medium text-muted-foreground mb-1 block">{t("amountLabel")}</label>
+              <input id="new-transaction-field-1"
                 type="text"
                 inputMode="decimal"
                 ref={amountInputRef}
@@ -915,8 +915,8 @@ export default function NewTransaction() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("typeLabel")}</label>
-                <select
+                <label htmlFor="new-transaction-field-2" className="text-xs font-medium text-muted-foreground mb-1 block">{t("typeLabel")}</label>
+                <select id="new-transaction-field-2"
                   value={manualForm.type}
                   onChange={(e) => {
                     const newType = e.target.value;
@@ -940,8 +940,8 @@ export default function NewTransaction() {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("currencyLabel")}</label>
-                <select
+                <label htmlFor="new-transaction-field-3" className="text-xs font-medium text-muted-foreground mb-1 block">{t("currencyLabel")}</label>
+                <select id="new-transaction-field-3"
                   value={manualForm.currency}
                   onChange={(e) => setManualForm({ ...manualForm, currency: e.target.value })}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1045,8 +1045,8 @@ export default function NewTransaction() {
               <div className="grid grid-cols-2 gap-3">
                 {showClients && (
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
-                    <select
+                    <label htmlFor="new-transaction-field-4" className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
+                    <select id="new-transaction-field-4"
                       value={manualForm.clientId}
                       onChange={(e) => setManualForm({ ...manualForm, clientId: e.target.value })}
                       className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1061,8 +1061,8 @@ export default function NewTransaction() {
                 )}
                 {showTrips && (
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
-                    <select
+                    <label htmlFor="new-transaction-field-5" className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
+                    <select id="new-transaction-field-5"
                       value={manualForm.tripId}
                       onChange={(e) => setManualForm({ ...manualForm, tripId: e.target.value })}
                       className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1078,8 +1078,8 @@ export default function NewTransaction() {
               </div>
             )}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("dateLabel")}</label>
-              <input
+              <label htmlFor="new-transaction-field-6" className="text-xs font-medium text-muted-foreground mb-1 block">{t("dateLabel")}</label>
+              <input id="new-transaction-field-6"
                 type="date"
                 value={manualForm.date}
                 onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
@@ -1088,8 +1088,8 @@ export default function NewTransaction() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("descriptionLabel")}</label>
-              <input
+              <label htmlFor="new-transaction-field-7" className="text-xs font-medium text-muted-foreground mb-1 block">{t("descriptionLabel")}</label>
+              <input id="new-transaction-field-7"
                 type="text"
                 value={manualForm.description}
                 onChange={(e) => setManualForm({ ...manualForm, description: e.target.value })}
@@ -1099,8 +1099,8 @@ export default function NewTransaction() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
-              <select
+              <label htmlFor="new-transaction-field-8" className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
+              <select id="new-transaction-field-8"
                 value={manualForm.status}
                 onChange={(e) => setManualForm({ ...manualForm, status: e.target.value })}
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1146,10 +1146,10 @@ export default function NewTransaction() {
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <label htmlFor="new-transaction-field-9" className="text-xs font-medium text-muted-foreground mb-1 block">
                   {language === "ar" ? "نوع العملية" : "Type"}
                 </label>
-                <select
+                <select id="new-transaction-field-9"
                   value={parsed?.type ?? "expense"}
                   onChange={(e) => setParsed((p) => (p ? { ...p, type: e.target.value } : p))}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1165,10 +1165,10 @@ export default function NewTransaction() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  <label htmlFor="new-transaction-field-10" className="text-xs font-medium text-muted-foreground mb-1 block">
                     {language === "ar" ? "المبلغ" : "Amount"}
                   </label>
-                  <input
+                  <input id="new-transaction-field-10"
                     type="number"
                     value={parsed?.amount ?? ""}
                     onChange={(e) => setParsed((p) => (p ? { ...p, amount: e.target.value === "" ? null : normalizeAmountInput(e.target.value) } : p))}
@@ -1178,10 +1178,10 @@ export default function NewTransaction() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  <label htmlFor="new-transaction-field-11" className="text-xs font-medium text-muted-foreground mb-1 block">
                     {language === "ar" ? "العملة" : "Currency"}
                   </label>
-                  <select
+                  <select id="new-transaction-field-11"
                     value={parsed?.currency ?? settings.primaryCurrency}
                     onChange={(e) => setParsed((p) => (p ? { ...p, currency: e.target.value } : p))}
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1198,8 +1198,8 @@ export default function NewTransaction() {
                 <div className="grid grid-cols-2 gap-3">
                   {showClients && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
-                      <select
+                      <label htmlFor="new-transaction-field-12" className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
+                      <select id="new-transaction-field-12"
                         value={parsed?.clientId != null ? String(parsed.clientId) : ""}
                         onChange={(e) => {
                           const id = e.target.value ? Number(e.target.value) : null;
@@ -1223,8 +1223,8 @@ export default function NewTransaction() {
                   )}
                   {showTrips && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
-                      <select
+                      <label htmlFor="new-transaction-field-13" className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
+                      <select id="new-transaction-field-13"
                         value={parsed?.tripId != null ? String(parsed.tripId) : ""}
                         onChange={(e) => {
                           const id = e.target.value ? Number(e.target.value) : null;
@@ -1250,10 +1250,10 @@ export default function NewTransaction() {
               )}
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <label htmlFor="new-transaction-field-14" className="text-xs font-medium text-muted-foreground mb-1 block">
                   {language === "ar" ? "الوصف" : "Description"}
                 </label>
-                <input
+                <input id="new-transaction-field-14"
                   type="text"
                   value={parsed?.description ?? ""}
                   onChange={(e) => setParsed((p) => (p ? { ...p, description: e.target.value } : p))}
@@ -1264,18 +1264,18 @@ export default function NewTransaction() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
-                <select value={parsed?.status ?? "pending"} onChange={(e) => setParsed((p) => p ? { ...p, status: e.target.value as "pending" | "settled" } : p)}
+                <label htmlFor="new-transaction-field-15" className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
+                <select id="new-transaction-field-15" value={parsed?.status ?? "pending"} onChange={(e) => setParsed((p) => p ? { ...p, status: e.target.value as "pending" | "settled" } : p)}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" data-testid="select-status-confirm">
                   <option value="pending">{t("statusPending")}</option>
                   <option value="settled">{t("statusSettled")}</option>
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <label htmlFor="new-transaction-field-16" className="text-xs font-medium text-muted-foreground mb-1 block">
                   {language === "ar" ? "التاريخ" : "Date"}
                 </label>
-                <input
+                <input id="new-transaction-field-16"
                   type="date"
                   value={parsed?.date ?? localISODate()}
                   onChange={(e) => setParsed((p) => (p ? { ...p, date: e.target.value } : p))}
