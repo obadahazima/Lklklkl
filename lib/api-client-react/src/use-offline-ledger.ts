@@ -19,7 +19,7 @@ export function useOfflineLedger(ledger: OfflineLedger, owner: string | null | u
   return { record: value && value.owner === owner ? value.record : emptyLedger(), ready: !!owner && value?.owner === owner, storageError };
 }
 
-export function useManualDraft<T extends ManualDraft>(ledger: OfflineLedger, owner: string | null | undefined, initial: T): [T, Dispatch<SetStateAction<T>>, { ready: boolean; error: boolean; id: string; reset: (next: T) => void; restore: (draft: { id: string; values: ManualDraft }) => void }] {
+export function useManualDraft<T extends ManualDraft>(ledger: OfflineLedger, owner: string | null | undefined, initial: T, slot: "draft" | "debtDraft" = "draft"): [T, Dispatch<SetStateAction<T>>, { ready: boolean; error: boolean; id: string; reset: (next: T) => void; restore: (draft: { id: string; values: ManualDraft }) => void }] {
   const [state, setState] = useState<{ owner: string | null; form: T; id: string; ready: boolean }>({ owner: null, form: initial, id: "", ready: false });
   const [error, setError] = useState(false);
   const initialRef = useRef(initial);
@@ -28,13 +28,13 @@ export function useManualDraft<T extends ManualDraft>(ledger: OfflineLedger, own
     let live = true;
     if (owner) void ledger.read(owner).then((record) => {
       if (!live) return;
-      setState({ owner, form: record.draft ? { ...initialRef.current, ...record.draft.values } as T : initialRef.current, id: record.draft?.id ?? ledger.uuid(), ready: true });
+      setState({ owner, form: record[slot] ? { ...initialRef.current, ...record[slot].values } as T : initialRef.current, id: record[slot]?.id ?? ledger.uuid(), ready: true });
     }, () => { if (live) setError(true); });
     return () => { live = false; };
-  }, [ledger, owner]);
+  }, [ledger, owner, slot]);
   useEffect(() => {
-    if (owner && state.owner === owner && state.ready) void ledger.saveDraft(owner, state.id, state.form).then(() => setError(false), () => setError(true));
-  }, [ledger, owner, state]);
+    if (owner && state.owner === owner && state.ready) void ledger.saveDraft(owner, state.id, state.form, slot).then(() => setError(false), () => setError(true));
+  }, [ledger, owner, state, slot]);
   const ready = !!owner && state.owner === owner && state.ready;
   const setForm: Dispatch<SetStateAction<T>> = (next) => setState((previous) => previous.owner === owner && previous.ready ? { ...previous, form: typeof next === "function" ? (next as (old: T) => T)(previous.form) : next } : previous);
   return [ready ? state.form : initial, setForm, { ready, error, id: ready ? state.id : "", reset: (next) => setState({ owner: owner ?? null, form: next, id: ledger.uuid(), ready: !!owner }), restore: (draft) => setState({ owner: owner ?? null, form: draft.values as T, id: draft.id, ready: !!owner }) }];

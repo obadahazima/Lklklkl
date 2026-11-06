@@ -125,7 +125,7 @@ export default function ClientStatement() {
           {totalInPrimary === 0
             ? language === "ar" ? "مسدد بالكامل" : "Fully Settled"
             : totalInPrimary > 0
-            ? (language === "ar" ? "له " : "") + formatAmount(totalInPrimary, primaryCurrency, language)
+            ? (language === "ar" ? "عليه " : "Owes ") + formatAmount(totalInPrimary, primaryCurrency, language)
             : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(totalInPrimary), primaryCurrency, language)}
         </p>
 
@@ -162,7 +162,7 @@ export default function ClientStatement() {
       {balances.length > 0 ? (
         <section>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-            {language === "ar" ? "الأرصدة المفتوحة" : "Open Balances"}
+            {language === "ar" ? "الذمم المتبقية" : "Remaining receivables"}
           </h2>
           <div className="space-y-3">
             {balances.map((b) => {
@@ -178,7 +178,7 @@ export default function ClientStatement() {
                         {b.openBalance === 0
                           ? language === "ar" ? "مسدد" : "Settled"
                           : b.openBalance > 0
-                          ? (language === "ar" ? "له " : "") + formatAmount(b.openBalance, b.currency, language)
+                          ? (language === "ar" ? "عليه " : "Owes ") + formatAmount(b.openBalance, b.currency, language)
                           : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(b.openBalance), b.currency, language)}
                       </span>
                       {b.currency !== primaryCurrency && b.openBalance !== 0 && (

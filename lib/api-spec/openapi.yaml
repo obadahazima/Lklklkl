@@ -541,7 +541,7 @@ components:
           type: string
         type:
           type: string
-          description: "income | expense | payment | receipt | transfer"
+          description: "income | expense | transfer | receivable (legacy payment/receipt accepted)"
         amount:
           type: number
         currency:
@@ -564,18 +564,39 @@ components:
           description: "Destination account for type=transfer only"
         toAccountName:
           type: ["string", "null"]
+        debtKind:
+          type: ["string", "null"]
+          description: "sale | opening | loan | loan_now; receivable only"
+        dueDate:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         status:
           type: string
           description: "pending | settled"
+        collectionSummary:
+          type: ["string", "null"]
         createdAt:
           type: string
+
+        allocations:
+          type: array
+          items:
+            type: object
+            required: [debtId, amount]
+            properties:
+              debtId:
+                type: integer
+              amount:
+                type: number
 
     TransactionInput:
       type: object
       required: [date, type, amount, currency, status, accountId]
       properties:
+        collectionOnly:
+          type: boolean
+          description: "Require an outstanding receivable instead of recording unmatched income"
         clientRequestId:
           type: string
           pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -598,6 +619,11 @@ components:
         toAccountId:
           type: ["integer", "null"]
           description: "Required when type=transfer — the destination account. Must differ from accountId."
+        debtKind:
+          type: ["string", "null"]
+          description: "sale | opening | loan | loan_now; receivable only"
+        dueDate:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         status:
@@ -622,6 +648,11 @@ components:
           type: ["integer", "null"]
         toAccountId:
           type: ["integer", "null"]
+        debtKind:
+          type: ["string", "null"]
+          description: "sale | opening | loan | loan_now; receivable only"
+        dueDate:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         status:

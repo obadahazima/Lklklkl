@@ -1,9 +1,11 @@
+import { collectionAllocations } from "../lib/debts.js";
+import { canonicalType, debtBalances } from "../lib/debt-math.js";
 import { createHash } from "node:crypto";
 import { validISODate } from "../lib/voice-input.js";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { transactionsTable, clientsTable, tripsTable, accountsTable, transactionReceiptsTable } from "@workspace/db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import {
   CreateTransactionBody,
   UpdateTransactionBody,
@@ -93,6 +95,13 @@ async function enrichTransaction(t: typeof transactionsTable.$inferSelect, execu
   };
 }
 
+router.get("/receivables", async (req,res): Promise<void> => {
+  try {
+    const rows = await db.select().from(transactionsTable).where(eq(transactionsTable.userId,req.userId));
+    res.json(debtBalances(rows));
+  } catch(err) { req.log.error({err},"Failed to list debts"); res.status(500).json({error:"تعذر تحميل الذمم"}); }
+});
+
 router.get("/transactions", async (req, res): Promise<void> => {
   const parsed = ListTransactionsQueryParams.safeParse({
     clientId: req.query.clientId ? Number(req.query.clientId) : undefined,
@@ -110,7 +119,7 @@ router.get("/transactions", async (req, res): Promise<void> => {
       if (parsed.data.tripId != null) conditions.push(eq(transactionsTable.tripId, parsed.data.tripId));
       if (parsed.data.accountId != null) conditions.push(eq(transactionsTable.accountId, parsed.data.accountId));
       if (parsed.data.currency != null) conditions.push(eq(transactionsTable.currency, parsed.data.currency));
-      if (parsed.data.type != null) conditions.push(eq(transactionsTable.type, parsed.data.type));
+      if (parsed.data.type != null) conditions.push(inArray(transactionsTable.type, parsed.data.type === "income" ? ["income","receipt"] : parsed.data.type === "expense" ? ["expense","payment"] : [parsed.data.type]));
       if (parsed.data.status != null) conditions.push(eq(transactionsTable.status, parsed.data.status));
     }
 
@@ -135,14 +144,17 @@ router.post("/transactions", async (req, res): Promise<void> => {
   }
   const parsed = CreateTransactionBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const input = parsed.data;
-  if (!validISODate(input.date) || !["income", "expense", "payment", "receipt", "transfer"].includes(input.type)
+  const input = { ...parsed.data, type: canonicalType(parsed.data.type) };
+  if (!validISODate(input.date) || !["income", "expense", "transfer", "receivable"].includes(input.type)
     || !["pending", "settled"].includes(input.status) || !/^[A-Z]{3}$/.test(input.currency)
     || !Number.isFinite(input.amount) || input.amount <= 0 || input.amount >= 1e13
     || Number(input.amount.toFixed(2)) !== input.amount
-    || !Number.isInteger(input.accountId) || input.accountId <= 0) {
+    || (input.type !== "receivable" && (!Number.isInteger(input.accountId) || input.accountId <= 0))) {
     res.status(400).json({ error: "Invalid transaction date, amount, currency, status or account" });
     return;
+  }
+  if (input.type === "receivable" && (!input.clientId || !["sale","opening","loan","loan_now"].includes(input.debtKind ?? "") || (input.dueDate && (!validISODate(input.dueDate) || input.dueDate < input.date)) || (input.debtKind === "loan_now" && !input.accountId))) {
+    res.status(400).json({error:"حدّد الشخص ونوع الذمة وتاريخ استحقاق صالح والحساب عند إعطاء سلفة الآن"}); return;
   }
   const transferError = validateTransferFields(input.type, input.accountId, input.toAccountId);
   if (transferError) { res.status(400).json({ error: transferError }); return; }
@@ -151,9 +163,10 @@ router.post("/transactions", async (req, res): Promise<void> => {
     date: input.date, status: input.status, description: input.description?.trim() || null,
     clientId: input.type === "transfer" ? null : input.clientId ?? null,
     tripId: input.type === "transfer" ? null : input.tripId ?? null,
-    accountId: input.accountId, toAccountId: input.type === "transfer" ? input.toAccountId ?? null : null,
+    debtKind: input.type === "receivable" ? input.debtKind : null, dueDate: input.type === "receivable" ? input.dueDate ?? null : null,
+    accountId: input.type === "receivable" && input.debtKind !== "loan_now" ? null : input.accountId, toAccountId: input.type === "transfer" ? input.toAccountId ?? null : null,
   };
-  const hash = createHash("sha256").update(JSON.stringify(values)).digest("hex");
+  const hash = createHash("sha256").update(JSON.stringify({...values,collectionOnly:input.collectionOnly ?? false})).digest("hex");
   try {
     const result = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('billy.ledger.user'), hashtext(${req.userId}))`);
@@ -166,8 +179,15 @@ router.post("/transactions", async (req, res): Promise<void> => {
       }
       const fkError = await assertOwnedForeignKeys(req.userId, values, tx);
       if (fkError) return { status: 400, body: { error: fkError } };
-      const [txRow] = await tx.insert(transactionsTable).values(values).returning();
-      const response = await enrichTransaction(txRow, tx);
+      let allocations;
+      try { allocations = await collectionAllocations(tx, req.userId, values.type, values.clientId, values.currency, input.amount); }
+      catch(err) { return {status:409,body:{error:(err as Error).message}}; }
+      if (input.collectionOnly && !allocations.length) return {status:409,body:{error:"لا توجد ذمم متبقية لهذه العملة؛ راجع البيانات قبل تسجيل إيراد جديد"}};
+      const [txRow] = await tx.insert(transactionsTable).values({...values,allocations,status:allocations.length ? "settled" : values.status}).returning();
+      const enriched = await enrichTransaction(txRow, tx);
+      const rows = allocations.length ? await tx.select().from(transactionsTable).where(eq(transactionsTable.userId,req.userId)) : [];
+      const remaining = debtBalances(rows).filter(d=>d.clientId === values.clientId && d.currency === values.currency).reduce((s,d)=>s+Math.round(d.remaining*100),0)/100;
+      const response = {...enriched,collectionSummary:allocations.length ? `تم تحصيل ${input.amount} ${values.currency} وتوزيعه على ${allocations.length} ذمة. المتبقي على الشخص: ${remaining.toFixed(2)} ${values.currency}` : null};
       if (input.clientRequestId) await tx.insert(transactionReceiptsTable).values({ userId: req.userId, requestId: input.clientRequestId, payloadHash: hash, response });
       return { status: 201, body: response };
     });
@@ -220,18 +240,20 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
     return;
   }
   try {
+    await db.transaction(async (txDb) => {
+    await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext('billy.ledger.user'), hashtext(${req.userId}))`);
     const fkError = await assertOwnedForeignKeys(req.userId, {
       clientId: bodyParsed.data.clientId,
       tripId: bodyParsed.data.tripId,
       accountId: bodyParsed.data.accountId,
       toAccountId: bodyParsed.data.toAccountId,
-    });
+    }, txDb);
     if (fkError) {
       res.status(400).json({ error: fkError });
       return;
     }
 
-    const [existing] = await db
+    const [existing] = await txDb
       .select()
       .from(transactionsTable)
       .where(and(eq(transactionsTable.id, paramsParsed.data.id), eq(transactionsTable.userId, req.userId)));
@@ -240,6 +262,9 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
       return;
     }
 
+    if (existing.type === "receivable" || existing.allocations?.length || (canonicalType(bodyParsed.data.type ?? existing.type) === "income" && (bodyParsed.data.clientId ?? existing.clientId))) {
+      res.status(409).json({error:"للحفاظ على ربط الذمم، احذف التحصيل وأعد تسجيله لتصحيح المبلغ أو الحساب."}); return;
+    }
     const effectiveType = bodyParsed.data.type ?? existing.type;
     const effectiveAccountId = bodyParsed.data.accountId !== undefined ? bodyParsed.data.accountId : existing.accountId;
     // If the caller is switching type away from "transfer" and didn't explicitly send a new
@@ -273,7 +298,7 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
       updateData.toAccountId = null;
     }
 
-    const [tx] = await db
+    const [tx] = await txDb
       .update(transactionsTable)
       .set(updateData)
       .where(and(eq(transactionsTable.id, paramsParsed.data.id), eq(transactionsTable.userId, req.userId)))
@@ -283,6 +308,7 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
       return;
     }
     res.json(await enrichTransaction(tx));
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to update transaction");
     res.status(500).json({ error: "Internal server error" });
@@ -296,9 +322,13 @@ router.delete("/transactions/:id", async (req, res): Promise<void> => {
     return;
   }
   try {
-    await db
-      .delete(transactionsTable)
-      .where(and(eq(transactionsTable.id, parsed.data.id), eq(transactionsTable.userId, req.userId)));
+    await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('billy.ledger.user'), hashtext(${req.userId}))`);
+      const rows = await tx.select().from(transactionsTable).where(eq(transactionsTable.userId,req.userId));
+      if (rows.some(row => row.allocations?.some(a=>a.debtId === parsed.data.id))) { res.status(409).json({error:"احذف دفعات التحصيل المرتبطة قبل حذف الذمة"}); return; }
+      await tx.delete(transactionsTable).where(and(eq(transactionsTable.id,parsed.data.id),eq(transactionsTable.userId,req.userId)));
+    });
+    if (res.headersSent) return;
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete transaction");

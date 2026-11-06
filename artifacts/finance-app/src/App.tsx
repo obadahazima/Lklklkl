@@ -22,6 +22,7 @@ const Clients = lazy(() => import("@/pages/clients"));
 const ClientStatement = lazy(() => import("@/pages/client-statement"));
 const Trips = lazy(() => import("@/pages/trips"));
 const TripDetail = lazy(() => import("@/pages/trip-detail"));
+const Receivables = lazy(() => import("@/pages/receivables"));
 const Accounts = lazy(() => import("@/pages/accounts"));
 import Chat from "@/pages/chat";
 const Settings = lazy(() => import("@/pages/settings"));
@@ -225,6 +226,7 @@ function AppRoutes() {
       <Route path="/trips/:id">
         {(params) => <ProtectedRoute><TripDetail /></ProtectedRoute>}
       </Route>
+      <Route path="/receivables"><ProtectedRoute><Receivables /></ProtectedRoute></Route>
       <Route path="/accounts">
         <ProtectedRoute><Accounts /></ProtectedRoute>
       </Route>

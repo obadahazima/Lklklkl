@@ -9,10 +9,15 @@ export interface HealthStatus {
   status: string;
 }
 
+export type TransactionAllocationsItem = {
+  debtId: number;
+  amount: number;
+};
+
 export interface Transaction {
   id: number;
   date: string;
-  /** income | expense | payment | receipt | transfer */
+  /** income | expense | transfer | receivable (legacy payment/receipt accepted) */
   type: string;
   amount: number;
   /** AED | USD | SYP */
@@ -36,14 +41,26 @@ export interface Transaction {
   toAccountId?: number | null;
   /** @nullable */
   toAccountName?: string | null;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   /** pending | settled */
   status: string;
+  /** @nullable */
+  collectionSummary?: string | null;
   createdAt: string;
+  allocations?: TransactionAllocationsItem[];
 }
 
 export interface TransactionInput {
+  /** Require an outstanding receivable instead of recording unmatched income */
+  collectionOnly?: boolean;
   /**
      * Stable client-generated UUID used to deduplicate retries
      * @pattern ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
@@ -64,6 +81,13 @@ export interface TransactionInput {
      * @nullable
      */
   toAccountId?: number | null;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status: string;
@@ -82,6 +106,13 @@ export interface TransactionUpdate {
   accountId?: number | null;
   /** @nullable */
   toAccountId?: number | null;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status?: string;

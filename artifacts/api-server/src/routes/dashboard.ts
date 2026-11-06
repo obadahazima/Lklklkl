@@ -1,3 +1,4 @@
+import { revenueAmount } from "../lib/debt-math.js";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { transactionsTable, clientsTable, tripsTable } from "@workspace/db";
@@ -40,8 +41,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     const currencyData = distinctCurrencies.map((currency) => {
       const currTxs = txs.filter((t) => t.currency === currency);
       const totalIncome = currTxs
-        .filter((t) => t.type === "income" || t.type === "receipt")
-        .reduce((sum, t) => sum + Number(t.amount), 0);
+        .reduce((sum, t) => sum + revenueAmount(t), 0);
       const totalExpenses = currTxs
         .filter((t) => t.type === "expense" || t.type === "payment")
         .reduce((sum, t) => sum + Number(t.amount), 0);
@@ -53,7 +53,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
       0,
     );
 
-    const pendingTransactions = txs.filter((t) => t.status === "pending").length;
+    const pendingTransactions = txs.filter((t) => t.status === "pending" && t.type !== "receivable").length;
     const activeTrips = trips.filter((t) => t.status === "active").length;
 
     res.json({

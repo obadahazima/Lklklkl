@@ -62,6 +62,7 @@ function NativeTabLayout() {
         <Icon sf={{ default: "arrow.left.arrow.right", selected: "arrow.left.arrow.right.circle.fill" }} />
         <Label>المعاملات</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="receivables"><Icon sf={{default:"person.2",selected:"person.2.fill"}}/><Label>الذمم</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="accounts">
         <Icon sf={{ default: "creditcard", selected: "creditcard.fill" }} />
         <Label>الحسابات</Label>
@@ -213,6 +214,7 @@ function ClassicTabLayout() {
             ),
         }}
       />
+      <Tabs.Screen name="receivables" options={{title:t("receivables"),tabBarIcon:({color})=><Feather name="users" size={20} color={color}/>}}/>
       <Tabs.Screen
         name="accounts"
         options={{

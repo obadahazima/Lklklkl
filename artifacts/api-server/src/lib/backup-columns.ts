@@ -26,6 +26,7 @@ export const TX_COLUMNS = {
   tripId: "رقم الرحلة",
   accountName: "الحساب",
   accountId: "رقم الحساب",
+  debtKind: "أصل الذمة", dueDate: "استحقاق الذمة", allocations: "توزيع التحصيل", toAccountId: "رقم حساب الوجهة",
   description: "الوصف",
   status: "الحالة",
   createdAt: "تاريخ الإنشاء",
@@ -54,6 +55,7 @@ export const ACCOUNT_COLUMNS = {
   type: "النوع",
   currency: "العملة",
   initialBalance: "الرصيد الابتدائي",
+  creditLimit: "الحد الائتماني", color: "لون الحساب",
   notes: "ملاحظات",
   createdAt: "تاريخ الإنشاء",
 } as const;

@@ -71,3 +71,10 @@ test('real account save accepts either credit sign and sends the optional limit 
  state.creditLimit='';save();assert.equal(saved.creditLimit,null);
  state.creditLimit='-20';saved=null;save();assert.equal(saved,null);assert.equal(errors,1);
 });
+test('receivables page renders remaining 150 after a FIFO collection and keeps cash and accrual explanation visible',()=>{
+ const helpers=load('lib/api-client-react/src/receivables.ts');
+ const rows=[{id:1,type:'receivable',date:'2026-01-01',amount:100,clientId:7,currency:'AED',debtKind:'sale'},{id:2,type:'receivable',date:'2026-02-01',amount:200,clientId:7,currency:'AED',debtKind:'sale'},{id:3,type:'income',date:'2026-03-01',amount:150,clientId:7,currency:'AED',accountId:11,allocations:[{debtId:1,amount:100},{debtId:2,amount:50}]}];
+ const api={...helpers,...utils,useListTransactions:()=>({data:rows}),useListClients:()=>({data:[{id:7,name:'محمد'}]}),useListAccounts:()=>({data:[{id:11,name:'الكاش'}]}),useOfflineLedger:()=>({record:{outbox:[],references:{}}}),useManualDraft:(_ledger,_owner,initial)=>[initial,()=>{},{ready:true}],};
+ const Component=load('artifacts/finance-app/src/pages/receivables.tsx',{...common,'@clerk/react':{useAuth:()=>({userId:'a'})},'@workspace/api-client-react':api,'@/lib/offline-ledger':{webLedger:{}},'@/components/offline-ledger':{OfflineQueuePanel:()=>null}}).default;
+ const html=renderToStaticMarkup(React.createElement(Component));assert.match(html,/الذمم/);assert.match(html,/إجمالي الذمم المتبقية: 150.00/);assert.match(html,/محصّلة بالكامل/);assert.match(html,/محصّلة جزئياً/);assert.match(html,/تسجيل تحصيل/);assert.match(html,/تسجيل الذمة لا يزيد رصيد الحساب/);
+});

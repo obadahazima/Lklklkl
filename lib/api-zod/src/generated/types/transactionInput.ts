@@ -7,6 +7,8 @@
  */
 
 export interface TransactionInput {
+  /** Require an outstanding receivable instead of recording unmatched income */
+  collectionOnly?: boolean;
   /**
      * Stable client-generated UUID used to deduplicate retries
      * @pattern ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
@@ -27,6 +29,13 @@ export interface TransactionInput {
      * @nullable
      */
   toAccountId?: number | null;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status: string;

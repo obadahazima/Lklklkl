@@ -72,6 +72,7 @@ async function computeBalance(
       .where(and(eq(transactionsTable.toAccountId, accountId), eq(transactionsTable.userId, userId), eq(transactionsTable.type, "transfer"))),
   ]);
   const delta = outgoing.reduce((sum, t) => {
+    if (t.type === "receivable" && t.debtKind !== "loan_now") return sum;
     const amt = convertAmount(Number(t.amount), t.currency, accountCurrency, rates);
     if (t.type === "transfer") return sum - amt; // money left this account, regardless of income/expense bucket
     return sum + (t.type === "income" || t.type === "receipt" ? amt : -amt);

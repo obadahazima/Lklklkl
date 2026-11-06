@@ -206,7 +206,7 @@ export default function ClientStatementScreen() {
                       ]}>
                         {b.openBalance === 0
                           ? t("settledShort")
-                          : `${b.openBalance > 0 ? t("owedPrefix") : t("owesPrefix")}${formatNum(Math.abs(b.openBalance), { maximumFractionDigits: 0 })}`}
+                          : `${b.openBalance > 0 ? t("owesPrefix") : t("owedPrefix")}${formatNum(Math.abs(b.openBalance), { maximumFractionDigits: 0 })}`}
                       </Text>
                     </View>
                   </View>

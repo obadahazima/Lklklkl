@@ -100,8 +100,10 @@ function transactionServer() {
   };
   const db={...connection,transaction(fn){const task=tail.catch(()=>{}).then(async()=>{const before=new Map([...records].map(([table,rows])=>[table,[...rows]]));try{return await fn(connection);}catch(error){for(const [table,rows]of before)records.set(table,rows);throw error;}});tail=task;return task;}};
   const voice=load(read('artifacts/api-server/src/lib/voice-input.ts'));
+  const debtMath=load(read('artifacts/api-server/src/lib/debt-math.ts'));
+  const debtHelpers=load(read('artifacts/api-server/src/lib/debts.ts'),{'./debt-math.js':debtMath,'@workspace/db':{...tables,db},'drizzle-orm':{eq:(field,value)=>({field,value})}});
   const router=load(read('artifacts/api-server/src/routes/transactions.ts'),{
-    '@workspace/db':{...tables,db},'@workspace/api-zod':schema,'../lib/voice-input.js':voice,
+    '../lib/debt-math.js':debtMath,'../lib/debts.js':debtHelpers,'@workspace/db':{...tables,db},'@workspace/api-zod':schema,'../lib/voice-input.js':voice,
     'drizzle-orm':{eq:(field,value)=>({field,value}),and:(...parts)=>({kind:'and',parts}),desc:()=>{},sql:()=>{}},
     '../middlewares/requireAuth.js':{requireAuth:(_req,_res,next)=>next()},
   }).default;
@@ -198,3 +200,26 @@ test('rapid login/logout writes the final offline identity in order',async()=>{
   await Promise.all([ledger.activate('a'),ledger.activate(null)]);
   assert.equal(await storage.activeOwner(),null);
 });
+
+test('debt collection allocates 150 across 100 and 200 FIFO, retries do not allocate twice',async()=>{
+ const server=transactionServer();server.records.get(server.tables.clientsTable).push({id:7,userId:'a',name:'محمد'});
+ const debts=server.records.get(server.tables.transactionsTable);
+ debts.push({id:100,date:'2026-01-01',type:'receivable',amount:'100',currency:'AED',clientId:7,userId:'a',debtKind:'sale'},{id:200,date:'2026-02-01',type:'receivable',amount:'200',currency:'AED',clientId:7,userId:'a',debtKind:'sale'});
+ const payload={...base,type:'income',clientId:7,amount:150,clientRequestId:id};
+ const first=await server.call(payload);assert.equal(first.status,201);assert.deepEqual(clone(first.body.allocations),[{debtId:100,amount:100},{debtId:200,amount:50}]);assert.match(first.body.collectionSummary,/150.00/);
+ const again=await server.call(payload);assert.equal(again.status,200);assert.equal(debts.filter(t=>t.type==='income').length,1);
+ const math=load(read('artifacts/api-server/src/lib/debt-math.ts'));assert.equal(math.debtBalances(debts).reduce((s,d)=>s+d.remaining,0),150);
+ assert.equal(debts.reduce((s,t)=>s+math.revenueAmount(t),0),300);
+});
+test('concurrent collections cannot overpay; a collection without debts cannot become income silently',async()=>{
+ const s=transactionServer();s.records.get(s.tables.clientsTable).push({id:7,userId:'a',name:'محمد'});s.records.get(s.tables.transactionsTable).push({id:100,date:'2026-01-01',type:'receivable',amount:'100',currency:'AED',clientId:7,userId:'a',debtKind:'sale'});
+ const results=await Promise.all([s.call({...base,type:'income',clientId:7,amount:75}),s.call({...base,type:'income',clientId:7,amount:75})]);assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);
+ const other=await s.call({...base,type:'income',clientId:7,currency:'USD',amount:5});assert.equal(other.status,409);
+ const empty=await s.call({...base,type:'income',collectionOnly:true,amount:5});assert.equal(empty.status,409);
+});
+test('new receivable records no cash account and cannot use another owner person',async()=>{
+ const s=transactionServer();s.records.get(s.tables.clientsTable).push({id:7,userId:'a',name:'محمد'});
+ const r=await s.call({...base,type:'receivable',debtKind:'sale',clientId:7,accountId:0,amount:100});assert.equal(r.status,201);assert.equal(r.body.accountId,null);
+ const invalid=await s.call({...base,type:'receivable',debtKind:'sale',clientId:8,accountId:0,amount:100});assert.equal(invalid.status,400);
+});
+test('debt drafts persist separately and syncing a debt never clears an ordinary draft',async()=>{const storage=memoryStorage();const ledger=new core.OfflineLedger(storage,()=>id,async()=>{},()=>false);const ordinary={type:'expense',amount:'50'};const debt={type:'receivable',amount:'100',debtKind:'sale'};await ledger.saveDraft('a','ordinary',ordinary);await ledger.saveDraft('a',id,debt,'debtDraft');await ledger.enqueue('a',{...base,type:'receivable',debtKind:'sale'},id);const r=await ledger.read('a');assert.equal(r.draft.values.amount,'50');assert.equal(r.debtDraft,null);assert.equal(r.outbox[0].payload.debtKind,'sale');});

@@ -19,6 +19,13 @@ export interface TransactionUpdate {
   accountId?: number | null;
   /** @nullable */
   toAccountId?: number | null;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status?: string;

@@ -30,7 +30,7 @@ export function OfflineSyncBridge() {
   }, [userId, isLoaded, enabled, qc]);
   useEffect(() => {
     if (!userId || !enabled) return;
-    const refs = { consentVersion: TERMS_VERSION, language: settings.language, primaryCurrency: settings.primaryCurrency, currencies: settings.currencies, ...(accounts.data ? { accounts: accounts.data } : {}), ...(clients.data ? { clients: clients.data } : {}), ...(trips.data ? { trips: trips.data } : {}), ...(transactions.data ? { transactions: transactions.data.slice(0, 200) } : {}) };
+    const refs = { consentVersion: TERMS_VERSION, language: settings.language, primaryCurrency: settings.primaryCurrency, currencies: settings.currencies, ...(accounts.data ? { accounts: accounts.data } : {}), ...(clients.data ? { clients: clients.data } : {}), ...(trips.data ? { trips: trips.data } : {}), ...(transactions.data ? { transactions: transactions.data } : {}) };
     if (Object.keys(refs).length) void mobileLedger.remember(userId, refs).catch(() => {});
   }, [userId, enabled, accounts.data, clients.data, trips.data, transactions.data, settings.language, settings.primaryCurrency, settings.currencies]);
   useEffect(() => qc.getMutationCache().subscribe((event) => {
@@ -41,7 +41,7 @@ export function OfflineSyncBridge() {
     }
   }), [qc, userId]);
   const revision = useRef(mobileLedger.syncRevision);
-  useEffect(() => mobileLedger.subscribe(() => { if (revision.current !== mobileLedger.syncRevision) { revision.current = mobileLedger.syncRevision; void qc.invalidateQueries(); } }), [qc]);
+  useEffect(() => mobileLedger.subscribe(() => { if (revision.current !== mobileLedger.syncRevision) { revision.current = mobileLedger.syncRevision; void qc.invalidateQueries(); if(userId) void mobileLedger.read(userId).then(r=>{const latest=r.references.transactions?.[0]; if(latest?.collectionSummary) Alert.alert(settings.language === "ar" ? "تم التحصيل" : "Collection recorded",latest.collectionSummary);}); } }), [qc]);
   return null;
 }
 

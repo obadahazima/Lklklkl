@@ -31,7 +31,7 @@ export const ListTransactionsQueryParams = zod.object({
 export const ListTransactionsResponseItem = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -42,9 +42,16 @@ export const ListTransactionsResponseItem = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 export const ListTransactionsResponse = zod.array(ListTransactionsResponseItem)
 
@@ -56,6 +63,7 @@ export const createTransactionBodyClientRequestIdRegExp = new RegExp('^[0-9a-fA-
 
 
 export const CreateTransactionBody = zod.object({
+  "collectionOnly": zod.boolean().optional().describe('Require an outstanding receivable instead of recording unmatched income'),
   "clientRequestId": zod.string().regex(createTransactionBodyClientRequestIdRegExp).optional().describe('Stable client-generated UUID used to deduplicate retries'),
   "date": zod.string(),
   "type": zod.string(),
@@ -65,6 +73,8 @@ export const CreateTransactionBody = zod.object({
   "tripId": zod.number().nullish(),
   "accountId": zod.number().describe('Required — which cash\/debit\/credit account this transaction moved through. For type=transfer, this is the source account.'),
   "toAccountId": zod.number().nullish().describe('Required when type=transfer — the destination account. Must differ from accountId.'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string()
 })
@@ -77,7 +87,7 @@ export const GetTransactionParams = zod.object({
 export const GetTransactionResponse = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -88,9 +98,16 @@ export const GetTransactionResponse = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 
 
@@ -107,6 +124,8 @@ export const UpdateTransactionBody = zod.object({
   "tripId": zod.number().nullish(),
   "accountId": zod.number().nullish(),
   "toAccountId": zod.number().nullish(),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().optional()
 })
@@ -114,7 +133,7 @@ export const UpdateTransactionBody = zod.object({
 export const UpdateTransactionResponse = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -125,9 +144,16 @@ export const UpdateTransactionResponse = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 
 
@@ -211,7 +237,7 @@ export const GetClientStatementResponse = zod.object({
   "transactions": zod.array(zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -222,9 +248,16 @@ export const GetClientStatementResponse = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })),
   "balances": zod.array(zod.object({
   "currency": zod.string(),
@@ -525,7 +558,7 @@ export const GetDashboardSummaryResponse = zod.object({
 export const GetRecentTransactionsResponseItem = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -536,9 +569,16 @@ export const GetRecentTransactionsResponseItem = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 export const GetRecentTransactionsResponse = zod.array(GetRecentTransactionsResponseItem)
 

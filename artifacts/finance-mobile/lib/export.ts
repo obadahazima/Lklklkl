@@ -42,10 +42,10 @@ const EXPORT_STRINGS = {
     balance: "الرصيد",
     totalIn: (c: string) => `الإجمالي بـ ${c}`,
     typeIncome: "إيراد",
-    typeExpense: "مصروف",
-    typePayment: "دفع",
-    typeReceipt: "قبض",
-    typeTransfer: "تحويل",
+    typeExpense: "مصروفات",
+    typePayment: "مصروفات",
+    typeReceipt: "إيرادات",
+    typeTransfer: "تحويل بين الحسابات",
     noTransactions: "لا توجد معاملات",
     noData: "لا توجد بيانات",
     transactionDetails: "تفاصيل المعاملات",
@@ -83,6 +83,7 @@ const EXPORT_STRINGS = {
 function typeLabel(type: string, lang: Lang): string {
   const s = EXPORT_STRINGS[lang];
   switch (type) {
+    case "receivable": return lang === "ar" ? "ذمة" : "Receivable";
     case "income":
       return s.typeIncome;
     case "expense":

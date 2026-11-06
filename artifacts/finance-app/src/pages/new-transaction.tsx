@@ -287,11 +287,11 @@ export default function NewTransaction() {
   const createMutation = useCreateTransaction({
     mutation: {
       onSettled: () => { saveInFlightRef.current = false; },
-      onSuccess: () => {
+      onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetRecentTransactionsQueryKey() });
-        toast({ title: t("savedSuccess"), description: t("savedDesc") });
+        toast({ title: t("savedSuccess"), description: result.collectionSummary || t("savedDesc") });
         setLocation("/transactions");
       },
       onError: () => {
@@ -934,8 +934,6 @@ export default function NewTransaction() {
                 >
                   <option value="income">{t("typeIncome")}</option>
                   <option value="expense">{t("typeExpense")}</option>
-                  <option value="payment">{t("typePayment")}</option>
-                  <option value="receipt">{t("typeReceipt")}</option>
                   <option value="transfer">{t("typeTransfer")}</option>
                 </select>
               </div>
@@ -1157,8 +1155,6 @@ export default function NewTransaction() {
                 >
                   <option value="income">{t("typeIncome")}</option>
                   <option value="expense">{t("typeExpense")}</option>
-                  <option value="payment">{t("typePayment")}</option>
-                  <option value="receipt">{t("typeReceipt")}</option>
                   <option value="transfer">{t("typeTransfer")}</option>
                 </select>
               </div>

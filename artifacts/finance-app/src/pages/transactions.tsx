@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 
-const TYPES = ["", "income", "expense", "payment", "receipt", "transfer"];
+const TYPES = ["", "income", "expense", "transfer"];
 const STATUSES = ["", "pending", "settled"];
 
 export default function Transactions() {
@@ -58,7 +58,7 @@ export default function Transactions() {
     query: { queryKey: getListTransactionsQueryKey(params) },
   });
 
-  const txs = remoteTxs ?? offline.record.references.transactions?.filter((tx) => (!currency || tx.currency === currency) && (!type || tx.type === type) && (!status || tx.status === status));
+  const txs = remoteTxs ?? offline.record.references.transactions?.filter((tx) => (!currency || tx.currency === currency) && (!type || (tx.type === "payment" ? "expense" : tx.type === "receipt" ? "income" : tx.type) === type) && (!status || tx.status === status));
 
   const deleteMutation = useDeleteTransaction({
     mutation: {
@@ -176,14 +176,14 @@ export default function Transactions() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={cn("text-sm font-bold", typeClass(tx.type))}>{typeLabel(tx.type, language)}</span>
+                        <span className={cn("text-sm font-bold", typeClass(tx.type))}>{tx.allocations?.length ? (language === "ar" ? "تحصيل ذمم" : "Receivable collection") : typeLabel(tx.type, language)}</span>
                         <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", currencyClass(tx.currency))}>{tx.currency}</span>
                         <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", statusClass(tx.status))}>{statusLabel(tx.status, language)}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="text-end">
                           <span className={cn("text-base font-bold block", typeClass(tx.type))}>
-                            {tx.type === "transfer" ? "" : tx.type === "expense" || tx.type === "payment" ? "-" : "+"}{formatAmount(tx.amount, tx.currency, language)}
+                            {tx.type === "transfer" || tx.type === "receivable" ? "" : tx.type === "expense" || tx.type === "payment" ? "-" : "+"}{formatAmount(tx.amount, tx.currency, language)}
                           </span>
                           {tx.currency !== primaryCurrency && (
                             <span className="text-[10px] text-muted-foreground">
@@ -192,7 +192,7 @@ export default function Transactions() {
                           )}
                         </div>
                         <button
-                          onClick={() => setEditingTx(tx)}
+                          disabled={tx.type === "receivable" || !!tx.allocations?.length || (["income","receipt"].includes(tx.type) && !!tx.clientId)} title={language === "ar" ? "لتصحيح التحصيل المرتبط احذفه وأعد تسجيله" : "To correct a linked collection, delete and record it again"} onClick={() => setEditingTx(tx)}
                           aria-label={language === "ar" ? "تعديل المعاملة" : "Edit transaction"} className="text-muted-foreground hover:text-primary transition-colors p-2"
                           data-testid={`btn-edit-tx-${tx.id}`}
                         >
@@ -281,7 +281,7 @@ function EditTransactionModal({
   const [form, setForm] = useState({
     accountId: tx.accountId == null ? "" : String(tx.accountId),
     toAccountId: tx.toAccountId == null ? "" : String(tx.toAccountId),
-    type: tx.type,
+    type: tx.type === "payment" ? "expense" : tx.type === "receipt" ? "income" : tx.type,
     amount: String(tx.amount),
     currency: tx.currency,
     status: tx.status,

@@ -5,6 +5,7 @@ export type QueuedTransaction = { id: string; payload: TransactionInput; state: 
 export type LedgerRecord = {
   version: 1;
   draft: { id: string; values: ManualDraft } | null;
+  debtDraft?: { id: string; values: ManualDraft } | null;
   outbox: QueuedTransaction[];
   references: { consentVersion?: string; language?: "ar" | "en"; primaryCurrency?: string; currencies?: string[]; accounts?: Account[]; clients?: Client[]; trips?: Trip[]; transactions?: Transaction[]; updatedAt?: string };
 };
@@ -42,8 +43,8 @@ export class OfflineLedger {
     await this.storage.update(owner, () => emptyLedger());
     this.notify();
   }
-  async saveDraft(owner: string, id: string, values: ManualDraft) {
-    await this.storage.update(owner, (record) => ({ ...record, draft: { id, values } }));
+  async saveDraft(owner: string, id: string, values: ManualDraft, slot: "draft" | "debtDraft" = "draft") {
+    await this.storage.update(owner, (record) => ({ ...record, [slot]: { id, values } }));
   }
   async remember(owner: string, references: LedgerRecord["references"]) {
     await this.storage.update(owner, (record) => ({ ...record, references: { ...record.references, ...references, updatedAt: new Date().toISOString() } }));
@@ -53,7 +54,7 @@ export class OfflineLedger {
     await this.storage.update(owner, (record) => {
       const existing = record.outbox.find((item) => item.id === id);
       if (existing && JSON.stringify(existing.payload) !== JSON.stringify({ ...payload, clientRequestId: id })) throw new Error("A queued transaction cannot be changed while syncing");
-      return { ...record, draft: record.draft?.id === id ? null : record.draft, outbox: existing ? record.outbox : [...record.outbox, { id, payload: { ...payload, clientRequestId: id }, state: "pending", createdAt: new Date().toISOString() }] };
+      return { ...record, draft: record.draft?.id === id ? null : record.draft, debtDraft: record.debtDraft?.id === id ? null : record.debtDraft, outbox: existing ? record.outbox : [...record.outbox, { id, payload: { ...payload, clientRequestId: id }, state: "pending", createdAt: new Date().toISOString() }] };
     });
     this.notify();
     void this.flush();
@@ -91,7 +92,7 @@ export class OfflineLedger {
         try {
           const result = await this.send(owner, item.payload, this.controller.signal);
           if (this.owner !== owner || this.controller.signal.aborted) break;
-          await this.storage.update(owner, (record) => ({ ...record, outbox: record.outbox.filter((entry) => entry.id !== item.id), references: { ...record.references, transactions: [result, ...(record.references.transactions ?? []).filter((tx) => tx.id !== result.id)].slice(0, 200), updatedAt: new Date().toISOString() } }));
+          await this.storage.update(owner, (record) => ({ ...record, outbox: record.outbox.filter((entry) => entry.id !== item.id), references: { ...record.references, transactions: [result, ...(record.references.transactions ?? []).filter((tx) => tx.id !== result.id)], updatedAt: new Date().toISOString() } }));
           ++this.syncRevision;
           this.notify();
         } catch (err) {

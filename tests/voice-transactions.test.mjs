@@ -154,7 +154,7 @@ test("parse route validates model output and preserves caller dates and owned en
   const router=loadSource(read("artifacts/api-server/src/routes/ai.ts"), {
     "express":express,
     "@workspace/db":{db:{select:()=>({from:table=>({where:async()=>rows.get(table)??[]})})},clientsTable,tripsTable,accountsTable},
-    "@workspace/api-zod":generated,
+    "../lib/debts.js":{collectionAllocations:async()=>[]}, "../lib/debt-math.js":loadSource(read("artifacts/api-server/src/lib/debt-math.ts")), "@workspace/api-zod":generated,
     "@google/generative-ai":{...serverRequire("@google/generative-ai"),GoogleGenerativeAI:class {getGenerativeModel(config){modelConfig=config;return {generateContent:async()=>({response:{text:()=>JSON.stringify(modelOutput)}})};}}},
     "drizzle-orm":{eq:()=>{},and:()=>{}},
     "../lib/voice-input.js":voice,"../lib/aiQuota.js":{aiQuota:noOp},"../middlewares/requireAuth.js":{requireAuth:noOp},

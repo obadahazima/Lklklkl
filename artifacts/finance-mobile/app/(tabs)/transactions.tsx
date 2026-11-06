@@ -52,8 +52,8 @@ import {
 import { useTr } from "@/lib/i18n";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 
-const TX_TYPES = ["income", "expense", "payment", "receipt", "transfer"] as const;
-type TxType = (typeof TX_TYPES)[number];
+const TX_TYPES = ["income", "expense", "transfer"] as const;
+type TxType = (typeof TX_TYPES)[number] | "payment" | "receipt";
 
 function isOutgoing(t: string) {
   return t === "expense" || t === "payment";
@@ -468,7 +468,7 @@ export default function TransactionsScreen() {
   }
 
   function applyParsed(data: VoiceParseResult) {
-    const nextType = TX_TYPES.includes(data.type as TxType) ? (data.type as TxType) : undefined;
+    const nextType = (TX_TYPES as readonly string[]).includes(data.type ?? "") ? (data.type as TxType) : undefined;
     setForm((f) => ({
       ...f,
       type: nextType ?? f.type,
@@ -635,7 +635,7 @@ export default function TransactionsScreen() {
   }
 
   const filtered = (transactions ?? []).filter((tx: any) => {
-    if (filterType !== "all" && tx.type !== filterType) return false;
+    if (filterType !== "all" && (tx.type === "payment" ? "expense" : tx.type === "receipt" ? "income" : tx.type) !== filterType) return false;
     if (filterCurrency !== "all" && tx.currency !== filterCurrency) return false;
     if (filterStatus !== "all" && tx.status !== filterStatus) return false;
     return true;
@@ -986,7 +986,7 @@ export default function TransactionsScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.txNote, { color: colors.foreground }]} numberOfLines={1}>
-                  {item.description || t(("type" + item.type.charAt(0).toUpperCase() + item.type.slice(1)) as any)}
+                  {item.allocations?.length ? (language === "ar" ? "تحصيل ذمم" : "Receivable collection") : item.type === "receivable" ? (language === "ar" ? "ذمة" : "Receivable") : item.description || t(("type" + item.type.charAt(0).toUpperCase() + item.type.slice(1)) as any)}
                 </Text>
                 <Text style={[styles.txDate, { color: colors.mutedForeground }]}>
                   {formatDate(item.date, language)}
@@ -995,7 +995,7 @@ export default function TransactionsScreen() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={[styles.txAmount, { color: typeColor(item.type) }]}>
-                  {item.type === "transfer" ? "" : isOutgoing(item.type) ? "-" : "+"}
+                  {item.type === "transfer" || item.type === "receivable" ? "" : isOutgoing(item.type) ? "-" : "+"}
                   {parseFloat(item.amount).toLocaleString()}
                 </Text>
                 <Text style={[styles.txCurrency, { color: colors.mutedForeground }]}>{item.currency}</Text>
@@ -1130,7 +1130,7 @@ export default function TransactionsScreen() {
                       <Text style={[styles.resultCardValue, { color: typeColor(form.type) }]}>
                         {form.type === "income" ? t("typeIncome")
                           : form.type === "expense" ? t("typeExpense")
-                          : form.type === "payment" ? t("typePayment")
+
                           : form.type === "transfer" ? t("typeTransfer")
                           : t("typeReceipt")}
                       </Text>
@@ -1169,8 +1169,6 @@ export default function TransactionsScreen() {
                           <Text style={[styles.segText, form.type === ty && { color: "#fff" }]}>
                             {ty === "income" ? t("typeIncome")
                               : ty === "expense" ? t("typeExpense")
-                              : ty === "payment" ? t("typePayment")
-                              : ty === "receipt" ? t("typeReceipt")
                               : t("typeTransfer")}
                           </Text>
                         </Pressable>
@@ -1538,10 +1536,6 @@ export default function TransactionsScreen() {
                           ? t("typeIncome")
                           : ty === "expense"
                           ? t("typeExpense")
-                          : ty === "payment"
-                          ? t("typePayment")
-                          : ty === "receipt"
-                          ? t("typeReceipt")
                           : t("typeTransfer")}
                       </Text>
                     </Pressable>
@@ -1747,10 +1741,6 @@ export default function TransactionsScreen() {
                           ? t("typeIncome")
                           : ty === "expense"
                           ? t("typeExpense")
-                          : ty === "payment"
-                          ? t("typePayment")
-                          : ty === "receipt"
-                          ? t("typeReceipt")
                           : t("typeTransfer")}
                       </Text>
                     </Pressable>

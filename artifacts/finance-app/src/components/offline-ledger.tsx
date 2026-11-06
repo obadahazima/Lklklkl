@@ -1,3 +1,4 @@
+import { useToast } from "@/hooks/use-toast";
 import { TERMS_VERSION } from "./consent-gate";
 import { useSettings } from "@/contexts/settings-context";
 import { useEffect, useRef, useState } from "react";
@@ -27,7 +28,7 @@ export function OfflineSyncBridge() {
   }, [userId, isLoaded, enabled]);
   useEffect(() => {
     if (!userId || !enabled) return;
-    const refs = { consentVersion: TERMS_VERSION, language: settings.language, primaryCurrency: settings.primaryCurrency, currencies: settings.currencies, ...(accounts.data ? { accounts: accounts.data } : {}), ...(clients.data ? { clients: clients.data } : {}), ...(trips.data ? { trips: trips.data } : {}), ...(transactions.data ? { transactions: transactions.data.slice(0, 200) } : {}) };
+    const refs = { consentVersion: TERMS_VERSION, language: settings.language, primaryCurrency: settings.primaryCurrency, currencies: settings.currencies, ...(accounts.data ? { accounts: accounts.data } : {}), ...(clients.data ? { clients: clients.data } : {}), ...(trips.data ? { trips: trips.data } : {}), ...(transactions.data ? { transactions: transactions.data } : {}) };
     if (Object.keys(refs).length) void webLedger.remember(userId, refs).catch(() => {});
   }, [userId, enabled, accounts.data, clients.data, trips.data, transactions.data, settings.language, settings.primaryCurrency, settings.currencies]);
   useEffect(() => qc.getMutationCache().subscribe((event) => {
@@ -37,9 +38,10 @@ export function OfflineSyncBridge() {
       void qc.invalidateQueries({ queryKey: ["offline-reference", userId] });
     }
   }), [qc, userId]);
+  const { toast } = useToast();
   const revision = useRef(webLedger.syncRevision);
   useEffect(() => webLedger.subscribe(() => {
-    if (revision.current !== webLedger.syncRevision) { revision.current = webLedger.syncRevision; void qc.invalidateQueries(); }
+    if (revision.current !== webLedger.syncRevision) { revision.current = webLedger.syncRevision; void qc.invalidateQueries(); if(userId) void webLedger.read(userId).then(r=>{const latest=r.references.transactions?.[0]; if(latest?.collectionSummary) toast({title:settings.language === "ar" ? "تم التحصيل" : "Collection recorded",description:latest.collectionSummary});}); }
   }), [qc]);
   return null;
 }

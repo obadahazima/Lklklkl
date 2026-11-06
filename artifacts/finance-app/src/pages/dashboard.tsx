@@ -70,6 +70,7 @@ export default function Dashboard() {
       {(summaryError || recentError || accountsError) && <QueryFeedback ar={language === "ar"} cached={!!summary || !!recent || !!accounts} retry={() => Promise.all([retrySummary(), retryRecent(), retryAccounts()])} />}
       {!loadingAccounts && !accountsError && accounts?.length === 0 && <div className="rounded-2xl border border-primary/25 bg-card p-5 space-y-3"><h2 className="font-bold">{language === "ar" ? "خلينا نجهّز أول معاملة" : "Let’s set up your first entry"}</h2><p className="text-sm text-muted-foreground">{language === "ar" ? "١. ضيف حساب الكاش أو البطاقة  ٢. اختار العملة  ٣. سجّل معاملتك بصوتك" : "1. Add a cash wallet or card. 2. Choose its currency. 3. Record your transaction."}</p><Link href="/accounts" className="inline-flex rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold">{language === "ar" ? "إضافة أول حساب" : "Add your first account"}</Link></div>}
 
+      <Link href="/receivables" className="block rounded-xl border border-border bg-card p-3 text-sm text-primary">{language === "ar" ? "الذمم — تسجيل ذمة أو تحصيل دفعة. تقارير الإيرادات تشمل البيع الآجل؛ أرصدة الحسابات تعرض المال الفعلي." : "Receivables — record debts or collections. Revenue includes credit sales; account balances show actual funds."}</Link>
       {/* ── Overdue receivables alert (proactive, shown on open) ── */}
       {overdueClients.length > 0 && !overdueDismissed && (
         <Link href="/chat">

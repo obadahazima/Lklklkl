@@ -25,6 +25,7 @@ export * from './exchangeRates';
 export * from './healthStatus';
 export * from './listTransactionsParams';
 export * from './transaction';
+export * from './transactionAllocationsItem';
 export * from './transactionInput';
 export * from './transactionUpdate';
 export * from './trip';
