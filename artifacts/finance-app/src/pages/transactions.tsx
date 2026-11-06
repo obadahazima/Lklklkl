@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
 
-const TYPES = ["", "income", "expense", "transfer"];
+const TYPES = ["", "income", "expense", "transfer", "receivable"];
 const STATUSES = ["", "pending", "settled"];
 
 export default function Transactions() {
@@ -321,7 +321,7 @@ function EditTransactionModal({
               className="w-full border border-border rounded-lg px-3 py-2 bg-background text-foreground text-sm"
               id="edit-type" data-testid="edit-tx-type"
             >
-              {TYPES.filter(Boolean).map((tp) => (
+              {TYPES.filter(tp => tp && tp !== "receivable").map((tp) => (
                 <option key={tp} value={tp}>{typeLabel(tp, language)}</option>
               ))}
             </select>

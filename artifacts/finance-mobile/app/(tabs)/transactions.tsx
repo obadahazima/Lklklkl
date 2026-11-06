@@ -28,7 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useRef, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -52,7 +52,7 @@ import {
 import { useTr } from "@/lib/i18n";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 
-const TX_TYPES = ["income", "expense", "transfer"] as const;
+const TX_TYPES = ["income", "expense", "transfer", "receivable"] as const;
 type TxType = (typeof TX_TYPES)[number] | "payment" | "receipt";
 
 function isOutgoing(t: string) {
@@ -926,9 +926,7 @@ export default function TransactionsScreen() {
                   ? t("typeIncome")
                   : ty === "expense"
                   ? t("typeExpense")
-                  : ty === "payment"
-                  ? t("typePayment")
-                  : t("typeReceipt")}
+                  : ty === "receivable" ? t("receivables") : t("typeTransfer")}
               </Text>
             </Pressable>
           ))}
@@ -1157,6 +1155,7 @@ export default function TransactionsScreen() {
                         <Pressable
                           key={ty}
                           onPress={() => {
+                            if (ty === "receivable") { setVoiceEditField(null); setVoiceSheetVisible(false); router.push("/(tabs)/receivables"); return; }
                             setForm((f) => ({ ...f, type: ty }));
                             setVoiceEditField(null);
                           }}
@@ -1169,7 +1168,7 @@ export default function TransactionsScreen() {
                           <Text style={[styles.segText, form.type === ty && { color: "#fff" }]}>
                             {ty === "income" ? t("typeIncome")
                               : ty === "expense" ? t("typeExpense")
-                              : t("typeTransfer")}
+                              : ty === "receivable" ? t("receivables") : t("typeTransfer")}
                           </Text>
                         </Pressable>
                       ))}
@@ -1524,7 +1523,7 @@ export default function TransactionsScreen() {
                   {TX_TYPES.map((ty) => (
                     <Pressable
                       key={ty}
-                      onPress={() => setForm((f) => ({ ...f, type: ty }))}
+                      onPress={() => { if(ty === "receivable") { setShowModal(false); router.push("/(tabs)/receivables"); return; } setForm((f) => ({ ...f, type: ty })); }}
                       style={[
                         styles.segBtn,
                         { borderColor: colors.border },
@@ -1536,7 +1535,7 @@ export default function TransactionsScreen() {
                           ? t("typeIncome")
                           : ty === "expense"
                           ? t("typeExpense")
-                          : t("typeTransfer")}
+                          : ty === "receivable" ? t("receivables") : t("typeTransfer")}
                       </Text>
                     </Pressable>
                   ))}
@@ -1726,7 +1725,7 @@ export default function TransactionsScreen() {
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={[styles.fieldLabel, { color: colors.foreground, marginTop: 0 }]}>{t("typeLabel")}</Text>
                 <View style={styles.segRow}>
-                  {TX_TYPES.map((ty) => (
+                  {TX_TYPES.filter(ty=>ty !== "receivable").map((ty) => (
                     <Pressable
                       key={ty}
                       onPress={() => setEditForm((f) => ({ ...f, type: ty }))}

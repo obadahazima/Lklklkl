@@ -25,7 +25,7 @@ export function currencyClass(currency: string): string {
 
 export function typeLabel(type: string, lang: Lang = "ar"): string {
   const labels: Record<string, Record<Lang, string>> = {
-    receivable: { ar: "ذمة", en: "Receivable" },
+    receivable: { ar: "ذمم", en: "Receivable" },
     income: { ar: "إيرادات", en: "Income" },
     expense: { ar: "مصروفات", en: "Expense" },
     payment: { ar: "مصروفات", en: "Expense" },

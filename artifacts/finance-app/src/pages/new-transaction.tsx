@@ -920,6 +920,7 @@ export default function NewTransaction() {
                   value={manualForm.type}
                   onChange={(e) => {
                     const newType = e.target.value;
+                    if (newType === "receivable") { setLocation("/receivables"); return; }
                     setManualForm((f) => ({
                       ...f,
                       type: newType,
@@ -935,6 +936,7 @@ export default function NewTransaction() {
                   <option value="income">{t("typeIncome")}</option>
                   <option value="expense">{t("typeExpense")}</option>
                   <option value="transfer">{t("typeTransfer")}</option>
+                  <option value="receivable">{t("receivables")}</option>
                 </select>
               </div>
               <div>
@@ -1149,13 +1151,14 @@ export default function NewTransaction() {
                 </label>
                 <select id="new-transaction-field-9"
                   value={parsed?.type ?? "expense"}
-                  onChange={(e) => setParsed((p) => (p ? { ...p, type: e.target.value } : p))}
+                  onChange={(e) => { if(e.target.value === "receivable") { setLocation("/receivables"); return; } setParsed((p) => (p ? { ...p, type: e.target.value } : p)); }}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
                   data-testid="select-type-confirm"
                 >
                   <option value="income">{t("typeIncome")}</option>
                   <option value="expense">{t("typeExpense")}</option>
                   <option value="transfer">{t("typeTransfer")}</option>
+                  <option value="receivable">{t("receivables")}</option>
                 </select>
               </div>
 
