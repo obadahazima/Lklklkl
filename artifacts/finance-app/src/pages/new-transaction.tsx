@@ -1,3 +1,4 @@
+import { formatNumber } from "@workspace/api-client-react";
 import { OpeningBalanceOptions } from "@/components/opening-balance-options";
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@clerk/react";
@@ -978,7 +979,7 @@ export default function NewTransaction() {
                   <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                   {accounts?.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                      {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                     </option>
                   ))}
                 </select>
@@ -1021,7 +1022,7 @@ export default function NewTransaction() {
                     <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                     {accounts?.filter((a) => String(a.id) !== manualForm.accountId).map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                        {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                       </option>
                     ))}
                   </select>
@@ -1353,7 +1354,7 @@ export default function NewTransaction() {
                 <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                 {accounts?.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                    {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                   </option>
                 ))}
               </select>
@@ -1397,7 +1398,7 @@ export default function NewTransaction() {
                   <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                   {accounts?.filter((a) => String(a.id) !== manualForm.accountId).map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                      {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                     </option>
                   ))}
                 </select>

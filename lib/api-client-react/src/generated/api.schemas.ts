@@ -219,6 +219,8 @@ export interface TripPnl {
 
 export interface Account {
   id: number;
+  /** Saved account order; smaller positions appear first */
+  position?: number;
   name: string;
   /** cash | debit | credit */
   type: string;

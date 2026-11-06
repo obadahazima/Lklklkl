@@ -65,6 +65,7 @@ router.get("/backup", requireAuth, async (req, res): Promise<void> => {
     }));
 
     const accountRows = accounts.map((a) => ({
+      [ACCOUNT_COLUMNS.position]: a.position,
       [ACCOUNT_COLUMNS.openingBalanceDate]: a.openingBalanceDate ?? "",
       [ACCOUNT_COLUMNS.creditLimit]: a.creditLimit ?? "", [ACCOUNT_COLUMNS.color]: a.color,
       [ACCOUNT_COLUMNS.id]: a.id,

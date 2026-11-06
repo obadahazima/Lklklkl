@@ -1,3 +1,4 @@
+import { formatNumber } from "@workspace/api-client-react";
 import { useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAiQuery } from "@workspace/api-client-react";
@@ -272,7 +273,7 @@ export default function Chat() {
             <div className="flex gap-3 mt-2 text-xs">
               {Object.entries(summary.balances).map(([cur, val]) => (
                 <div key={cur} className="px-2 py-1 bg-white/10 rounded-md">
-                  {cur} <strong>{val.toFixed(2)}</strong>
+                  {cur} <strong>{formatNumber(val, 2)}</strong>
                 </div>
               ))}
             </div>
@@ -544,10 +545,10 @@ export function ActionCards({
                   <div key={t.currency} className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">{t.currency}</span>
                     <span>
-                      {language === "ar" ? "دخل" : "In"} {t.income.toFixed(0)} ·{" "}
-                      {language === "ar" ? "مصروف" : "Out"} {t.expense.toFixed(0)} ·{" "}
+                      {language === "ar" ? "دخل" : "In"} {formatNumber(t.income, 0)} ·{" "}
+                      {language === "ar" ? "مصروف" : "Out"} {formatNumber(t.expense, 0)} ·{" "}
                       <span className={cn("font-medium", t.net >= 0 ? "text-green-600" : "text-red-500")}>
-                        {language === "ar" ? "صافي" : "Net"} {t.net.toFixed(0)}
+                        {language === "ar" ? "صافي" : "Net"} {formatNumber(t.net, 0)}
                       </span>
                     </span>
                   </div>

@@ -1,3 +1,5 @@
+import { useAccountOrder } from "@/hooks/use-account-order";
+import { formatNumber } from "@workspace/api-client-react";
 import { QueryFeedback } from "@/components/query-feedback";
 import { useState } from "react";
 import {
@@ -8,7 +10,7 @@ import {
   getListAccountsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, CreditCard, Wallet, Landmark, X, Pencil, Trash2 } from "lucide-react";
+import { Plus, CreditCard, Wallet, Landmark, X, Pencil, Trash2, GripVertical } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
@@ -20,7 +22,7 @@ const TYPE_ICON: Record<string, typeof Wallet> = { cash: Wallet, debit: Landmark
 // and legible against both light/dark backgrounds, and matches the "pick a wallet color" pattern
 // from apps like this.
 const ACCOUNT_COLORS = [
-  "#3B82F6", "#EF4444", "#F59E0B", "#10B981",
+  "#3B82F6", "#EF4444", "#FACC15", "#F59E0B", "#10B981",
   "#8B5CF6", "#EC4899", "#06B6D4", "#F97316",
   "#6366F1", "#14B8A6", "#84CC16", "#64748B",
 ];
@@ -42,6 +44,8 @@ export default function Accounts() {
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
   const { data: accounts, isLoading, isError, refetch } = useListAccounts();
+
+  const order = useAccountOrder(accounts, language === "ar");
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
 
@@ -152,7 +156,7 @@ export default function Accounts() {
         <div className="assistant-hero assistant-card rounded-xl p-3 flex flex-wrap gap-3">
           <span className="text-sm opacity-90">{language === "ar" ? "الإجمالي عبر كل الحسابات:" : "Total across all accounts:"}</span>
           {Object.entries(totalsByCurrency).map(([cur, total]) => (
-            <span key={cur} className="text-sm font-bold">{total.toFixed(2)} {cur}</span>
+            <span key={cur} className="text-sm font-bold">{formatNumber(total, 2)} {cur}</span>
           ))}
         </div>
       )}
@@ -215,7 +219,7 @@ export default function Accounts() {
               </div>
               {type === "credit" && <p id="credit-opening-hint" role="status" className="text-xs text-muted-foreground mt-2">
                 {language === "ar" ? "نضيف السالب تلقائياً لأنها مديونية. كتابة المبلغ بسالب مقبولة أيضاً، والإشارة تُحسب مرة واحدة." : "Debt is saved as negative automatically. You can also type a minus; it is applied only once."}
-                {Number.isFinite(openingAccountBalance(type, initialBalance)) && <strong className="block mt-1">{language === "ar" ? "سيُحفظ: " : "Will save: "}<bdi dir="ltr">{openingAccountBalance(type, initialBalance).toFixed(2)} {currency || primaryCurrency}</bdi></strong>}
+                {Number.isFinite(openingAccountBalance(type, initialBalance)) && <strong className="block mt-1">{language === "ar" ? "سيُحفظ: " : "Will save: "}<bdi dir="ltr">{formatNumber(openingAccountBalance(type, initialBalance), 2)} {currency || primaryCurrency}</bdi></strong>}
               </p>}
             </div>
             <label className="block text-sm">{language === "ar" ? "الرصيد بتاريخ" : "Balance as of"}<input type="date" value={openingBalanceDate} onChange={e=>setOpeningBalanceDate(e.target.value)} className="mt-1 w-full border border-border rounded-lg px-3 py-2 bg-background"/><span className="block text-xs text-muted-foreground mt-1">{language === "ar" ? "المعاملات قبل هذا التاريخ محسوبة ضمن الرصيد تلقائياً؛ نفس اليوم وما بعده يؤثر على الرصيد بشكل طبيعي." : "Transactions before this date are automatically included in the opening balance. Same-day and later transactions affect cash normally."}</span></label>
@@ -258,6 +262,7 @@ export default function Accounts() {
       )}
 
       {isError && accounts && <QueryFeedback ar={language === "ar"} retry={refetch} cached />}
+      <p className="text-xs text-muted-foreground" role="status">{order.saving ? (language === "ar" ? "جارٍ حفظ الترتيب…" : "Saving order…") : (language === "ar" ? "اسحب الحساب من علامة السحب لتغيير ترتيبه؛ نفس الترتيب يظهر بالرئيسية." : "Drag the handle to reorder accounts; the dashboard uses the same order.")}</p>
       <div className="grid grid-cols-1 gap-3">
         {isError && !accounts ? <QueryFeedback ar={language === "ar"} retry={refetch} /> : isLoading ? (
           [1, 2, 3].map((i) => <div key={i} className="h-20 bg-card rounded-2xl border border-border animate-pulse" />)
@@ -269,11 +274,12 @@ export default function Accounts() {
             <button onClick={() => { resetForm(); setShowForm(true); }} className="mt-4 rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold">{language === "ar" ? "إضافة أول حساب" : "Add your first account"}</button>
           </div>
         ) : (
-          accounts?.map((account) => {
+          order.rows.map((account) => {
             const Icon = TYPE_ICON[account.type] ?? Wallet;
             return (
-              <div key={account.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center justify-between" data-testid={`account-card-${account.id}`}>
+              <div key={account.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center justify-between" data-account-id={account.id} style={{opacity:order.draggingId === account.id?0.65:1}} data-testid={`account-card-${account.id}`}>
                 <div className="flex items-center gap-3">
+                  <button {...order.gripProps(account.id)} className="p-2 cursor-grab active:cursor-grabbing text-muted-foreground disabled:opacity-40"><GripVertical className="w-5 h-5"/></button>
                   <div
                     className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
                     style={{ backgroundColor: `${account.color}1a` }}
@@ -287,7 +293,7 @@ export default function Accounts() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={cn("text-sm font-bold", account.currentBalance >= 0 ? "text-green-600" : "text-red-600")}>
-                    {account.currentBalance.toFixed(2)} {account.currency}
+                    {formatNumber(account.currentBalance, 2)} {account.currency}
                   </span>
                   <button onClick={() => startEdit(account)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground" aria-label={language === "ar" ? "تعديل" : "Edit"} data-testid={`btn-edit-account-${account.id}`}>
                     <Pencil className="w-3.5 h-3.5" />
@@ -297,9 +303,9 @@ export default function Accounts() {
                   </button>
                 </div>
                 {account.type === "credit" && account.creditLimit != null && <div className="w-full border-t border-border pt-3 text-xs flex flex-wrap gap-3">
-                  <span>{language === "ar" ? "الليميت: " : "Limit: "}{account.creditLimit.toFixed(2)} {account.currency}</span>
-                  <span>{language === "ar" ? "المتاح: " : "Available: "}{creditAvailability(account.currentBalance, account.creditLimit).toFixed(2)} {account.currency}</span>
-                  {account.currentBalance + account.creditLimit < 0 && <span className="text-destructive font-semibold">{language === "ar" ? "تجاوزت الحد بمقدار " : "Over limit by "}{(-(account.currentBalance + account.creditLimit)).toFixed(2)} {account.currency}</span>}
+                  <span>{language === "ar" ? "الليميت: " : "Limit: "}{formatNumber(account.creditLimit, 2)} {account.currency}</span>
+                  <span>{language === "ar" ? "المتاح: " : "Available: "}{formatNumber(creditAvailability(account.currentBalance, account.creditLimit), 2)} {account.currency}</span>
+                  {account.currentBalance + account.creditLimit < 0 && <span className="text-destructive font-semibold">{language === "ar" ? "تجاوزت الحد بمقدار " : "Over limit by "}{formatNumber((-(account.currentBalance + account.creditLimit)), 2)} {account.currency}</span>}
                 </div>}
               </div>
             );

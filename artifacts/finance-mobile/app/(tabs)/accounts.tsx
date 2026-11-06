@@ -1,3 +1,6 @@
+import { AccountOrderGrip } from "@/components/AccountOrderGrip";
+import { useAccountOrder } from "@/hooks/useAccountOrder";
+import { formatNumber } from "@workspace/api-client-react";
 import {
   localISODate, useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
   useCreateAccount,
@@ -34,7 +37,7 @@ const TYPE_ICON: Record<string, keyof typeof Feather.glyphMap> = {
 };
 
 const ACCOUNT_COLORS = [
-  "#3B82F6", "#EF4444", "#F59E0B", "#10B981",
+  "#3B82F6", "#EF4444", "#FACC15", "#F59E0B", "#10B981",
   "#8B5CF6", "#EC4899", "#06B6D4", "#F97316",
   "#6366F1", "#14B8A6", "#84CC16", "#64748B",
 ];
@@ -56,6 +59,7 @@ export default function AccountsScreen() {
   const [color, setColor] = useState(ACCOUNT_COLORS[0]);
 
   const { data: accounts, isLoading, refetch } = useListAccounts();
+  const order = useAccountOrder(accounts,isAr);
   const { mutateAsync: createAccount, isPending: creating } = useCreateAccount();
   const { mutateAsync: deleteAccount } = useDeleteAccount();
 
@@ -129,7 +133,7 @@ export default function AccountsScreen() {
         <View style={[styles.totalsBar, { backgroundColor: colors.primary }]}>
           <Text style={styles.totalsLabel}>{isAr ? "الإجمالي:" : "Total:"}</Text>
           {Object.entries(totalsByCurrency).map(([cur, total]) => (
-            <Text key={cur} style={styles.totalsValue}>{total.toFixed(2)} {cur}</Text>
+            <Text key={cur} style={styles.totalsValue}>{formatNumber(total, 2)} {cur}</Text>
           ))}
         </View>
       )}
@@ -140,7 +144,8 @@ export default function AccountsScreen() {
         </View>
       ) : (
         <FlatList
-          data={accounts ?? []}
+          data={order.rows}
+          scrollEnabled={order.draggingId === null}
           keyExtractor={(item: any) => String(item.id)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: bottomPad + 100, gap: 10 }}
           ListEmptyComponent={
@@ -155,7 +160,8 @@ export default function AccountsScreen() {
             </View>
           }
           renderItem={({ item }: any) => (
-            <View style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View onLayout={e=>order.layout(item.id,e.nativeEvent.layout)} style={[styles.accountCard, {opacity:order.draggingId === item.id?0.65:1, backgroundColor: colors.card, borderColor: colors.border }]}>
+              <AccountOrderGrip disabled={order.saving} color={colors.mutedForeground} onStart={()=>order.start(item.id)} onMove={order.move} onEnd={order.end} onCancel={order.cancel} onStep={delta=>order.step(item.id,delta)} ar={isAr}/>
               <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 12 }}>
                 <View style={[styles.accountIcon, { backgroundColor: `${item.color ?? "#3B82F6"}22` }]}>
                   <Feather name={TYPE_ICON[item.type] ?? "credit-card"} size={20} color={item.color ?? colors.primary} />
@@ -163,10 +169,10 @@ export default function AccountsScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.accountName, { color: colors.foreground, textAlign: isAr ? "right" : "left" }]}>{item.name}</Text>
                   <Text style={[styles.accountType, { color: colors.mutedForeground, textAlign: isAr ? "right" : "left" }]}>{typeLabel(item.type)}</Text>
-                  {item.type === "credit" && item.creditLimit != null && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{isAr ? "الليميت: " : "Limit: "}{item.creditLimit.toFixed(2)} · {isAr ? "المتاح: " : "Available: "}{creditAvailability(item.currentBalance, item.creditLimit).toFixed(2)} {item.currency}{item.currentBalance + item.creditLimit < 0 ? (isAr ? " — تجاوز الحد" : " — Over limit") : ""}</Text>}
+                  {item.type === "credit" && item.creditLimit != null && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{isAr ? "الليميت: " : "Limit: "}{formatNumber(item.creditLimit, 2)} · {isAr ? "المتاح: " : "Available: "}{formatNumber(creditAvailability(item.currentBalance, item.creditLimit), 2)} {item.currency}{item.currentBalance + item.creditLimit < 0 ? (isAr ? " — تجاوز الحد" : " — Over limit") : ""}</Text>}
                 </View>
                 <Text style={[styles.accountBalance, { color: item.currentBalance >= 0 ? "#16a34a" : "#dc2626" }]}>
-                  {item.currentBalance.toFixed(2)} {item.currency}
+                  {formatNumber(item.currentBalance, 2)} {item.currency}
                 </Text>
               </View>
               <Pressable
@@ -251,7 +257,7 @@ export default function AccountsScreen() {
               <Text style={{color:colors.foreground}}>{isAr?"الرصيد بتاريخ YYYY-MM-DD":"Balance as of YYYY-MM-DD"}</Text><TextInput value={openingBalanceDate} onChangeText={setOpeningBalanceDate} style={[styles.input,{color:colors.foreground,borderColor:colors.border}]} accessibilityLabel={isAr?"الرصيد بتاريخ":"Balance as of"}/>
               {type === "credit" && <>
                 <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, textAlign: isAr ? "right" : "left" }}>{isAr ? "نضيف السالب تلقائياً لأنها مديونية. كتابة السالب مقبولة، وتُحسب الإشارة مرة واحدة." : "Debt is automatically negative. Typing a minus is accepted and applied once."}</Text>
-                {Number.isFinite(openingAccountBalance(type, initialBalance)) && <Text style={{ color: colors.foreground }}>{isAr ? "سيُحفظ: " : "Will save: "}{openingAccountBalance(type, initialBalance).toFixed(2)} {currency}</Text>}
+                {Number.isFinite(openingAccountBalance(type, initialBalance)) && <Text style={{ color: colors.foreground }}>{isAr ? "سيُحفظ: " : "Will save: "}{formatNumber(openingAccountBalance(type, initialBalance), 2)} {currency}</Text>}
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{isAr ? "الحد الائتماني / ليميت السحب (اختياري)" : "Credit limit (optional)"}</Text>
                 <TextInput accessibilityLabel={isAr ? "الحد الائتماني" : "Credit limit"} style={[styles.input, { borderColor: colors.border, color: colors.foreground }]} value={creditLimit} onChangeText={setCreditLimit} keyboardType="decimal-pad" placeholder="2000" placeholderTextColor={colors.mutedForeground} />
               </>}

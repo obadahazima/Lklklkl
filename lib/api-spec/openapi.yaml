@@ -823,6 +823,9 @@ components:
       properties:
         id:
           type: integer
+        position:
+          type: integer
+          description: "Saved account order; smaller positions appear first"
         name:
           type: string
         type:

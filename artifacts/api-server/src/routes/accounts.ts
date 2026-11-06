@@ -1,3 +1,4 @@
+import { saveAccountOrder } from "../lib/account-order.js";
 import { validISODate } from "../lib/voice-input.js";
 import { Router } from "express";
 import { db } from "@workspace/db";
@@ -94,7 +95,7 @@ router.get("/accounts", async (req, res): Promise<void> => {
         .select()
         .from(accountsTable)
         .where(eq(accountsTable.userId, req.userId))
-        .orderBy(accountsTable.name),
+        .orderBy(accountsTable.position, accountsTable.name, accountsTable.id),
       getEffectiveRates(req.userId),
     ]);
     const withBalances = await Promise.all(
@@ -111,6 +112,13 @@ router.get("/accounts", async (req, res): Promise<void> => {
     req.log.error({ err }, "Failed to list accounts");
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+router.post("/accounts/reorder",async(req,res):Promise<void>=>{
+ const ids:unknown=req.body?.accountIds;
+ if(!Array.isArray(ids)||ids.length>5000||ids.some(id=>!Number.isSafeInteger(id)||id<=0)){res.status(400).json({error:"Invalid account order"});return;}
+ try{if(!await saveAccountOrder(req.userId,ids)){res.status(409).json({error:"تغيّرت قائمة الحسابات؛ حدّثها ثم أعد ترتيبها"});return;}res.json({accountIds:ids});}
+ catch(err){req.log.error({err},"Failed to reorder accounts");res.status(500).json({error:"تعذر حفظ ترتيب الحسابات"});}
 });
 
 router.post("/accounts", async (req, res): Promise<void> => {

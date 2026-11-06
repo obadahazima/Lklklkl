@@ -1,3 +1,4 @@
+import { formatNumber } from "@workspace/api-client-react";
 import { QueryFeedback } from "@/components/query-feedback";
 import { useGetDashboardSummary, useGetRecentTransactions, useListAccounts, customFetch } from "@workspace/api-client-react";
 import { formatAmount, currencyClass, typeLabel, typeClass, statusLabel, statusClass, formatDate } from "@/lib/utils";
@@ -146,7 +147,7 @@ export default function Dashboard() {
               const label = unit > 1 ? `${unit.toLocaleString()} ${code}` : `1 ${code}`;
               return (
                 <span key={code} className="text-xs text-muted-foreground">
-                  {label} = {display.toFixed(unit > 1 ? 2 : 4)} AED
+                  {label} = {formatNumber(display, unit > 1 ? 2 : 4)} AED
                 </span>
               );
             })}

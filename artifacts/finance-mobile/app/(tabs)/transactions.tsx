@@ -1,3 +1,4 @@
+import { formatNumber } from "@workspace/api-client-react";
 import { OpeningBalanceOptions } from "@/components/OpeningBalanceOptions";
 import { useAuth } from "@clerk/expo";
 import { mobileLedger } from "@/lib/offline-ledger";
@@ -370,7 +371,7 @@ export default function TransactionsScreen() {
     setEditPicker({
       title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
       selected: editForm.accountId,
-      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setEditForm((f) => ({ ...f, accountId: v })),
     });
 
@@ -380,7 +381,7 @@ export default function TransactionsScreen() {
       selected: editForm.toAccountId,
       options: (accounts ?? [])
         .filter((a) => String(a.id) !== editForm.accountId)
-        .map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+        .map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setEditForm((f) => ({ ...f, toAccountId: v })),
     });
 
@@ -744,7 +745,7 @@ export default function TransactionsScreen() {
     setPicker({
       title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
       selected: form.accountId,
-      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setForm((f) => ({ ...f, accountId: v })),
     });
 
@@ -754,7 +755,7 @@ export default function TransactionsScreen() {
       selected: form.toAccountId,
       options: (accounts ?? [])
         .filter((a) => String(a.id) !== form.accountId)
-        .map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+        .map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setForm((f) => ({ ...f, toAccountId: v })),
     });
 

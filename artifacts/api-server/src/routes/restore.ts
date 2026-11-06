@@ -91,6 +91,7 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
           name,
           type: String(row[ACCOUNT_COLUMNS.type] ?? "cash"),
           currency,
+          position: Number.isSafeInteger(Number(row[ACCOUNT_COLUMNS.position])) && row[ACCOUNT_COLUMNS.position] !== "" && row[ACCOUNT_COLUMNS.position] != null ? Number(row[ACCOUNT_COLUMNS.position]) : 2147483647,
           openingBalanceDate: row[ACCOUNT_COLUMNS.openingBalanceDate] ? String(row[ACCOUNT_COLUMNS.openingBalanceDate]) : null,
           initialBalance: String(Number(row[ACCOUNT_COLUMNS.initialBalance] ?? 0)),
           creditLimit: row[ACCOUNT_COLUMNS.creditLimit] === "" || row[ACCOUNT_COLUMNS.creditLimit] == null ? null : String(Number(row[ACCOUNT_COLUMNS.creditLimit])), color: String(row[ACCOUNT_COLUMNS.color] || "#3B82F6"),

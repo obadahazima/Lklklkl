@@ -1,3 +1,4 @@
+import { formatNumber } from "@workspace/api-client-react";
 import { QueryFeedback } from "@/components/query-feedback";
 import { useGetClientStatement, getGetClientStatementQueryKey } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
@@ -150,7 +151,7 @@ export default function ClientStatement() {
                 const decimals = ["SYP", "IQD", "LBP"].includes(b.currency) ? 4 : 2;
                 return (
                   <span key={b.currency} className="text-xs text-muted-foreground">
-                    1 {b.currency} = {rate.toFixed(decimals)} AED
+                    1 {b.currency} = {formatNumber(rate, decimals)} AED
                   </span>
                 );
               })}

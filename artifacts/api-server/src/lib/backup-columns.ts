@@ -56,6 +56,7 @@ export const ACCOUNT_COLUMNS = {
   type: "النوع",
   currency: "العملة",
   initialBalance: "الرصيد الابتدائي",
+  position: "ترتيب الحساب",
   openingBalanceDate: "تاريخ الرصيد الافتتاحي",
   creditLimit: "الحد الائتماني", color: "لون الحساب",
   notes: "ملاحظات",

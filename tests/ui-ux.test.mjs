@@ -12,6 +12,7 @@ const {renderToStaticMarkup}=requireWeb('react-dom/server');
 function load(path,overrides={}){
  const exports={};vm.runInNewContext(ts.transpileModule(read(path),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports,require:id=>id in overrides?overrides[id]:requireWeb(id),window:{matchMedia:()=>({matches:true})},navigator:{onLine:true},console,URLSearchParams});return exports;
 }
+const presentation=load('lib/api-client-react/src/presentation.ts');
 const utils=load('lib/api-client-react/src/voice-utils.ts');
 const credit=load('lib/api-client-react/src/account-credit.ts',{'./voice-utils':utils});
 const manual=load('lib/api-client-react/src/manual-entry.ts');
@@ -37,6 +38,7 @@ const settings={language:'ar',primaryCurrency:'AED',currencies:['AED'],manualRat
 const queryFeedback=load('artifacts/finance-app/src/components/query-feedback.tsx').QueryFeedback;
 const i18n=load('artifacts/finance-app/src/lib/i18n.ts');
 const common={
+ '@/hooks/use-account-order':{useAccountOrder:accounts=>({rows:accounts??[],saving:false,draggingId:null,gripProps:()=>({})})},
  '@tanstack/react-query':{useQueryClient:()=>({invalidateQueries(){}})},
  '@/hooks/use-toast':{useToast:()=>({toast(){}})},
  '@/contexts/settings-context':{useSettings:()=>({settings,effectiveRates:{AED:1}})},
@@ -47,7 +49,7 @@ const common={
 };
 for(const [page,entity] of [['accounts','Accounts'],['clients','Clients'],['trips','Trips']]){
  test(`${page} renders a retryable failure instead of a false empty financial list`,()=>{
-  const api=new Proxy({}, {get:(_,key)=>key==='normalizeAmountInput'?utils.normalizeAmountInput:()=>key===`useList${entity}`?{isError:true,isLoading:false,data:undefined,refetch:async()=>{}}:{isPending:false,mutate(){}}});
+  const api=new Proxy({}, {get:(_,key)=>key==='formatNumber'?presentation.formatNumber:key==='normalizeAmountInput'?utils.normalizeAmountInput:()=>key===`useList${entity}`?{isError:true,isLoading:false,data:undefined,refetch:async()=>{}}:{isPending:false,mutate(){}}});
   const Component=load(`artifacts/finance-app/src/pages/${page}.tsx`,{...common,'@workspace/api-client-react':api}).default;
   const html=renderToStaticMarkup(React.createElement(Component));assert.match(html,/role="alert"/);assert.match(html,/إعادة المحاولة/);assert.doesNotMatch(html,/ما في حسابات بعد|لا يوجد زبائن|لا توجد رحلات/);
  });
@@ -75,7 +77,7 @@ test('real account save accepts either credit sign and sends the optional limit 
 test('receivables page renders remaining 150 after a FIFO collection and keeps cash and accrual explanation visible',()=>{
  const helpers=load('lib/api-client-react/src/receivables.ts');
  const rows=[{id:1,type:'receivable',date:'2026-01-01',amount:100,clientId:7,currency:'AED',debtKind:'sale'},{id:2,type:'receivable',date:'2026-02-01',amount:200,clientId:7,currency:'AED',debtKind:'sale'},{id:3,type:'income',date:'2026-03-01',amount:150,clientId:7,currency:'AED',accountId:11,allocations:[{debtId:1,amount:100},{debtId:2,amount:50}]}];
- const api={...helpers,...utils,useListTransactions:()=>({data:rows}),useListClients:()=>({data:[{id:7,name:'محمد'}]}),useListAccounts:()=>({data:[{id:11,name:'الكاش'}]}),useOfflineLedger:()=>({record:{outbox:[],references:{}}}),useManualDraft:(_ledger,_owner,initial)=>[initial,()=>{},{ready:true}],};
+ const api={...presentation,...helpers,...utils,useListTransactions:()=>({data:rows}),useListClients:()=>({data:[{id:7,name:'محمد'}]}),useListAccounts:()=>({data:[{id:11,name:'الكاش'}]}),useOfflineLedger:()=>({record:{outbox:[],references:{}}}),useManualDraft:(_ledger,_owner,initial)=>[initial,()=>{},{ready:true}],};
  const Component=load('artifacts/finance-app/src/pages/receivables.tsx',{...common,'@clerk/react':{useAuth:()=>({userId:'a'})},'@workspace/api-client-react':api,'@/lib/offline-ledger':{webLedger:{}},'@/components/offline-ledger':{OfflineQueuePanel:()=>null}}).default;
  const html=renderToStaticMarkup(React.createElement(Component));assert.match(html,/الذمم/);assert.match(html,/إجمالي الذمم المتبقية: 150.00/);assert.match(html,/محصّلة بالكامل/);assert.match(html,/محصّلة جزئياً/);assert.match(html,/تسجيل تحصيل/);assert.match(html,/تسجيل الذمة لا يزيد رصيد الحساب/);
 });

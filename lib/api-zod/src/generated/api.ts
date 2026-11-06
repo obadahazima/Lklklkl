@@ -379,6 +379,7 @@ export const listAccountsResponseCreditLimitMin = 0;
 
 export const ListAccountsResponseItem = zod.object({
   "id": zod.number(),
+  "position": zod.number().optional().describe('Saved account order; smaller positions appear first'),
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
@@ -419,6 +420,7 @@ export const getAccountResponseCreditLimitMin = 0;
 
 export const GetAccountResponse = zod.object({
   "id": zod.number(),
+  "position": zod.number().optional().describe('Saved account order; smaller positions appear first'),
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
@@ -457,6 +459,7 @@ export const updateAccountResponseCreditLimitMin = 0;
 
 export const UpdateAccountResponse = zod.object({
   "id": zod.number(),
+  "position": zod.number().optional().describe('Saved account order; smaller positions appear first'),
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
