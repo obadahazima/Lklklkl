@@ -1,3 +1,5 @@
+import { useAuth } from "@clerk/react";
+import { useToast } from "@/hooks/use-toast";
 import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,12 +22,19 @@ type Message = {
 // itself, where it would be redundant) so the person can talk to Billy without losing
 // whatever screen they're on.
 export function FloatingAssistant() {
+  const { userId } = useAuth();
+  return userId ? <AssistantPanel key={userId} owner={userId} /> : null;
+}
+function AssistantPanel({ owner }: { owner: string }) {
   const [location] = useLocation();
   const { settings } = useSettings();
   const { language } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
   const queryClient = useQueryClient();
 
+  const { toast } = useToast();
+  const [historyReady, setHistoryReady] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
@@ -61,7 +70,7 @@ export function FloatingAssistant() {
     },
   });
 
-  const STORAGE_KEY = "ai:floating:messages";
+  const STORAGE_KEY = `ai:floating:messages:${owner}`;
 
   // Load persisted conversation (server first, then localStorage fallback). Also keep local copy
   // updated so the bubble survives navigation and reloads for 24 hours.
@@ -91,7 +100,8 @@ export function FloatingAssistant() {
             } catch {}
             return;
           }
-          break; // succeeded but genuinely empty — no need to retry or fall back
+          if (!cancelled) setMessages([{ id: 0, role: "assistant", content: t("chatWelcome") }]);
+          return; // A successful empty server result must not resurrect cleared local history.
         } catch {
           if (attempt < 2) await new Promise((r) => setTimeout(r, 500));
           // otherwise fall through to localStorage below
@@ -113,7 +123,7 @@ export function FloatingAssistant() {
       }
     }
 
-    loadHistory();
+    void loadHistory().finally(() => { if (!cancelled) setHistoryReady(true); });
     return () => {
       cancelled = true;
     };
@@ -122,30 +132,30 @@ export function FloatingAssistant() {
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    // persist messages locally on change
+    // Do not overwrite a stored conversation with the initial greeting before hydration.
+    if (!historyReady) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ts: Date.now(), messages }));
     } catch {}
-  }, [messages, open]);
+  }, [messages, open, historyReady]);
 
   // Clear both server and local conversation
   async function clearHistory() {
-    setMessages([{ id: 0, role: "assistant", content: t("chatWelcome") }]);
+    if (clearing || queryMutation.isPending || !window.confirm(language === "ar" ? "بدك تمسح سجل المحادثة؟" : "Clear the conversation history?")) return;
+    setClearing(true);
     try {
       await customFetch("/api/ai/history", { method: "DELETE" });
-    } catch {
-      // ignore
-    }
-    try {
+      setMessages([{ id: 0, role: "assistant", content: t("chatWelcome") }]);
       localStorage.removeItem(STORAGE_KEY);
-    } catch {}
+    } catch { toast({ title: language === "ar" ? "ما انمسحت المحادثة، حاول مجدداً" : "Conversation not cleared. Please try again.", variant: "destructive" }); }
+    finally { setClearing(false); }
   }
 
   // Never show the bubble on the full chat page itself — that page already is the assistant.
   if (location.startsWith("/chat")) return null;
 
   function sendMessage(text: string) {
-    if (!text.trim() || queryMutation.isPending) return;
+    if (!text.trim() || queryMutation.isPending || !historyReady || clearing) return;
     setMessages((prev) => [...prev, { id: Date.now(), role: "user", content: text }]);
     queryMutation.mutate({ data: { question: text } });
     setInput("");
@@ -156,7 +166,7 @@ export function FloatingAssistant() {
       {open && (
         <div
           className={cn(
-            "absolute bottom-16 w-[340px] max-w-[calc(100vw-2.5rem)] h-[460px] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden",
+            "absolute bottom-16 w-[340px] max-w-[calc(100vw-2.5rem)] h-[min(460px,calc(100dvh-6rem))] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden",
             language === "ar" ? "left-0" : "right-0",
           )}
           dir={language === "ar" ? "rtl" : "ltr"}
@@ -170,7 +180,7 @@ export function FloatingAssistant() {
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={clearHistory}
+                disabled={clearing || queryMutation.isPending} onClick={clearHistory}
                 className="p-1.5 rounded-lg hover:bg-white/10 text-white/90"
                 title={language === "ar" ? "محادثة جديدة" : "New conversation"}
               >
@@ -254,17 +264,17 @@ export function FloatingAssistant() {
 
             <div className="flex items-center gap-2">
               <input
-                ref={(el) => (inputRef.current = el)}
+                ref={(el) => { inputRef.current = el; }}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
-                placeholder={t("chatPlaceholder")}
+                aria-label={t("chatPlaceholder")} placeholder={historyReady ? t("chatPlaceholder") : (language === "ar" ? "تحميل المحادثة…" : "Loading conversation…")}
                 className="flex-1 border border-border rounded-xl px-3 py-2 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
               <button
                 onClick={() => sendMessage(input)}
-                disabled={!input.trim() || queryMutation.isPending}
+                aria-label={language === "ar" ? "إرسال الرسالة" : "Send message"} disabled={!input.trim() || queryMutation.isPending || !historyReady || clearing}
                 className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-50 shrink-0"
               >
                 <Send className="w-3.5 h-3.5" />

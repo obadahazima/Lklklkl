@@ -1,3 +1,4 @@
+import { formatNumber } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAiQuery } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react";
@@ -521,10 +522,10 @@ export function ActionCards({
                 <View key={t.currency} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 11, color: colors.mutedForeground }}>{t.currency}</Text>
                   <Text style={{ fontSize: 11, color: colors.foreground }}>
-                    {language === "ar" ? "دخل" : "In"} {t.income.toFixed(0)} ·{" "}
-                    {language === "ar" ? "مصروف" : "Out"} {t.expense.toFixed(0)} ·{" "}
+                    {language === "ar" ? "دخل" : "In"} {formatNumber(t.income, 0)} ·{" "}
+                    {language === "ar" ? "مصروف" : "Out"} {formatNumber(t.expense, 0)} ·{" "}
                     <Text style={{ fontWeight: "700" as const, color: t.net >= 0 ? "#16a34a" : "#ef4444" }}>
-                      {language === "ar" ? "صافي" : "Net"} {t.net.toFixed(0)}
+                      {language === "ar" ? "صافي" : "Net"} {formatNumber(t.net, 0)}
                     </Text>
                   </Text>
                 </View>

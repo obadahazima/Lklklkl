@@ -1,4 +1,4 @@
-import { useGetClientStatement } from "@workspace/api-client-react";
+import { getGetClientStatementQueryKey, useGetClientStatement } from "@workspace/api-client-react";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -48,7 +48,7 @@ export default function ClientStatementScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const { data, isLoading } = useGetClientStatement(clientId, { query: { enabled: !!clientId } });
+  const { data, isLoading } = useGetClientStatement(clientId, { query: { queryKey: getGetClientStatementQueryKey(clientId), enabled: Number.isInteger(clientId) && clientId > 0 } });
 
   const handleShare = async () => {
     if (!data) return;
@@ -206,7 +206,7 @@ export default function ClientStatementScreen() {
                       ]}>
                         {b.openBalance === 0
                           ? t("settledShort")
-                          : `${b.openBalance > 0 ? t("owedPrefix") : t("owesPrefix")}${formatNum(Math.abs(b.openBalance), { maximumFractionDigits: 0 })}`}
+                          : `${b.openBalance > 0 ? t("owesPrefix") : t("owedPrefix")}${formatNum(Math.abs(b.openBalance), { maximumFractionDigits: 0 })}`}
                       </Text>
                     </View>
                   </View>

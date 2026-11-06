@@ -1,3 +1,4 @@
+import { revenueAmount } from "../lib/debt-math.js";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { tripsTable, transactionsTable } from "@workspace/db";
@@ -141,7 +142,7 @@ router.get("/trips/:id/pnl", async (req, res): Promise<void> => {
     const breakdown = currencies
       .map((currency) => {
         const currTxs = txs.filter((t) => t.currency === currency);
-        const revenue = currTxs.filter((t) => t.type === "income" || t.type === "receipt").reduce((s, t) => s + Number(t.amount), 0);
+        const revenue = currTxs.reduce((s, t) => s + revenueAmount(t), 0);
         const expenses = currTxs.filter((t) => t.type === "expense" || t.type === "payment").reduce((s, t) => s + Number(t.amount), 0);
         const netProfit = revenue - expenses;
         const myShare = trip.isShared ? netProfit / 2 : netProfit;

@@ -5,7 +5,7 @@ const SUPPORT_EMAIL = "onhazima@gmail.com";
 const OPERATOR = "Obada Hazima";
 const COUNTRY = "the United Arab Emirates";
 const COUNTRY_AR = "الإمارات العربية المتحدة";
-const UPDATED = "2026-10-01";
+const UPDATED = "2026-11-01";
 
 type Lang = "ar" | "en";
 type Section = { h: string; p: string[] };
@@ -23,6 +23,7 @@ const privacy: Record<Lang, Doc> = {
           "Financial records you enter: accounts, balances, transactions, currencies, notes, trips, and clients (client name, phone number, notes).",
           "AI assistant data: your chat messages with the assistant and the actions it performs, voice recordings you choose to send for transcription, and messages you send to the in-app Support chat (processed by Google Gemini, not stored on our servers).",
           "Settings and preferences (language, currencies, exchange rates).",
+          "Offline use: manual drafts, pending transactions and a limited reference-data snapshot are stored on your device. Pending transactions are sent to your account after connectivity and authentication return. Signing out hides that account’s local data; clearing device or browser storage may permanently remove unsynced entries.",
           "Basic technical logs (request method, path and status code) used for security and debugging. We do not use advertising or analytics trackers.",
         ],
       },
@@ -66,6 +67,7 @@ const privacy: Record<Lang, Doc> = {
           "السجلات المالية التي تدخلها: الحسابات والأرصدة والمعاملات والعملات والملاحظات والرحلات والزبائن (اسم الزبون ورقم هاتفه وملاحظاته).",
           "بيانات المساعد الذكي: رسائلك مع المساعد والإجراءات التي ينفذها، والتسجيلات الصوتية التي ترسلها لتحويلها إلى نص، ورسائلك إلى دردشة الدعم داخل التطبيق (تُعالج عبر Google Gemini ولا تُحفظ على خوادمنا).",
           "الإعدادات والتفضيلات (اللغة والعملات وأسعار الصرف).",
+          "الاستخدام دون إنترنت: تُحفظ المسودات والمعاملات بانتظار المزامنة ونسخة محدودة من البيانات المرجعية على جهازك. تُرسل المعاملات بعد رجوع الاتصال وتوثيق حسابك. تسجيل الخروج يخفي البيانات المحلية لذلك الحساب؛ مسح بيانات التطبيق أو المتصفح قد يزيل المعاملات غير المتزامنة نهائياً.",
           "سجلات تقنية أساسية (نوع الطلب والمسار ورمز الحالة) لأغراض الأمان وإصلاح الأعطال. لا نستخدم أدوات تتبع إعلانية أو تحليلية.",
         ],
       },

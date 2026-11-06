@@ -5,7 +5,7 @@ export function useColors() {
   const { settings } = useSettings();
   const isDark = settings.theme === "dark";
   const palette = isDark
-    ? (colors as Record<string, typeof colors.light>).dark ?? colors.light
+    ? colors.dark
     : colors.light;
   return { ...palette, radius: colors.radius };
 }

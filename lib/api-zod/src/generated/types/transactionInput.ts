@@ -7,6 +7,13 @@
  */
 
 export interface TransactionInput {
+  /** Require an outstanding receivable instead of recording unmatched income */
+  collectionOnly?: boolean;
+  /**
+     * Stable client-generated UUID used to deduplicate retries
+     * @pattern ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+     */
+  clientRequestId?: string;
   date: string;
   type: string;
   amount: number;
@@ -22,6 +29,17 @@ export interface TransactionInput {
      * @nullable
      */
   toAccountId?: number | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status: string;

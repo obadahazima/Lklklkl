@@ -541,7 +541,7 @@ components:
           type: string
         type:
           type: string
-          description: "income | expense | payment | receipt | transfer"
+          description: "income | expense | transfer | receivable (legacy payment/receipt accepted)"
         amount:
           type: number
         currency:
@@ -564,18 +564,49 @@ components:
           description: "Destination account for type=transfer only"
         toAccountName:
           type: ["string", "null"]
+        includedInOpeningBalance:
+          type: boolean
+          description: "Already reflected in source/account opening balance; retain reporting but skip this cash effect"
+        destinationIncludedInOpeningBalance:
+          type: boolean
+          description: "Transfer destination independently already reflects this amount"
+        debtKind:
+          type: ["string", "null"]
+          description: "sale | opening | loan | loan_now; receivable only"
+        dueDate:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         status:
           type: string
           description: "pending | settled"
+        collectionSummary:
+          type: ["string", "null"]
         createdAt:
           type: string
+
+        allocations:
+          type: array
+          items:
+            type: object
+            required: [debtId, amount]
+            properties:
+              debtId:
+                type: integer
+              amount:
+                type: number
 
     TransactionInput:
       type: object
       required: [date, type, amount, currency, status, accountId]
       properties:
+        collectionOnly:
+          type: boolean
+          description: "Require an outstanding receivable instead of recording unmatched income"
+        clientRequestId:
+          type: string
+          pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          description: "Stable client-generated UUID used to deduplicate retries"
         date:
           type: string
         type:
@@ -594,6 +625,17 @@ components:
         toAccountId:
           type: ["integer", "null"]
           description: "Required when type=transfer — the destination account. Must differ from accountId."
+        includedInOpeningBalance:
+          type: boolean
+          description: "Already reflected in source/account opening balance; retain reporting but skip this cash effect"
+        destinationIncludedInOpeningBalance:
+          type: boolean
+          description: "Transfer destination independently already reflects this amount"
+        debtKind:
+          type: ["string", "null"]
+          description: "sale | opening | loan | loan_now; receivable only"
+        dueDate:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         status:
@@ -618,6 +660,17 @@ components:
           type: ["integer", "null"]
         toAccountId:
           type: ["integer", "null"]
+        includedInOpeningBalance:
+          type: boolean
+          description: "Already reflected in source/account opening balance; retain reporting but skip this cash effect"
+        destinationIncludedInOpeningBalance:
+          type: boolean
+          description: "Transfer destination independently already reflects this amount"
+        debtKind:
+          type: ["string", "null"]
+          description: "sale | opening | loan | loan_now; receivable only"
+        dueDate:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
         status:
@@ -770,6 +823,9 @@ components:
       properties:
         id:
           type: integer
+        position:
+          type: integer
+          description: "Saved account order; smaller positions appear first"
         name:
           type: string
         type:
@@ -785,6 +841,13 @@ components:
         currentBalance:
           type: number
           description: "initialBalance + income/receipt through this account - expense/payment through this account"
+        openingBalanceDate:
+          type: ["string", "null"]
+          description: "Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance"
+        creditLimit:
+          type: ["number", "null"]
+          minimum: 0
+          description: "Optional total credit limit in the account currency; credit accounts only"
         notes:
           type: ["string", "null"]
         createdAt:
@@ -807,6 +870,13 @@ components:
         initialBalance:
           type: number
           description: "Starting balance when the account was added, defaults to 0"
+        openingBalanceDate:
+          type: ["string", "null"]
+          description: "Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance"
+        creditLimit:
+          type: ["number", "null"]
+          minimum: 0
+          description: "Optional total credit limit in the account currency; credit accounts only"
         notes:
           type: ["string", "null"]
 
@@ -823,6 +893,13 @@ components:
           type: string
         initialBalance:
           type: number
+        openingBalanceDate:
+          type: ["string", "null"]
+          description: "Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance"
+        creditLimit:
+          type: ["number", "null"]
+          minimum: 0
+          description: "Optional total credit limit in the account currency; credit accounts only"
         notes:
           type: ["string", "null"]
 
@@ -833,6 +910,8 @@ components:
       properties:
         text:
           type: string
+          minLength: 1
+          maxLength: 10000
         currencies:
           type: ["array", "null"]
           items:
@@ -842,6 +921,10 @@ components:
           type: ["string", "null"]
           description: "User's preferred default currency, used as a fallback when no currency is detected/matched"
 
+        referenceDate:
+          type: string
+          description: "Caller local calendar date in YYYY-MM-DD for relative spoken dates"
+
     VoiceParseResult:
       type: object
       required: [success]
@@ -850,6 +933,9 @@ components:
           type: boolean
         type:
           type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+          enum: [pending, settled, null]
         amount:
           type: ["number", "null"]
         currency:
@@ -895,6 +981,8 @@ components:
       properties:
         audioBase64:
           type: string
+          minLength: 4
+          maxLength: 18000000
           description: "Base64-encoded audio data"
         mimeType:
           type: string

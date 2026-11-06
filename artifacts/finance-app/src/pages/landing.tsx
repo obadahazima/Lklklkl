@@ -30,7 +30,7 @@ const content = {
     heroDesc:
       "سجّل معاملاتك بصوتك، وتابع مستحقاتك لدى العملاء لحظة بلحظة، واسأل بيلي أي استفسار مالي؛ فينفّذه فوراً من داخل المحادثة دون أي تعقيد.",
     ctaPrimary: "ابدأ مجاناً",
-    ctaSecondary: "▶ شاهد بيلي أثناء العمل",
+    ctaSecondary: "شوف كيف بتسجّل أول معاملة",
     trust: "بلا بطاقة ائتمان · دقيقتان للبدء",
     demoQ: "لاحظتُ أنّ ثلاثة عملاء متأخّرون بالسداد، أأرسل لهم تذكيراً؟",
     demoA: "نعم، جهّز التذكيرات",
@@ -45,10 +45,10 @@ const content = {
     howTitle: "ثلاث خطوات فقط",
     step1Title: "تحدّث أو اكتب",
     step1Desc: "بأي لغة أو لهجة",
-    step2Title: "بيلي يفهم وينفّذ",
-    step2Desc: "يسجّل، يربط، يحلّل",
-    step3Title: "تُشاهد النتيجة",
-    step3Desc: "تقارير وأرقام فورية",
+    step2Title: "راجع التفاصيل",
+    step2Desc: "تأكد من المبلغ والحساب",
+    step3Title: "احفظ وشوف النتيجة",
+    step3Desc: "المعاملة بتنضاف لحساباتك",
     features: [
       { icon: Mic, title: "تسجيل صوتي", desc: "معاملة كاملة بجملة واحدة، بأي لهجة تتحدثها" },
       { icon: Users, title: "إدارة الزبائن", desc: "كشف حساب مفصّل ومتابعة الذمم لكل عميل" },
@@ -73,7 +73,7 @@ const content = {
     heroDesc:
       "Record your transactions by voice, track what clients owe you instantly, and ask Billy anything — he executes it right from the chat, with no complexity.",
     ctaPrimary: "Start for free",
-    ctaSecondary: "▶ See Billy in action",
+    ctaSecondary: "See how to record your first entry",
     trust: "No credit card · 2 minutes to start",
     demoQ: "3 clients are overdue on payment — want me to remind them?",
     demoA: "Yes, prepare the reminders",
@@ -88,10 +88,10 @@ const content = {
     howTitle: "Just three steps",
     step1Title: "Speak or type",
     step1Desc: "Any language, any dialect",
-    step2Title: "Billy understands & acts",
-    step2Desc: "Logs, links, analyzes",
-    step3Title: "See the result",
-    step3Desc: "Instant reports & numbers",
+    step2Title: "Review the details",
+    step2Desc: "Check the amount and account",
+    step3Title: "Save and see the result",
+    step3Desc: "Your accounts update after saving",
     features: [
       { icon: Mic, title: "Voice logging", desc: "A full transaction in one sentence, in any dialect" },
       { icon: Users, title: "Client management", desc: "Detailed statements and balance tracking per client" },
@@ -121,7 +121,7 @@ export default function Landing() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-2">
-          <img src={`${basePath}/logo-mark-white.svg`} alt="Billy Bills AI" className="w-8 h-8" />
+          <img src={`${basePath}/logo-symbol-128.png`} alt="Billy Bills AI" className="w-8 h-8" />
           <span className="font-semibold text-foreground text-base">
             Billy Bills <span className="text-primary">AI</span>
           </span>
@@ -194,11 +194,9 @@ export default function Landing() {
                 {t.ctaPrimary}
               </button>
             </Link>
-            <Link href="/sign-in">
-              <button className="border border-white/35 text-white px-7 py-3 rounded-xl font-semibold text-sm hover:bg-white/10 transition-colors">
+            <a href="#how-it-works" className="border border-white/35 text-white px-7 py-3 rounded-xl font-semibold text-sm hover:bg-white/10 transition-colors">
                 {t.ctaSecondary}
-              </button>
-            </Link>
+            </a>
           </div>
           <p className="text-xs text-white/50">{t.trust}</p>
         </div>
@@ -254,7 +252,7 @@ export default function Landing() {
       </div>
 
       {/* How it works */}
-      <div className="px-6 py-14">
+      <div id="how-it-works" className="px-6 py-14">
         <p className="text-center text-xs font-semibold tracking-wide text-primary uppercase mb-2">
           {t.howLabel}
         </p>

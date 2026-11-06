@@ -7,7 +7,11 @@
  */
 
 export interface VoiceTranscribeInput {
-  /** Base64-encoded audio data */
+  /**
+     * Base64-encoded audio data
+     * @minLength 4
+     * @maxLength 18000000
+     */
   audioBase64: string;
   /** Audio mime type (e.g. audio/m4a, audio/mp4, audio/wav) */
   mimeType: string;

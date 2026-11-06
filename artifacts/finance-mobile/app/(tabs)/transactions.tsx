@@ -1,6 +1,12 @@
+import { formatNumber } from "@workspace/api-client-react";
+import { OpeningBalanceOptions } from "@/components/OpeningBalanceOptions";
+import { useAuth } from "@clerk/expo";
+import { mobileLedger } from "@/lib/offline-ledger";
+import { OfflineQueuePanel } from "@/components/OfflineLedger";
 import {
+  useManualDraft, useOfflineLedger, transactionError, manualErrorMessage,
+  localISODate, normalizeAmountInput, normalizeEntityName, voiceAccountSelection,
   useListTransactions,
-  useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
   useListClients,
@@ -24,7 +30,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useRef, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -48,8 +54,8 @@ import {
 import { useTr } from "@/lib/i18n";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 
-const TX_TYPES = ["income", "expense", "payment", "receipt", "transfer"] as const;
-type TxType = (typeof TX_TYPES)[number];
+const TX_TYPES = ["income", "expense", "transfer", "receivable"] as const;
+type TxType = (typeof TX_TYPES)[number] | "payment" | "receipt";
 
 function isOutgoing(t: string) {
   return t === "expense" || t === "payment";
@@ -80,7 +86,7 @@ function formatDate(d: string, lang: string) {
   }
 }
 
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+const norm = normalizeEntityName;
 
 type ResolutionState =
   | { kind: "idle" }
@@ -88,6 +94,7 @@ type ResolutionState =
   | { kind: "new"; name: string };
 
 type FormState = {
+  includedInOpeningBalance?: string; destinationIncludedInOpeningBalance?: string;
   type: TxType;
   amount: string;
   currency: string;
@@ -111,7 +118,7 @@ function emptyForm(primaryCurrency = "AED"): FormState {
     toAccountId: "",
     description: "",
     status: "pending",
-    date: new Date().toISOString().slice(0, 10),
+    date: localISODate(),
   };
 }
 
@@ -186,6 +193,12 @@ export default function TransactionsScreen() {
   const { language, primaryCurrency, showClients, showTrips } = settings;
   const t = useTr(language);
   const voice = useVoiceRecording(language);
+  const { userId } = useAuth();
+  const offline = useOfflineLedger(mobileLedger, userId);
+  const amountInputRef = useRef<TextInput>(null);
+  const saveAnotherRef = useRef(false);
+  const [savingLocal, setSavingLocal] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const params = useLocalSearchParams<{ openAdd?: string; openVoice?: string }>();
 
   const [showModal, setShowModal] = useState(false);
@@ -203,7 +216,7 @@ export default function TransactionsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.openVoice]);
 
-  const [form, setForm] = useState<FormState>(() => emptyForm(primaryCurrency));
+  const [form, setForm, draft] = useManualDraft(mobileLedger, userId, emptyForm(primaryCurrency));
   const [aiText, setAiText] = useState("");
 
   const [filterType, setFilterType] = useState<string>("all");
@@ -230,11 +243,15 @@ export default function TransactionsScreen() {
   const voiceSheetFlowRef = useRef(false);
   const [voiceEditField, setVoiceEditField] = useState<null | "type" | "amount" | "date" | "description">(null);
 
-  const { data: transactions, isLoading, refetch } = useListTransactions({});
-  const { data: clients } = useListClients();
-  const { data: trips } = useListTrips();
-  const { data: accounts } = useListAccounts();
-  const { mutateAsync: createTx, isPending: creating } = useCreateTransaction();
+  const { data: transactionsRemote, isLoading, refetch } = useListTransactions({});
+  const transactions = transactionsRemote ?? offline.record.references.transactions;
+  const { data: clientsRemote } = useListClients();
+  const clients = clientsRemote ?? offline.record.references.clients;
+  const { data: tripsRemote } = useListTrips();
+  const trips = tripsRemote ?? offline.record.references.trips;
+  const { data: accountsRemote } = useListAccounts();
+  const accounts = accountsRemote ?? offline.record.references.accounts;
+  const creating = savingLocal;
   const { mutateAsync: deleteTx } = useDeleteTransaction();
   const { mutateAsync: updateTx, isPending: updating } = useUpdateTransaction();
 
@@ -244,7 +261,7 @@ export default function TransactionsScreen() {
       setForm((f) => (f.accountId ? f : { ...f, accountId: String(accounts[0].id) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts]);
+  }, [accounts, draft.ready]);
 
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<FormState>(() => emptyForm(primaryCurrency));
@@ -258,6 +275,7 @@ export default function TransactionsScreen() {
   function openEdit(item: any) {
     setEditingTx(item);
     setEditForm({
+      includedInOpeningBalance: item.includedInOpeningBalance ? "true" : "", destinationIncludedInOpeningBalance: item.destinationIncludedInOpeningBalance ? "true" : "",
       type: item.type,
       amount: String(item.amount),
       currency: item.currency,
@@ -273,7 +291,7 @@ export default function TransactionsScreen() {
 
   const handleUpdate = async () => {
     if (!editingTx) return;
-    const amt = parseFloat(editForm.amount);
+    const amt = normalizeAmountInput(editForm.amount);
     if (!amt || amt <= 0) {
       Alert.alert(t("saveError"), t("saveErrorDesc"));
       return;
@@ -292,6 +310,7 @@ export default function TransactionsScreen() {
       await updateTx({
         id: editingTx.id,
         data: {
+          includedInOpeningBalance: editForm.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: editForm.destinationIncludedInOpeningBalance === "true",
           type: editForm.type,
           amount: amt,
           currency: editForm.currency,
@@ -307,6 +326,7 @@ export default function TransactionsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditingTx(null);
       qc.invalidateQueries({ queryKey: getListTransactionsQueryKey({}) });
+      qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
       qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       refetch();
     } catch {
@@ -351,7 +371,7 @@ export default function TransactionsScreen() {
     setEditPicker({
       title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
       selected: editForm.accountId,
-      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setEditForm((f) => ({ ...f, accountId: v })),
     });
 
@@ -361,7 +381,7 @@ export default function TransactionsScreen() {
       selected: editForm.toAccountId,
       options: (accounts ?? [])
         .filter((a) => String(a.id) !== editForm.accountId)
-        .map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+        .map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setEditForm((f) => ({ ...f, toAccountId: v })),
     });
 
@@ -370,22 +390,29 @@ export default function TransactionsScreen() {
   const editAccountName = accounts?.find((a) => String(a.id) === editForm.accountId)?.name;
   const editToAccountName = accounts?.find((a) => String(a.id) === editForm.toAccountId)?.name;
 
-  const parseMutation = useParseVoiceInput({
-    mutation: {
-      onSuccess: (data) => {
-        if (data.success) {
-          applyParsed(data);
-        } else {
-          if (voiceSheetFlowRef.current) setVoiceSheetStep("recording");
-          Alert.alert(t("notUnderstood"), data.error || t("tryAgain"));
-        }
-      },
-      onError: () => {
-        if (voiceSheetFlowRef.current) setVoiceSheetStep("recording");
-        Alert.alert(t("saveError"), t("tryAgain"));
-      },
-    },
-  });
+  const parseRequestRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  useEffect(() => () => { ++parseRequestRef.current; }, []);
+  const parseMutation = useParseVoiceInput();
+
+  async function analyzeVoiceText(text: string) {
+    const request = ++parseRequestRef.current;
+    try {
+      const data = await parseMutation.mutateAsync({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency, referenceDate: localISODate() } });
+      if (request !== parseRequestRef.current) return;
+      if (data.success) applyParsed(data);
+      else {
+        // Keep the text available for editing/retry, including clarification questions.
+        if (voiceSheetFlowRef.current) setVoiceSheetStep("result");
+        Alert.alert(t("notUnderstood"), data.error || t("tryAgain"));
+      }
+    } catch (err) {
+      if (request !== parseRequestRef.current) return;
+      if (voiceSheetFlowRef.current) setVoiceSheetStep("result");
+      const detail = (err as { data?: { message?: string; error?: string } }).data;
+      Alert.alert(t("saveError"), detail?.message || detail?.error || t("tryAgain"));
+    }
+  }
 
   const createClientMutation = useCreateClient({
     mutation: {
@@ -447,14 +474,17 @@ export default function TransactionsScreen() {
   }
 
   function applyParsed(data: VoiceParseResult) {
-    const nextType = TX_TYPES.includes(data.type as TxType) ? (data.type as TxType) : undefined;
+    const nextType = (TX_TYPES as readonly string[]).includes(data.type ?? "") ? (data.type as TxType) : undefined;
     setForm((f) => ({
       ...f,
+      includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "",
       type: nextType ?? f.type,
-      amount: data.amount != null ? String(data.amount) : f.amount,
+      amount: data.amount != null ? String(data.amount) : "",
+      ...voiceAccountSelection(data, accounts ?? []),
+      status: data.status === "settled" ? "settled" : "pending",
       currency: data.currency || f.currency,
       description: data.description ?? f.description,
-      date: data.date || new Date().toISOString().slice(0, 10),
+      date: data.date || localISODate(),
     }));
     parsedDateDetectedRef.current = !!data.date;
     parsedRef.current = data;
@@ -492,7 +522,8 @@ export default function TransactionsScreen() {
       } else if (!name) {
         r.clientId = null;
       } else {
-        const exact = clients?.find((c) => norm(c.name) === norm(name));
+        const exactMatches = clients?.filter((c) => norm(c.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) {
           r.clientId = exact.id;
         } else {
@@ -515,7 +546,8 @@ export default function TransactionsScreen() {
       } else if (!name) {
         r.tripId = null;
       } else {
-        const exact = trips?.find((tp) => norm(tp.name) === norm(name));
+        const exactMatches = trips?.filter((tp) => norm(tp.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) {
           r.tripId = exact.id;
         } else {
@@ -536,7 +568,7 @@ export default function TransactionsScreen() {
   function handleParseText() {
     const text = aiText.trim();
     if (!text) return;
-    parseMutation.mutate({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+    void analyzeVoiceText(text);
   }
 
   async function handleMic() {
@@ -544,7 +576,7 @@ export default function TransactionsScreen() {
       const text = await voice.stopAndTranscribe();
       if (text) {
         setAiText(text);
-        parseMutation.mutate({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+        void analyzeVoiceText(text);
       } else if (voice.error === "permission_denied") {
         Alert.alert(t("micPermissionDenied"));
       } else if (voice.error) {
@@ -557,6 +589,8 @@ export default function TransactionsScreen() {
   }
 
   async function openVoiceSheet() {
+    if (form.amount) { setShowModal(true); Alert.alert(language === "ar" ? "عندك مسودة؛ احفظها أو ابدأ مسودة جديدة أولاً" : "Save or clear your current draft first"); return; }
+    if (voice.state !== "idle" || parseMutation.isPending) return;
     resetForm();
     setVoiceEditField(null);
     voiceSheetFlowRef.current = true;
@@ -571,10 +605,12 @@ export default function TransactionsScreen() {
     if (voice.state !== "recording") return;
     setVoiceSheetStep("processing");
     setVoiceSheetVisible(true);
+    const request = parseRequestRef.current;
     const text = await voice.stopAndTranscribe();
+    if (request !== parseRequestRef.current || !voiceSheetFlowRef.current) return;
     if (text) {
       setAiText(text);
-      parseMutation.mutate({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+      void analyzeVoiceText(text);
     } else {
       setVoiceSheetVisible(false);
       voiceSheetFlowRef.current = false;
@@ -587,24 +623,26 @@ export default function TransactionsScreen() {
   }
 
   function closeVoiceSheet() {
+    if (saveInFlightRef.current) return;
+    ++parseRequestRef.current;
     voiceSheetFlowRef.current = false;
     setVoiceSheetVisible(false);
     setVoiceEditField(null);
     resetForm();
-    if (voice.state === "recording") {
-      voice.cancelRecording();
-    }
+    if (voice.state !== "idle") void voice.cancelRecording();
   }
 
   async function handleVoiceConfirmSave() {
     if (!form.amount) return;
-    voiceSheetFlowRef.current = false;
-    setVoiceSheetVisible(false);
-    await handleCreate();
+    const saved = await handleCreate();
+    if (saved) {
+      voiceSheetFlowRef.current = false;
+      setVoiceSheetVisible(false);
+    }
   }
 
   const filtered = (transactions ?? []).filter((tx: any) => {
-    if (filterType !== "all" && tx.type !== filterType) return false;
+    if (filterType !== "all" && (tx.type === "payment" ? "expense" : tx.type === "receipt" ? "income" : tx.type) !== filterType) return false;
     if (filterCurrency !== "all" && tx.currency !== filterCurrency) return false;
     if (filterStatus !== "all" && tx.status !== filterStatus) return false;
     return true;
@@ -614,64 +652,46 @@ export default function TransactionsScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const resetForm = () => {
-    setForm(emptyForm(primaryCurrency));
+    ++parseRequestRef.current;
+    const next = emptyForm(primaryCurrency);
+    if (accounts?.length === 1) next.accountId = String(accounts[0].id);
+    draft.reset(next);
     setAiText("");
     parsedRef.current = null;
     resolveRef.current = {};
   };
 
-  const handleCreate = async () => {
-    const amt = parseFloat(form.amount);
-    if (!form.amount || isNaN(amt) || amt <= 0) {
-      Alert.alert(language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", language === "ar" ? "الرجاء إدخال مبلغ أكبر من الصفر" : "Please enter an amount greater than zero");
-      return;
-    }
-    if (!form.accountId) {
-      Alert.alert(
-        language === "ar" ? "لازم تحدد الحساب" : "Account required",
-        language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
-      );
-      return;
-    }
-    if (form.type === "transfer") {
-      if (!form.toAccountId) {
-        Alert.alert(
-          language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
-          language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
-        );
-        return;
-      }
-      if (form.toAccountId === form.accountId) {
-        Alert.alert(
-          language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
-          language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
-        );
-        return;
-      }
-    }
+  const handleCreate = async (): Promise<boolean> => {
+    if (saveInFlightRef.current || !draft.ready || !userId) return false;
+    const payload: TransactionInput = {
+      includedInOpeningBalance: form.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: form.destinationIncludedInOpeningBalance === "true",
+      type: form.type, amount: normalizeAmountInput(form.amount), currency: form.currency,
+      clientId: form.type === "transfer" ? null : (form.clientId ? Number(form.clientId) : null),
+      tripId: form.type === "transfer" ? null : (form.tripId ? Number(form.tripId) : null),
+      accountId: Number(form.accountId), toAccountId: form.type === "transfer" ? Number(form.toAccountId) : null,
+      description: form.description || null, status: form.status, date: form.date,
+    };
+    const error = transactionError(payload) ?? (!settings.currencies.includes(payload.currency) ? "invalid_currency" : null);
+    if (error) { Alert.alert(manualErrorMessage(error, language === "ar")); return false; }
+    saveInFlightRef.current = true;
+    setSavingLocal(true);
     try {
-      const payload: TransactionInput = {
-        type: form.type,
-        amount: amt,
-        currency: form.currency,
-        clientId: form.type === "transfer" ? null : (form.clientId ? parseInt(form.clientId, 10) : null),
-        tripId: form.type === "transfer" ? null : (form.tripId ? parseInt(form.tripId, 10) : null),
-        accountId: parseInt(form.accountId, 10),
-        toAccountId: form.type === "transfer" ? parseInt(form.toAccountId, 10) : null,
-        description: form.description || null,
-        status: form.status,
-        date: form.date,
-      };
-      await createTx({ data: payload });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowModal(false);
-      resetForm();
-      qc.invalidateQueries({ queryKey: getListTransactionsQueryKey({}) });
-      qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-      refetch();
+      await mobileLedger.enqueue(userId, payload, draft.id);
+      const next = { ...form, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "", date: localISODate() };
+      const nextDraft = { id: mobileLedger.uuid(), values: next };
+      await mobileLedger.saveDraft(userId, nextDraft.id, next).catch(() => {});
+      draft.restore(nextDraft);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (saveAnotherRef.current) setTimeout(() => amountInputRef.current?.focus(), 0);
+      else {
+        setShowModal(false);
+        Alert.alert(language === "ar" ? "حُفظت على الجهاز" : "Saved on this device", language === "ar" ? "ستُرسل لحسابك عند توفر الاتصال؛ يمكنك متابعة الإدخال" : "It will sync to your account when connected. You can keep entering transactions.");
+      }
+      return true;
     } catch {
-      Alert.alert(t("saveError"), t("saveErrorDesc"));
-    }
+      Alert.alert(language === "ar" ? "تعذر الحفظ المحلي؛ أبقِ النموذج مفتوحاً" : "Local save failed; keep this form open");
+      return false;
+    } finally { saveInFlightRef.current = false; setSavingLocal(false); saveAnotherRef.current = false; }
   };
 
   const handleDelete = (id: string) => {
@@ -725,7 +745,7 @@ export default function TransactionsScreen() {
     setPicker({
       title: language === "ar" ? "الحساب/البطاقة" : "Account/Card",
       selected: form.accountId,
-      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+      options: (accounts ?? []).map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setForm((f) => ({ ...f, accountId: v })),
     });
 
@@ -735,7 +755,7 @@ export default function TransactionsScreen() {
       selected: form.toAccountId,
       options: (accounts ?? [])
         .filter((a) => String(a.id) !== form.accountId)
-        .map((a) => ({ value: String(a.id), label: `${a.name} (${a.currentBalance.toFixed(2)} ${a.currency})` })),
+        .map((a) => ({ value: String(a.id), label: `${a.name} (${formatNumber(a.currentBalance, 2)} ${a.currency})` })),
       onSelect: (v) => setForm((f) => ({ ...f, toAccountId: v })),
     });
 
@@ -879,6 +899,26 @@ export default function TransactionsScreen() {
         </View>
       </View>
 
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction"}
+        disabled={parseMutation.isPending || (voice.state !== "idle" && voice.state !== "recording")}
+        onPress={voice.state === "recording" ? handleVoiceSheetStop : openVoiceSheet}
+        style={({ pressed }) => ({ margin: 16, marginBottom: 12, padding: 20, minHeight: 112, borderRadius: 20, backgroundColor: voice.state === "recording" ? "#dc2626" : colors.primary, flexDirection: "row", alignItems: "center", gap: 16, opacity: pressed || parseMutation.isPending || (voice.state !== "idle" && voice.state !== "recording") ? 0.7 : 1 })}
+      >
+        <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" }}>
+          <Feather name={voice.state === "recording" ? "square" : "mic"} size={30} color="#fff" />
+        </View>
+        <View style={{ flex: 1, gap: 5 }}>
+          <Text style={{ color: "#fff", fontSize: 21, fontWeight: "700", textAlign: language === "ar" ? "right" : "left" }}>{voice.state === "recording"
+            ? (language === "ar" ? "إيقاف التسجيل" : "Stop recording")
+            : parseMutation.isPending || voice.state === "transcribing"
+            ? (language === "ar" ? "جاري فهم معاملتك…" : "Understanding your transaction…")
+            : (language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction")}</Text>
+          <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, textAlign: language === "ar" ? "right" : "left" }}>{language === "ar" ? "اضغط واحكي، وراجع التفاصيل قبل الحفظ" : "Tap, speak, and review before saving"}</Text>
+        </View>
+      </Pressable>
+      <OfflineQueuePanel owner={userId} ar={language === "ar"} cached={!transactionsRemote && !!transactions?.length} onRecover={(recovered) => { draft.restore(recovered); setShowModal(true); }} />
       <View style={[styles.filterBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {["all", ...TX_TYPES].map((ty) => (
@@ -894,9 +934,7 @@ export default function TransactionsScreen() {
                   ? t("typeIncome")
                   : ty === "expense"
                   ? t("typeExpense")
-                  : ty === "payment"
-                  ? t("typePayment")
-                  : t("typeReceipt")}
+                  : ty === "receivable" ? t("receivables") : t("typeTransfer")}
               </Text>
             </Pressable>
           ))}
@@ -927,7 +965,7 @@ export default function TransactionsScreen() {
         </ScrollView>
       </View>
 
-      {isLoading ? (
+      {isLoading && !transactions?.length ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -954,7 +992,7 @@ export default function TransactionsScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.txNote, { color: colors.foreground }]} numberOfLines={1}>
-                  {item.description || t(("type" + item.type.charAt(0).toUpperCase() + item.type.slice(1)) as any)}
+                  {item.allocations?.length ? (language === "ar" ? "تحصيل ذمم" : "Receivable collection") : item.type === "receivable" ? (language === "ar" ? "ذمة" : "Receivable") : item.description || t(("type" + item.type.charAt(0).toUpperCase() + item.type.slice(1)) as any)}
                 </Text>
                 <Text style={[styles.txDate, { color: colors.mutedForeground }]}>
                   {formatDate(item.date, language)}
@@ -963,7 +1001,7 @@ export default function TransactionsScreen() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={[styles.txAmount, { color: typeColor(item.type) }]}>
-                  {item.type === "transfer" ? "" : isOutgoing(item.type) ? "-" : "+"}
+                  {item.type === "transfer" || item.type === "receivable" ? "" : isOutgoing(item.type) ? "-" : "+"}
                   {parseFloat(item.amount).toLocaleString()}
                 </Text>
                 <Text style={[styles.txCurrency, { color: colors.mutedForeground }]}>{item.currency}</Text>
@@ -1075,7 +1113,12 @@ export default function TransactionsScreen() {
                       <Text style={[{ color: colors.mutedForeground, fontSize: 11, marginBottom: 4, textAlign: "right" }]}>
                         {language === "ar" ? "✅ تم التحليل من:" : "✅ Analyzed from:"}
                       </Text>
-                      <Text style={[{ color: colors.foreground, textAlign: "right", fontSize: 13, lineHeight: 20 }]}>{aiText}</Text>
+                      <TextInput multiline value={aiText} onChangeText={setAiText} editable={!parseMutation.isPending && !creating}
+                        style={{ color: colors.foreground, textAlign: language === "ar" ? "right" : "left", fontSize: 13, lineHeight: 20 }} />
+                      <Pressable disabled={parseMutation.isPending || creating || !aiText.trim()}
+                        onPress={() => { setVoiceSheetStep("processing"); void analyzeVoiceText(aiText.trim()); }} style={{ paddingVertical: 8 }}>
+                        <Text style={{ color: colors.primary }}>{language === "ar" ? "تحليل النص المعدّل" : "Analyze edited text"}</Text>
+                      </Pressable>
                     </View>
                   )}
 
@@ -1093,7 +1136,7 @@ export default function TransactionsScreen() {
                       <Text style={[styles.resultCardValue, { color: typeColor(form.type) }]}>
                         {form.type === "income" ? t("typeIncome")
                           : form.type === "expense" ? t("typeExpense")
-                          : form.type === "payment" ? t("typePayment")
+
                           : form.type === "transfer" ? t("typeTransfer")
                           : t("typeReceipt")}
                       </Text>
@@ -1114,12 +1157,14 @@ export default function TransactionsScreen() {
                     </Pressable>
                   </View>
 
+<OpeningBalanceOptions accounts={accounts} accountId={form.accountId} toAccountId={form.toAccountId} type={form.type} date={form.date} source={form.includedInOpeningBalance} destination={form.destinationIncludedInOpeningBalance} onSource={v=>setForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
                   {voiceEditField === "type" && (
                     <View style={styles.segRow}>
                       {TX_TYPES.map((ty) => (
                         <Pressable
                           key={ty}
                           onPress={() => {
+                            if (ty === "receivable") { setVoiceEditField(null); setVoiceSheetVisible(false); router.push("/(tabs)/receivables"); return; }
                             setForm((f) => ({ ...f, type: ty }));
                             setVoiceEditField(null);
                           }}
@@ -1132,9 +1177,7 @@ export default function TransactionsScreen() {
                           <Text style={[styles.segText, form.type === ty && { color: "#fff" }]}>
                             {ty === "income" ? t("typeIncome")
                               : ty === "expense" ? t("typeExpense")
-                              : ty === "payment" ? t("typePayment")
-                              : ty === "receipt" ? t("typeReceipt")
-                              : t("typeTransfer")}
+                              : ty === "receivable" ? t("receivables") : t("typeTransfer")}
                           </Text>
                         </Pressable>
                       ))}
@@ -1330,6 +1373,14 @@ export default function TransactionsScreen() {
                     <Feather name="edit-2" size={12} color={colors.mutedForeground} />
                   </Pressable>
 
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {(["pending", "settled"] as const).map((status) => (
+                      <Pressable key={status} onPress={() => setForm((f) => ({ ...f, status }))}
+                        style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: form.status === status ? colors.primary : colors.border }}>
+                        <Text style={{ color: colors.foreground, textAlign: "center" }}>{status === "settled" ? t("statusSettled") : t("statusPending")}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
                   <Pressable
                     style={[
                       styles.saveBtn,
@@ -1337,7 +1388,7 @@ export default function TransactionsScreen() {
                       (!form.amount || creating) && { opacity: 0.5 },
                     ]}
                     onPress={handleVoiceConfirmSave}
-                    disabled={!form.amount || creating}
+                    disabled={!form.amount || creating || savingLocal || !draft.ready || parseMutation.isPending}
                   >
                     {creating ? (
                       <ActivityIndicator color="#fff" />
@@ -1408,9 +1459,23 @@ export default function TransactionsScreen() {
                 <View style={{ width: 72 }} />
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                {/* AI parse */}
-                <View style={[styles.aiBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <ScrollView pointerEvents={savingLocal ? "none" : "auto"} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("amountLabel")}</Text>
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  autoFocus
+                  ref={amountInputRef}
+                  editable={!savingLocal && draft.ready}
+                  value={form.amount}
+                  onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colors.mutedForeground}
+                  textAlign="right"
+                />
+
+                <Pressable onPress={() => setShowAI((value) => !value)} style={{ paddingVertical: 10 }}><Text style={{ color: colors.primary }}>{language === "ar" ? "مساعدة بيلي الاختيارية (تحتاج إنترنت)" : "Optional Billy assistance (internet required)"}</Text></Pressable>
+                {showAI && <View style={[styles.aiBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
                   <Text style={[styles.fieldLabel, { color: colors.foreground, marginTop: 0 }]}>{t("orTypeDirectly")}</Text>
                   <View style={styles.aiRow}>
                     <Pressable
@@ -1460,14 +1525,14 @@ export default function TransactionsScreen() {
                   {parseMutation.isPending && (
                     <Text style={[styles.aiStatus, { color: colors.mutedForeground }]}>{t("analyzing")}</Text>
                   )}
-                </View>
+                </View>}
 
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("typeLabel")}</Text>
                 <View style={styles.segRow}>
                   {TX_TYPES.map((ty) => (
                     <Pressable
                       key={ty}
-                      onPress={() => setForm((f) => ({ ...f, type: ty }))}
+                      onPress={() => { if(ty === "receivable") { setShowModal(false); router.push("/(tabs)/receivables"); return; } setForm((f) => ({ ...f, type: ty })); }}
                       style={[
                         styles.segBtn,
                         { borderColor: colors.border },
@@ -1479,26 +1544,11 @@ export default function TransactionsScreen() {
                           ? t("typeIncome")
                           : ty === "expense"
                           ? t("typeExpense")
-                          : ty === "payment"
-                          ? t("typePayment")
-                          : ty === "receipt"
-                          ? t("typeReceipt")
-                          : t("typeTransfer")}
+                          : ty === "receivable" ? t("receivables") : t("typeTransfer")}
                       </Text>
                     </Pressable>
                   ))}
                 </View>
-
-                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("amountLabel")}</Text>
-                <TextInput
-                  style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
-                  value={form.amount}
-                  onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  placeholderTextColor={colors.mutedForeground}
-                  textAlign="right"
-                />
 
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("currencyLabel")}</Text>
                 <Pressable
@@ -1603,6 +1653,7 @@ export default function TransactionsScreen() {
                   </>
                 )}
 
+<OpeningBalanceOptions accounts={accounts} accountId={form.accountId} toAccountId={form.toAccountId} type={form.type} date={form.date} source={form.includedInOpeningBalance} destination={form.destinationIncludedInOpeningBalance} onSource={v=>setForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("statusLabel")}</Text>
                 <View style={styles.segRow}>
                   {(["pending", "settled"] as const).map((st) => (
@@ -1625,6 +1676,7 @@ export default function TransactionsScreen() {
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("dateLabel")}</Text>
                 <TextInput
                   style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  editable={!savingLocal && draft.ready}
                   value={form.date}
                   onChangeText={(v) => setForm((f) => ({ ...f, date: v }))}
                   placeholder="YYYY-MM-DD"
@@ -1635,6 +1687,7 @@ export default function TransactionsScreen() {
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("descriptionLabel")}</Text>
                 <TextInput
                   style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                  editable={!savingLocal && draft.ready}
                   value={form.description}
                   onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
                   placeholder={language === "ar" ? "وصف اختياري" : "Optional description"}
@@ -1645,10 +1698,15 @@ export default function TransactionsScreen() {
                 <Pressable
                   style={[styles.saveBtn, { backgroundColor: colors.primary }, (!form.amount || creating) && { opacity: 0.5 }]}
                   onPress={handleCreate}
-                  disabled={!form.amount || creating}
+                  disabled={!form.amount || creating || savingLocal || !draft.ready || parseMutation.isPending}
                 >
                   {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t("save")}</Text>}
                 </Pressable>
+                <Pressable disabled={savingLocal || !draft.ready || !form.amount} style={{ padding: 14, alignItems: "center" }} onPress={() => { saveAnotherRef.current = true; void handleCreate(); }}>
+                  <Text style={{ color: colors.primary }}>{language === "ar" ? "حفظ وإضافة أخرى" : "Save & add another"}</Text>
+                </Pressable>
+                <Pressable disabled={savingLocal} onPress={resetForm} style={{ padding: 10, alignItems: "center" }}><Text style={{ color: colors.mutedForeground }}>{language === "ar" ? "مسودة جديدة (مسح الحقول)" : "New draft (clear fields)"}</Text></Pressable>
+                <Text style={{ color: draft.error ? "#dc2626" : colors.mutedForeground, paddingBottom: 12 }}>{draft.error ? (language === "ar" ? "تعذر حفظ المسودة؛ أبقِ النموذج مفتوحاً" : "Draft storage unavailable; keep this form open") : (language === "ar" ? "المسودة محفوظة تلقائياً على هذا الجهاز" : "Draft saved automatically on this device")}</Text>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
@@ -1677,7 +1735,7 @@ export default function TransactionsScreen() {
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={[styles.fieldLabel, { color: colors.foreground, marginTop: 0 }]}>{t("typeLabel")}</Text>
                 <View style={styles.segRow}>
-                  {TX_TYPES.map((ty) => (
+                  {TX_TYPES.filter(ty=>ty !== "receivable").map((ty) => (
                     <Pressable
                       key={ty}
                       onPress={() => setEditForm((f) => ({ ...f, type: ty }))}
@@ -1692,10 +1750,6 @@ export default function TransactionsScreen() {
                           ? t("typeIncome")
                           : ty === "expense"
                           ? t("typeExpense")
-                          : ty === "payment"
-                          ? t("typePayment")
-                          : ty === "receipt"
-                          ? t("typeReceipt")
                           : t("typeTransfer")}
                       </Text>
                     </Pressable>
@@ -1774,6 +1828,7 @@ export default function TransactionsScreen() {
                   </>
                 )}
 
+<OpeningBalanceOptions accounts={accounts} accountId={editForm.accountId} toAccountId={editForm.toAccountId} type={editForm.type} date={editForm.date} source={editForm.includedInOpeningBalance} destination={editForm.destinationIncludedInOpeningBalance} onSource={v=>setEditForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setEditForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("statusLabel")}</Text>
                 <View style={styles.segRow}>
                   {(["pending", "settled"] as const).map((st) => (

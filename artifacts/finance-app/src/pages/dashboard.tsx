@@ -1,7 +1,9 @@
+import { formatNumber } from "@workspace/api-client-react";
+import { QueryFeedback } from "@/components/query-feedback";
 import { useGetDashboardSummary, useGetRecentTransactions, useListAccounts, customFetch } from "@workspace/api-client-react";
 import { formatAmount, currencyClass, typeLabel, typeClass, statusLabel, statusClass, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Wallet, Users, Route, Clock, ArrowLeftRight, RefreshCw, AlertTriangle, X, Landmark } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Users, Route, Clock, ArrowLeftRight, RefreshCw, AlertTriangle, X, Landmark, Mic } from "lucide-react";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useSettings, convertToPrimary, toAedFrontend, getRateUnit, rateToDisplay } from "@/contexts/settings-context";
@@ -16,9 +18,9 @@ type OverdueClient = {
 };
 
 export default function Dashboard() {
-  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary();
-  const { data: recent, isLoading: loadingRecent } = useGetRecentTransactions();
-  const { data: accounts, isLoading: loadingAccounts } = useListAccounts();
+  const { data: summary, isLoading: loadingSummary, isError: summaryError, refetch: retrySummary } = useGetDashboardSummary();
+  const { data: recent, isLoading: loadingRecent, isError: recentError, refetch: retryRecent } = useGetRecentTransactions();
+  const { data: accounts, isLoading: loadingAccounts, isError: accountsError, refetch: retryAccounts } = useListAccounts();
   const { settings, effectiveRates } = useSettings();
   const { language, currencies: activeCurrencies, primaryCurrency, exchangeRateMode } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
@@ -63,6 +65,13 @@ export default function Dashboard() {
         </p>
       </div>
 
+      <Link href="/transactions/new" className="flex items-center gap-4 rounded-2xl bg-primary text-primary-foreground p-5 shadow-sm hover:opacity-90 transition-opacity">
+        <Mic className="w-9 h-9 shrink-0" /><div><span className="block text-lg font-bold">{language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction"}</span><span className="block text-sm opacity-90 mt-1">{language === "ar" ? "احكي، راجع التفاصيل، واحفظ" : "Speak, review the details, and save"}</span></div>
+      </Link>
+      {(summaryError || recentError || accountsError) && <QueryFeedback ar={language === "ar"} cached={!!summary || !!recent || !!accounts} retry={() => Promise.all([retrySummary(), retryRecent(), retryAccounts()])} />}
+      {!loadingAccounts && !accountsError && accounts?.length === 0 && <div className="rounded-2xl border border-primary/25 bg-card p-5 space-y-3"><h2 className="font-bold">{language === "ar" ? "خلينا نجهّز أول معاملة" : "Let’s set up your first entry"}</h2><p className="text-sm text-muted-foreground">{language === "ar" ? "١. ضيف حساب الكاش أو البطاقة  ٢. اختار العملة  ٣. سجّل معاملتك بصوتك" : "1. Add a cash wallet or card. 2. Choose its currency. 3. Record your transaction."}</p><Link href="/accounts" className="inline-flex rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold">{language === "ar" ? "إضافة أول حساب" : "Add your first account"}</Link></div>}
+
+      <Link href="/receivables" className="block rounded-xl border border-border bg-card p-3 text-sm text-primary">{language === "ar" ? "الذمم — تسجيل ذمة أو تحصيل دفعة. تقارير الإيرادات تشمل البيع الآجل؛ أرصدة الحسابات تعرض المال الفعلي." : "Receivables — record debts or collections. Revenue includes credit sales; account balances show actual funds."}</Link>
       {/* ── Overdue receivables alert (proactive, shown on open) ── */}
       {overdueClients.length > 0 && !overdueDismissed && (
         <Link href="/chat">
@@ -87,7 +96,7 @@ export default function Dashboard() {
                 e.stopPropagation();
                 setOverdueDismissed(true);
               }}
-              className="p-1 rounded-md hover:bg-amber-200/50 dark:hover:bg-amber-900/50 shrink-0"
+              aria-label={language === "ar" ? "إخفاء التنبيه" : "Dismiss notice"} className="p-2 rounded-md hover:bg-amber-200/50 dark:hover:bg-amber-900/50 shrink-0"
             >
               <X className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
             </button>
@@ -96,7 +105,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Accounts total + breakdown (now the primary hero card) ── */}
-      {loadingAccounts ? (
+      {accountsError && !accounts ? null : loadingAccounts ? (
         <div className="h-40 bg-card rounded-2xl border border-border animate-pulse" />
       ) : accounts && accounts.length > 0 ? (
         <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-2xl p-5 shadow-sm">
@@ -138,7 +147,7 @@ export default function Dashboard() {
               const label = unit > 1 ? `${unit.toLocaleString()} ${code}` : `1 ${code}`;
               return (
                 <span key={code} className="text-xs text-muted-foreground">
-                  {label} = {display.toFixed(unit > 1 ? 2 : 4)} AED
+                  {label} = {formatNumber(display, unit > 1 ? 2 : 4)} AED
                 </span>
               );
             })}
@@ -188,7 +197,7 @@ export default function Dashboard() {
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           {t("balanceDetails")}
         </h2>
-        {loadingSummary ? (
+        {summaryError && !summary ? null : loadingSummary ? (
           <div className="grid grid-cols-1 gap-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-28 bg-card rounded-2xl border border-border animate-pulse" />
@@ -278,7 +287,7 @@ export default function Dashboard() {
           </Link>
         </div>
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-          {loadingRecent ? (
+          {recentError && !recent ? null : loadingRecent ? (
             <div className="divide-y divide-border">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="p-4 animate-pulse">

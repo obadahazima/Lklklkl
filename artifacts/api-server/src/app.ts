@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type ErrorRequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -8,6 +8,8 @@ import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware.js";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { requireAuth } from "./middlewares/requireAuth";
+import { AUDIO_JSON_LIMIT } from "./lib/voice-input";
 
 const app: Express = express();
 
@@ -63,12 +65,6 @@ app.use(
     },
   }),
 );
-// This API only ever receives small JSON payloads (transactions, settings, etc.) — file uploads
-// like /restore go through multer with their own limit. A generous 25mb JSON limit here just
-// increases exposure to memory-pressure DoS from large bodies with no corresponding legitimate use.
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
-
 app.use(
   clerkMiddleware((req) => ({
     publishableKey: publishableKeyFromHost(
@@ -82,6 +78,24 @@ app.use("/api", generalLimiter);
 app.use("/api/ai", aiLimiter);
 app.use("/api/support", supportLimiter);
 app.use("/api/me", deleteLimiter);
+// Authenticate and rate-limit before parsing large, billable audio requests.
+app.use("/api/ai/transcribe-voice", requireAuth, express.json({ limit: AUDIO_JSON_LIMIT }));
+// Keep the smaller limit on ordinary application endpoints.
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
+
+const bodyErrorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  if (err?.type === "entity.too.large") {
+    res.status(413).json({ error: "recording_too_long", message: "الطلب كبير جداً. سجّل مقطعاً صوتياً أقصر" });
+    return;
+  }
+  if (err?.type === "entity.parse.failed") {
+    res.status(400).json({ error: "invalid_json" });
+    return;
+  }
+  next(err);
+};
+app.use(bodyErrorHandler);
 
 export default app;

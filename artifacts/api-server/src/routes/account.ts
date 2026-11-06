@@ -3,6 +3,7 @@ import { clerkClient } from "@clerk/express";
 import { db } from "@workspace/db";
 import {
   transactionsTable,
+  transactionReceiptsTable,
   clientsTable,
   tripsTable,
   accountsTable,
@@ -11,7 +12,7 @@ import {
   subscriptionsTable,
   aiUsageTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = Router();
@@ -29,6 +30,8 @@ router.delete("/me", requireAuth, async (req, res): Promise<void> => {
   const uid = req.userId;
   try {
     await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('billy.ledger.user'), hashtext(${uid}))`);
+      await tx.delete(transactionReceiptsTable).where(eq(transactionReceiptsTable.userId, uid));
       await tx.delete(transactionsTable).where(eq(transactionsTable.userId, uid));
       await tx.delete(clientsTable).where(eq(clientsTable.userId, uid));
       await tx.delete(tripsTable).where(eq(tripsTable.userId, uid));

@@ -1,3 +1,4 @@
+import { debtBalances } from "../lib/debt-math.js";
 import { db } from "@workspace/db";
 import { transactionsTable, clientsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -29,18 +30,18 @@ export async function getOverdueClients(userId: string, minDays: number = DEFAUL
     db
       .select()
       .from(transactionsTable)
-      .where(and(eq(transactionsTable.userId, userId), eq(transactionsTable.status, "pending"))),
+      .where(eq(transactionsTable.userId, userId)),
     db.select().from(clientsTable).where(eq(clientsTable.userId, userId)),
   ]);
   const clientMap = new Map(clients.map((c) => [c.id, c]));
 
   const byClient = new Map<number, { amounts: Map<string, number>; oldestDate: string }>();
-  for (const t of pending) {
+  for (const t of debtBalances(pending)) {
     if (!t.clientId) continue;
     // "payment"/"expense" tied to a named client = money paid to/for them that they still owe back.
-    if (t.type !== "payment" && t.type !== "expense") continue;
+    if (t.remaining <= 0) continue;
     const entry = byClient.get(t.clientId) ?? { amounts: new Map<string, number>(), oldestDate: t.date };
-    entry.amounts.set(t.currency, (entry.amounts.get(t.currency) ?? 0) + Number(t.amount));
+    entry.amounts.set(t.currency, (entry.amounts.get(t.currency) ?? 0) + t.remaining);
     if (t.date < entry.oldestDate) entry.oldestDate = t.date;
     byClient.set(t.clientId, entry);
   }

@@ -1,3 +1,5 @@
+import { formatNumber } from "@workspace/api-client-react";
+import { QueryFeedback } from "@/components/query-feedback";
 import { useGetClientStatement, getGetClientStatementQueryKey } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
 import { formatAmount, currencyClass, typeLabel, typeClass, statusLabel, statusClass, formatDate } from "@/lib/utils";
@@ -27,7 +29,7 @@ export default function ClientStatement() {
   const { language, exchangeRateMode, manualRates, primaryCurrency } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
-  const { data, isLoading } = useGetClientStatement(id, {
+  const { data, isLoading, isError, error, refetch } = useGetClientStatement(id, {
     query: { enabled: !!id, queryKey: getGetClientStatementQueryKey(id) },
   });
 
@@ -41,7 +43,8 @@ export default function ClientStatement() {
     );
   }
 
-  if (!data) return <div className="p-4 text-center text-muted-foreground">لم يتم العثور على الزبون</div>;
+  if (isError && (error as { status?: number })?.status !== 404) return <div className="p-4 max-w-2xl mx-auto"><QueryFeedback ar={language === "ar"} retry={refetch} /><button onClick={() => setLocation("/clients")} className="text-primary underline p-3">{language === "ar" ? "العودة للقائمة" : "Back to list"}</button></div>;
+  if (!data) return <div className="p-8 text-center space-y-4"><p>{language === "ar" ? "لم يتم العثور على هذا السجل" : "This record could not be found"}</p><button onClick={() => setLocation("/clients")} className="rounded-xl bg-primary text-primary-foreground px-4 py-3">{language === "ar" ? "العودة للقائمة" : "Back to list"}</button></div>;
 
   const { client, transactions, balances } = data;
   const apiRates = data.exchangeRates as Record<string, number> | undefined;
@@ -123,7 +126,7 @@ export default function ClientStatement() {
           {totalInPrimary === 0
             ? language === "ar" ? "مسدد بالكامل" : "Fully Settled"
             : totalInPrimary > 0
-            ? (language === "ar" ? "له " : "") + formatAmount(totalInPrimary, primaryCurrency, language)
+            ? (language === "ar" ? "عليه " : "Owes ") + formatAmount(totalInPrimary, primaryCurrency, language)
             : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(totalInPrimary), primaryCurrency, language)}
         </p>
 
@@ -148,7 +151,7 @@ export default function ClientStatement() {
                 const decimals = ["SYP", "IQD", "LBP"].includes(b.currency) ? 4 : 2;
                 return (
                   <span key={b.currency} className="text-xs text-muted-foreground">
-                    1 {b.currency} = {rate.toFixed(decimals)} AED
+                    1 {b.currency} = {formatNumber(rate, decimals)} AED
                   </span>
                 );
               })}
@@ -160,7 +163,7 @@ export default function ClientStatement() {
       {balances.length > 0 ? (
         <section>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-            {language === "ar" ? "الأرصدة المفتوحة" : "Open Balances"}
+            {language === "ar" ? "الذمم المتبقية" : "Remaining receivables"}
           </h2>
           <div className="space-y-3">
             {balances.map((b) => {
@@ -176,7 +179,7 @@ export default function ClientStatement() {
                         {b.openBalance === 0
                           ? language === "ar" ? "مسدد" : "Settled"
                           : b.openBalance > 0
-                          ? (language === "ar" ? "له " : "") + formatAmount(b.openBalance, b.currency, language)
+                          ? (language === "ar" ? "عليه " : "Owes ") + formatAmount(b.openBalance, b.currency, language)
                           : (language === "ar" ? "عليه " : "-") + formatAmount(Math.abs(b.openBalance), b.currency, language)}
                       </span>
                       {b.currency !== primaryCurrency && b.openBalance !== 0 && (

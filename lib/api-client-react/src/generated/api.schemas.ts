@@ -9,10 +9,15 @@ export interface HealthStatus {
   status: string;
 }
 
+export type TransactionAllocationsItem = {
+  debtId: number;
+  amount: number;
+};
+
 export interface Transaction {
   id: number;
   date: string;
-  /** income | expense | payment | receipt | transfer */
+  /** income | expense | transfer | receivable (legacy payment/receipt accepted) */
   type: string;
   amount: number;
   /** AED | USD | SYP */
@@ -36,14 +41,35 @@ export interface Transaction {
   toAccountId?: number | null;
   /** @nullable */
   toAccountName?: string | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   /** pending | settled */
   status: string;
+  /** @nullable */
+  collectionSummary?: string | null;
   createdAt: string;
+  allocations?: TransactionAllocationsItem[];
 }
 
 export interface TransactionInput {
+  /** Require an outstanding receivable instead of recording unmatched income */
+  collectionOnly?: boolean;
+  /**
+     * Stable client-generated UUID used to deduplicate retries
+     * @pattern ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+     */
+  clientRequestId?: string;
   date: string;
   type: string;
   amount: number;
@@ -59,6 +85,17 @@ export interface TransactionInput {
      * @nullable
      */
   toAccountId?: number | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status: string;
@@ -77,6 +114,17 @@ export interface TransactionUpdate {
   accountId?: number | null;
   /** @nullable */
   toAccountId?: number | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status?: string;
@@ -171,6 +219,8 @@ export interface TripPnl {
 
 export interface Account {
   id: number;
+  /** Saved account order; smaller positions appear first */
+  position?: number;
   name: string;
   /** cash | debit | credit */
   type: string;
@@ -180,6 +230,17 @@ export interface Account {
   initialBalance: number;
   /** initialBalance + income/receipt through this account - expense/payment through this account */
   currentBalance: number;
+  /**
+     * Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
+     * Optional total credit limit in the account currency; credit accounts only
+     * @minimum 0
+     * @nullable
+     */
+  creditLimit?: number | null;
   /** @nullable */
   notes?: string | null;
   createdAt: string;
@@ -194,6 +255,17 @@ export interface AccountInput {
   color?: string;
   /** Starting balance when the account was added, defaults to 0 */
   initialBalance?: number;
+  /**
+     * Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
+     * Optional total credit limit in the account currency; credit accounts only
+     * @minimum 0
+     * @nullable
+     */
+  creditLimit?: number | null;
   /** @nullable */
   notes?: string | null;
 }
@@ -204,11 +276,26 @@ export interface AccountUpdate {
   currency?: string;
   color?: string;
   initialBalance?: number;
+  /**
+     * Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
+     * Optional total credit limit in the account currency; credit accounts only
+     * @minimum 0
+     * @nullable
+     */
+  creditLimit?: number | null;
   /** @nullable */
   notes?: string | null;
 }
 
 export interface VoiceParseInput {
+  /**
+     * @minLength 1
+     * @maxLength 10000
+     */
   text: string;
   /**
      * User's active currency list, used to prefer a matching currency over the raw detected one
@@ -220,12 +307,27 @@ export interface VoiceParseInput {
      * @nullable
      */
   primaryCurrency?: string | null;
+  /** Caller local calendar date in YYYY-MM-DD for relative spoken dates */
+  referenceDate?: string;
 }
+
+/**
+ * @nullable
+ */
+export type VoiceParseResultStatus = typeof VoiceParseResultStatus[keyof typeof VoiceParseResultStatus] | null;
+
+
+export const VoiceParseResultStatus = {
+  pending: 'pending',
+  settled: 'settled',
+} as const;
 
 export interface VoiceParseResult {
   success: boolean;
   /** @nullable */
   type?: string | null;
+  /** @nullable */
+  status?: VoiceParseResultStatus;
   /** @nullable */
   amount?: number | null;
   /** @nullable */
@@ -283,7 +385,11 @@ export interface VoiceParseResult {
 }
 
 export interface VoiceTranscribeInput {
-  /** Base64-encoded audio data */
+  /**
+     * Base64-encoded audio data
+     * @minLength 4
+     * @maxLength 18000000
+     */
   audioBase64: string;
   /** Audio mime type (e.g. audio/m4a, audio/mp4, audio/wav) */
   mimeType: string;

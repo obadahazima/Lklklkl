@@ -1,13 +1,16 @@
+import { useAccountOrder } from "@/hooks/use-account-order";
+import { formatNumber } from "@workspace/api-client-react";
+import { QueryFeedback } from "@/components/query-feedback";
 import { useState } from "react";
 import {
-  useListAccounts,
+  localISODate, useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
   useCreateAccount,
   useUpdateAccount,
   useDeleteAccount,
   getListAccountsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, CreditCard, Wallet, Landmark, X, Pencil, Trash2 } from "lucide-react";
+import { Plus, CreditCard, Wallet, Landmark, X, Pencil, Trash2, GripVertical } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
@@ -19,7 +22,7 @@ const TYPE_ICON: Record<string, typeof Wallet> = { cash: Wallet, debit: Landmark
 // and legible against both light/dark backgrounds, and matches the "pick a wallet color" pattern
 // from apps like this.
 const ACCOUNT_COLORS = [
-  "#3B82F6", "#EF4444", "#F59E0B", "#10B981",
+  "#3B82F6", "#EF4444", "#FACC15", "#F59E0B", "#10B981",
   "#8B5CF6", "#EC4899", "#06B6D4", "#F97316",
   "#6366F1", "#14B8A6", "#84CC16", "#64748B",
 ];
@@ -31,6 +34,8 @@ export default function Accounts() {
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState("");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [openingBalanceDate, setOpeningBalanceDate] = useState(localISODate());
+  const [creditLimit, setCreditLimit] = useState("");
   const [color, setColor] = useState(ACCOUNT_COLORS[0]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -38,7 +43,9 @@ export default function Accounts() {
   const { language, primaryCurrency } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
-  const { data: accounts, isLoading } = useListAccounts();
+  const { data: accounts, isLoading, isError, refetch } = useListAccounts();
+
+  const order = useAccountOrder(accounts, language === "ar");
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
 
@@ -49,6 +56,8 @@ export default function Accounts() {
     setType("cash");
     setCurrency(primaryCurrency || "AED");
     setInitialBalance("0");
+    setOpeningBalanceDate(localISODate());
+    setCreditLimit("");
     setColor(ACCOUNT_COLORS[0]);
   };
 
@@ -87,20 +96,26 @@ export default function Accounts() {
     setType(account.type);
     setCurrency(account.currency);
     setInitialBalance(String(account.initialBalance));
+    setOpeningBalanceDate(account.openingBalanceDate || "");
+    setCreditLimit(account.creditLimit == null ? "" : String(account.creditLimit));
     setColor(account.color || ACCOUNT_COLORS[0]);
     setShowForm(true);
   }
 
   function handleSave() {
-    if (!name.trim()) return;
+    if (!name.trim() || createMutation.isPending || updateMutation.isPending) return;
+    const balance = openingAccountBalance(type, initialBalance);
+    const limit = type === "credit" ? optionalCreditLimit(creditLimit) : null;
+    if (limit !== null && !Number.isFinite(limit)) { toast({ title: language === "ar" ? "أدخل ليميت موجباً بمنزلتين عشريتين كحد أقصى، أو اتركه فارغاً" : "Enter a valid non-negative credit limit or leave it blank", variant: "destructive" }); return; }
+    if (!Number.isFinite(balance) || Math.abs(balance) >= 1e13) { toast({ title: language === "ar" ? "راجع الرصيد الافتتاحي؛ أدخل رقماً صحيحاً بمنزلتين عشريتين كحد أقصى" : "Enter a valid opening balance with at most two decimal places", variant: "destructive" }); return; }
     if (editingId) {
       updateMutation.mutate({
         id: editingId,
-        data: { name: name.trim(), type, currency, color, initialBalance: parseFloat(initialBalance) || 0 },
+        data: { name: name.trim(), type, currency, color, initialBalance: balance, openingBalanceDate: openingBalanceDate || null, creditLimit: limit },
       });
     } else {
       createMutation.mutate({
-        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: parseFloat(initialBalance) || 0 },
+        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: balance, openingBalanceDate: openingBalanceDate || null, creditLimit: limit },
       });
     }
   }
@@ -124,7 +139,7 @@ export default function Accounts() {
         <div>
           <h1 className="text-2xl font-bold">{language === "ar" ? "الحسابات" : "Accounts"}</h1>
           <p className="text-muted-foreground text-sm">
-            {accounts?.length ?? 0} {language === "ar" ? "حساب" : "accounts"}
+            {accounts?.length ?? "—"} {language === "ar" ? "حساب" : "accounts"}
           </p>
         </div>
         <button
@@ -141,7 +156,7 @@ export default function Accounts() {
         <div className="assistant-hero assistant-card rounded-xl p-3 flex flex-wrap gap-3">
           <span className="text-sm opacity-90">{language === "ar" ? "الإجمالي عبر كل الحسابات:" : "Total across all accounts:"}</span>
           {Object.entries(totalsByCurrency).map(([cur, total]) => (
-            <span key={cur} className="text-sm font-bold">{total.toFixed(2)} {cur}</span>
+            <span key={cur} className="text-sm font-bold">{formatNumber(total, 2)} {cur}</span>
           ))}
         </div>
       )}
@@ -152,7 +167,7 @@ export default function Accounts() {
             <h2 className="font-bold text-sm">
               {editingId ? (language === "ar" ? "تعديل الحساب" : "Edit account") : (language === "ar" ? "إضافة حساب" : "Add account")}
             </h2>
-            <button onClick={resetForm} className="text-muted-foreground">
+            <button aria-label={language === "ar" ? "إغلاق النموذج" : "Close form"} onClick={resetForm} className="text-muted-foreground">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -188,17 +203,31 @@ export default function Accounts() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                {language === "ar" ? "الرصيد الابتدائي (اختياري)" : "Initial balance (optional)"}
+              <label htmlFor="accounts-field-1" className="text-xs font-medium text-muted-foreground mb-1 block">
+                {type === "credit" ? (language === "ar" ? "المديونية الافتتاحية (اختياري)" : "Opening debt (optional)") : (language === "ar" ? "الرصيد الابتدائي (اختياري)" : "Initial balance (optional)")}
               </label>
-              <input
-                type="number"
-                value={initialBalance}
+              <div className="flex items-center gap-2" dir="ltr">
+              {type === "credit" && <span className="text-xl font-bold text-destructive" aria-hidden="true">−</span>}
+              <input id="accounts-field-1"
+                type="text" inputMode="decimal"
+                value={type === "credit" ? initialBalance.replace(/^\s*[-−]\s*/, "") : initialBalance}
                 onChange={(e) => setInitialBalance(e.target.value)}
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
+                aria-describedby={type === "credit" ? "credit-opening-hint" : undefined}
                 data-testid="input-account-initial-balance"
               />
+              </div>
+              {type === "credit" && <p id="credit-opening-hint" role="status" className="text-xs text-muted-foreground mt-2">
+                {language === "ar" ? "نضيف السالب تلقائياً لأنها مديونية. كتابة المبلغ بسالب مقبولة أيضاً، والإشارة تُحسب مرة واحدة." : "Debt is saved as negative automatically. You can also type a minus; it is applied only once."}
+                {Number.isFinite(openingAccountBalance(type, initialBalance)) && <strong className="block mt-1">{language === "ar" ? "سيُحفظ: " : "Will save: "}<bdi dir="ltr">{formatNumber(openingAccountBalance(type, initialBalance), 2)} {currency || primaryCurrency}</bdi></strong>}
+              </p>}
             </div>
+            <label className="block text-sm">{language === "ar" ? "الرصيد بتاريخ" : "Balance as of"}<input type="date" value={openingBalanceDate} onChange={e=>setOpeningBalanceDate(e.target.value)} className="mt-1 w-full border border-border rounded-lg px-3 py-2 bg-background"/><span className="block text-xs text-muted-foreground mt-1">{language === "ar" ? "المعاملات قبل هذا التاريخ محسوبة ضمن الرصيد تلقائياً؛ نفس اليوم وما بعده يؤثر على الرصيد بشكل طبيعي." : "Transactions before this date are automatically included in the opening balance. Same-day and later transactions affect cash normally."}</span></label>
+            {type === "credit" && <div>
+              <label htmlFor="account-credit-limit" className="text-xs font-medium text-muted-foreground mb-1 block">{language === "ar" ? "الحد الائتماني / ليميت السحب (اختياري)" : "Credit limit (optional)"}</label>
+              <input id="account-credit-limit" type="text" inputMode="decimal" value={creditLimit} onChange={e => setCreditLimit(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" placeholder={language === "ar" ? "مثلاً: 2000" : "e.g. 2000"} />
+              <p className="text-xs text-muted-foreground mt-1">{language === "ar" ? "الحد الكلي للبطاقة بنفس عملة الحساب، وليس رصيداً إضافياً." : "Total card limit in the account currency; it does not add to your balance."}</p>
+            </div>}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 {language === "ar" ? "لون الحساب" : "Account color"}
@@ -226,26 +255,31 @@ export default function Accounts() {
               className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
               data-testid="btn-save-account"
             >
-              {t("save")}
+              {createMutation.isPending || updateMutation.isPending ? t("saving") : t("save")}
             </button>
           </div>
         </div>
       )}
 
+      {isError && accounts && <QueryFeedback ar={language === "ar"} retry={refetch} cached />}
+      <p className="text-xs text-muted-foreground" role="status">{order.saving ? (language === "ar" ? "جارٍ حفظ الترتيب…" : "Saving order…") : (language === "ar" ? "اسحب الحساب من علامة السحب لتغيير ترتيبه؛ نفس الترتيب يظهر بالرئيسية." : "Drag the handle to reorder accounts; the dashboard uses the same order.")}</p>
       <div className="grid grid-cols-1 gap-3">
-        {isLoading ? (
+        {isError && !accounts ? <QueryFeedback ar={language === "ar"} retry={refetch} /> : isLoading ? (
           [1, 2, 3].map((i) => <div key={i} className="h-20 bg-card rounded-2xl border border-border animate-pulse" />)
         ) : accounts?.length === 0 ? (
           <div className="bg-card border border-border rounded-2xl p-10 text-center">
             <Wallet className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-muted-foreground">{language === "ar" ? "ما في حسابات بعد" : "No accounts yet"}</p>
+            <p className="text-sm text-muted-foreground mt-2">{language === "ar" ? "ضيف حساب الكاش أو البطاقة اللي بتستخدمها، وبعدها سجّل أول معاملة." : "Add the cash wallet or card you use, then record your first transaction."}</p>
+            <button onClick={() => { resetForm(); setShowForm(true); }} className="mt-4 rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold">{language === "ar" ? "إضافة أول حساب" : "Add your first account"}</button>
           </div>
         ) : (
-          accounts?.map((account) => {
+          order.rows.map((account) => {
             const Icon = TYPE_ICON[account.type] ?? Wallet;
             return (
-              <div key={account.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center justify-between" data-testid={`account-card-${account.id}`}>
+              <div key={account.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center justify-between" data-account-id={account.id} style={{opacity:order.draggingId === account.id?0.65:1}} data-testid={`account-card-${account.id}`}>
                 <div className="flex items-center gap-3">
+                  <button {...order.gripProps(account.id)} className="p-2 cursor-grab active:cursor-grabbing text-muted-foreground disabled:opacity-40"><GripVertical className="w-5 h-5"/></button>
                   <div
                     className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
                     style={{ backgroundColor: `${account.color}1a` }}
@@ -259,15 +293,20 @@ export default function Accounts() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={cn("text-sm font-bold", account.currentBalance >= 0 ? "text-green-600" : "text-red-600")}>
-                    {account.currentBalance.toFixed(2)} {account.currency}
+                    {formatNumber(account.currentBalance, 2)} {account.currency}
                   </span>
-                  <button onClick={() => startEdit(account)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground" data-testid={`btn-edit-account-${account.id}`}>
+                  <button onClick={() => startEdit(account)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground" aria-label={language === "ar" ? "تعديل" : "Edit"} data-testid={`btn-edit-account-${account.id}`}>
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => handleDelete(account.id)} className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive" data-testid={`btn-delete-account-${account.id}`}>
+                  <button onClick={() => handleDelete(account.id)} className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive" aria-label={language === "ar" ? "حذف" : "Delete"} disabled={deleteMutation.isPending} data-testid={`btn-delete-account-${account.id}`}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
+                {account.type === "credit" && account.creditLimit != null && <div className="w-full border-t border-border pt-3 text-xs flex flex-wrap gap-3">
+                  <span>{language === "ar" ? "الليميت: " : "Limit: "}{formatNumber(account.creditLimit, 2)} {account.currency}</span>
+                  <span>{language === "ar" ? "المتاح: " : "Available: "}{formatNumber(creditAvailability(account.currentBalance, account.creditLimit), 2)} {account.currency}</span>
+                  {account.currentBalance + account.creditLimit < 0 && <span className="text-destructive font-semibold">{language === "ar" ? "تجاوزت الحد بمقدار " : "Over limit by "}{formatNumber((-(account.currentBalance + account.creditLimit)), 2)} {account.currency}</span>}
+                </div>}
               </div>
             );
           })

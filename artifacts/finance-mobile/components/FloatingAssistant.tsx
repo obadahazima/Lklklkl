@@ -187,7 +187,7 @@ export function FloatingAssistant() {
 
               <View style={[styles.inputBar, { borderTopColor: colors.border }]}>
                 <TextInput
-                  ref={(el) => (inputRef.current = el)}
+                  ref={(el) => { inputRef.current = el; }}
                   style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
                   value={input}
                   onChangeText={setInput}

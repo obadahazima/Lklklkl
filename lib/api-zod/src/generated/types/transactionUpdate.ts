@@ -19,6 +19,17 @@ export interface TransactionUpdate {
   accountId?: number | null;
   /** @nullable */
   toAccountId?: number | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
+  /**
+     * sale | opening | loan | loan_now; receivable only
+     * @nullable
+     */
+  debtKind?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
   /** @nullable */
   description?: string | null;
   status?: string;

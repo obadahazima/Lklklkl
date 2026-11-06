@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, numeric, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -6,6 +6,7 @@ import { z } from "zod/v4";
 export const accountsTable = pgTable("accounts", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull().default(""),
+  position: integer("position").notNull().default(2147483647),
   name: text("name").notNull(),
   type: text("type").notNull(),
   currency: text("currency").notNull(),
@@ -14,6 +15,8 @@ export const accountsTable = pgTable("accounts", {
   // insert that omits it still render consistently instead of falling back to undefined.
   color: text("color").notNull().default("#3B82F6"),
   initialBalance: numeric("initial_balance", { precision: 15, scale: 2 }).notNull().default("0"),
+  openingBalanceDate: text("opening_balance_date"),
+  creditLimit: numeric("credit_limit", { precision: 15, scale: 2 }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

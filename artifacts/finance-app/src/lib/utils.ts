@@ -25,11 +25,12 @@ export function currencyClass(currency: string): string {
 
 export function typeLabel(type: string, lang: Lang = "ar"): string {
   const labels: Record<string, Record<Lang, string>> = {
-    income: { ar: "دخل", en: "Income" },
-    expense: { ar: "مصروف", en: "Expense" },
-    payment: { ar: "دفع", en: "Payment" },
-    receipt: { ar: "قبض", en: "Receipt" },
-    transfer: { ar: "تحويل", en: "Transfer" },
+    receivable: { ar: "ذمم", en: "Receivable" },
+    income: { ar: "إيرادات", en: "Income" },
+    expense: { ar: "مصروفات", en: "Expense" },
+    payment: { ar: "مصروفات", en: "Expense" },
+    receipt: { ar: "إيرادات", en: "Income" },
+    transfer: { ar: "تحويل بين الحسابات", en: "Transfer" },
   };
   return labels[type]?.[lang] ?? type;
 }

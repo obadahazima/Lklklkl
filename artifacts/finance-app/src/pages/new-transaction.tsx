@@ -1,6 +1,12 @@
+import { formatNumber } from "@workspace/api-client-react";
+import { OpeningBalanceOptions } from "@/components/opening-balance-options";
 import { useState, useRef, useEffect } from "react";
+import { useAuth } from "@clerk/react";
+import { webLedger } from "@/lib/offline-ledger";
+import { OfflineQueuePanel } from "@/components/offline-ledger";
 import {
-  useParseVoiceInput,
+  useParseVoiceInput, useManualDraft, useOfflineLedger, transactionError, manualErrorMessage,
+  transcribeVoice, localISODate, normalizeAmountInput, normalizeEntityName, voiceAccountSelection, voiceBlobPayload,
   useCreateTransaction,
   useCreateClient,
   useCreateTrip,
@@ -50,6 +56,7 @@ type ParsedData = {
   toAccountId?: number | null;
   detectedLanguage?: string | null;
   description?: string | null;
+  status?: "pending" | "settled" | null;
   date?: string | null;
   rawText?: string | null;
 };
@@ -63,6 +70,7 @@ type ClientResolutionState = ResolutionState;
 type TripResolutionState = ResolutionState;
 
 type PendingTx = {
+  includedInOpeningBalance?: boolean; destinationIncludedInOpeningBalance?: boolean;
   type: string; amount: number; currency: string;
   description: string | null; status: string; date: string;
   clientId: number | null | undefined;
@@ -133,6 +141,10 @@ export default function NewTransaction() {
   const queryClient = useQueryClient();
   const { settings } = useSettings();
   const { language, showClients, showTrips } = settings;
+  const { userId } = useAuth();
+  const offline = useOfflineLedger(webLedger, userId);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const saveAnotherRef = useRef(false);
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
   const [step, setStep] = useState<"input" | "confirm">("input");
@@ -145,8 +157,10 @@ export default function NewTransaction() {
   const [tripResolution, setTripResolution] = useState<TripResolutionState>({ kind: "idle" });
 
   const pendingTxRef = useRef<PendingTx | null>(null);
+  const saveInFlightRef = useRef(false);
 
-  const [manualForm, setManualForm] = useState({
+  const [manualForm, setManualForm, draft] = useManualDraft(webLedger, userId, {
+    includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "",
     type: "expense",
     amount: "",
     currency: settings.primaryCurrency,
@@ -156,7 +170,7 @@ export default function NewTransaction() {
     toAccountId: "",
     description: "",
     status: "pending",
-    date: new Date().toISOString().split("T")[0],
+    date: localISODate(),
   });
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
@@ -164,10 +178,31 @@ export default function NewTransaction() {
   const [addAccountTarget, setAddAccountTarget] = useState<"accountId" | "toAccountId">("accountId");
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  const parseRequestRef = useRef(0);
+  const recordingBusyRef = useRef(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
-  const { data: clients } = useListClients();
-  const { data: trips } = useListTrips();
-  const { data: accounts } = useListAccounts();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      ++parseRequestRef.current;
+      recognitionRef.current?.abort();
+      const recorder = mediaRecorderRef.current;
+      if (recorder?.state === "recording") recorder.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
+  const { data: clientsRemote } = useListClients();
+  const clients = clientsRemote ?? offline.record.references.clients;
+  const { data: tripsRemote } = useListTrips();
+  const trips = tripsRemote ?? offline.record.references.trips;
+  const { data: accountsRemote } = useListAccounts();
+  const accounts = accountsRemote ?? offline.record.references.accounts;
 
   // If there's exactly one account, default to it so most users never have to touch this field.
   useEffect(() => {
@@ -175,7 +210,7 @@ export default function NewTransaction() {
       setManualForm((f) => ({ ...f, accountId: String(accounts[0].id) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts]);
+  }, [accounts, draft.ready]);
 
   const createAccountMutation = useCreateAccount({
     mutation: {
@@ -203,37 +238,27 @@ export default function NewTransaction() {
     });
   }
 
-  const parseMutation = useParseVoiceInput({
-    mutation: {
-      onSuccess: (data) => {
-        if (data.success) {
-          setParsed(data);
-          setStep("confirm");
-          // Pre-fill the account picker(s) from what parsing matched, without clobbering
-          // any account the user may have already picked manually beforehand.
-          setManualForm((f) => ({
-            ...f,
-            accountId: data.accountId != null ? String(data.accountId) : f.accountId,
-            toAccountId: data.toAccountId != null ? String(data.toAccountId) : f.toAccountId,
-          }));
-        } else {
-          toast({ title: language === "ar" ? "لم أفهم" : "Not understood", description: data.error || (language === "ar" ? "حاولي مرة أخرى" : "Please try again"), variant: "destructive" });
-        }
-      },
-      onError: (err: unknown) => {
-        const apiErr = err as { status?: number; data?: { message?: string } };
-        if (apiErr?.status === 429) {
-          toast({
-            title: "⏳ " + (language === "ar" ? "حصة الذكاء الاصطناعي" : "AI Quota"),
-            description: apiErr.data?.message ?? (language === "ar" ? "انتهت الحصة، جربي غداً" : "Quota exceeded, try tomorrow"),
-            variant: "destructive",
-          });
-        } else {
-          toast({ title: language === "ar" ? "خطأ في التحليل" : "Analysis Error", description: language === "ar" ? "حاولي مرة أخرى" : "Please try again", variant: "destructive" });
-        }
-      },
-    },
-  });
+  const parseMutation = useParseVoiceInput();
+
+  async function analyzeText(text: string) {
+    const request = ++parseRequestRef.current;
+    try {
+      const data = await parseMutation.mutateAsync({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency, referenceDate: localISODate() } });
+      if (!mountedRef.current || request !== parseRequestRef.current) return;
+      if (data.success) {
+        setManualForm(f=>({...f,includedInOpeningBalance:"",destinationIncludedInOpeningBalance:""}));
+        setParsed(data);
+        setStep("confirm");
+        setManualForm((f) => ({ ...f, ...voiceAccountSelection(data, accounts ?? []) }));
+      } else {
+        toast({ title: language === "ar" ? "بدنا توضيح" : "Please clarify", description: data.error || (language === "ar" ? "عدّل النص وأعد التحليل" : "Edit the text and try again"), variant: "destructive" });
+      }
+    } catch (err) {
+      if (!mountedRef.current || request !== parseRequestRef.current) return;
+      const detail = (err as { data?: { message?: string; error?: string } }).data;
+      toast({ title: language === "ar" ? "خطأ في التحليل" : "Analysis error", description: detail?.message || detail?.error || (language === "ar" ? "حاول مرة أخرى" : "Please try again"), variant: "destructive" });
+    }
+  }
 
   const createClientMutation = useCreateClient({
     mutation: {
@@ -266,11 +291,13 @@ export default function NewTransaction() {
 
   const createMutation = useCreateTransaction({
     mutation: {
-      onSuccess: () => {
+      onSettled: () => { saveInFlightRef.current = false; },
+      onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetRecentTransactionsQueryKey() });
-        toast({ title: t("savedSuccess"), description: t("savedDesc") });
+        toast({ title: t("savedSuccess"), description: result.collectionSummary || t("savedDesc") });
         setLocation("/transactions");
       },
       onError: () => {
@@ -279,83 +306,111 @@ export default function NewTransaction() {
     },
   });
 
-  function toggleVoiceRecording() {
+  async function toggleVoiceRecording() {
+    if (recordingBusyRef.current || isTranscribing || parseMutation.isPending) return;
     if (isRecording) {
       recognitionRef.current?.stop();
-      setIsRecording(false);
+      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
       return;
     }
-
     type SpeechRecognitionCtor = new () => SpeechRecognition;
-    const w = window as Window & {
-      SpeechRecognition?: SpeechRecognitionCtor;
-      webkitSpeechRecognition?: SpeechRecognitionCtor;
-    };
+    const w = window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor };
     const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-
-    if (!Ctor) {
-      toast({
-        title: language === "ar" ? "الصوت غير مدعوم" : "Voice not supported",
-        description: language === "ar" ? "متصفحك لا يدعم التسجيل الصوتي — استخدم خانة النص أدناه" : "Your browser doesn't support voice recording — use the text field below",
-        variant: "destructive",
-      });
+    if (Ctor) {
+      const recognition = new Ctor();
+      recognition.lang = language === "ar" ? "ar-AE" : "en-US";
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.continuous = true;
+      let finalTranscript = "";
+      let interimTranscript = "";
+      let failed = false;
+      recordingBusyRef.current = true;
+      recognition.onstart = () => { recordingBusyRef.current = false; if (mountedRef.current) setIsRecording(true); };
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        finalTranscript = "";
+        interimTranscript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + " ";
+          else interimTranscript += event.results[i][0].transcript + " ";
+        }
+        if (mountedRef.current) setTextInput((finalTranscript + interimTranscript).trim());
+      };
+      recognition.onend = () => {
+        if (recognitionRef.current !== recognition) return;
+        recordingBusyRef.current = false;
+        recognitionRef.current = null;
+        if (!mountedRef.current) return;
+        setIsRecording(false);
+        const text = (finalTranscript + interimTranscript).trim();
+        // Keep the last interim words too; stopping early must not discard an amount.
+        if (!failed && text) { setTextInput(text); void analyzeText(text); }
+      };
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (recognitionRef.current !== recognition) return;
+        failed = true;
+        recordingBusyRef.current = false;
+        if (!mountedRef.current) return;
+        setIsRecording(false);
+        toast({ title: language === "ar" ? "تعذّر التسجيل" : "Recording error", description: event.error === "not-allowed"
+          ? (language === "ar" ? "اسمح باستخدام الميكروفون من إعدادات المتصفح" : "Allow microphone access in browser settings")
+          : (language === "ar" ? "النص المسموع محفوظ؛ عدّله واضغط تحليل أو أعد التسجيل" : "Edit the captured text and analyze it, or record again"), variant: "destructive" });
+      };
+      recognitionRef.current = recognition;
+      try { recognition.start(); } catch { recordingBusyRef.current = false; recognitionRef.current = null; toast({ title: language === "ar" ? "تعذّر بدء التسجيل" : "Could not start recording", variant: "destructive" }); }
       return;
     }
-
-    const recognition = new Ctor();
-    recognition.lang = language === "ar" ? "ar-AE" : "en-US";
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    recognition.continuous = true;
-
-    let finalTranscript = "";
-
-    recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => {
-      setIsRecording(false);
-      if (finalTranscript.trim()) {
-        setTextInput(finalTranscript.trim());
-        parseMutation.mutate({ data: { text: finalTranscript.trim(), currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
-      }
-    };
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      finalTranscript = "";
-      for (let i = 0; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript + " ";
-        }
-      }
-      setTextInput(finalTranscript.trim());
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      setIsRecording(false);
-      if ((event as unknown as { error: string }).error === "not-allowed") {
-        toast({
-          title: language === "ar" ? "إذن الميكروفون مرفوض" : "Microphone permission denied",
-          description: language === "ar" ? "يرجى السماح للتطبيق باستخدام الميكروفون من إعدادات المتصفح" : "Please allow microphone access in your browser settings",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: language === "ar" ? "خطأ في التسجيل" : "Recording error",
-          description: language === "ar" ? "لم نتمكن من التسجيل — حاولي مرة أخرى" : "Could not record — please try again",
-          variant: "destructive",
-        });
-      }
-    };
-
-    recognition.start();
-    recognitionRef.current = recognition;
+    // Browsers without SpeechRecognition can still upload real audio for transcription.
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast({ title: language === "ar" ? "الصوت غير مدعوم؛ استخدم خانة النص" : "Voice unavailable; use text input", variant: "destructive" });
+      return;
+    }
+    recordingBusyRef.current = true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
+      mediaStreamRef.current = stream;
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((mime) => MediaRecorder.isTypeSupported(mime));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current = null;
+        if (!mountedRef.current) return;
+        setIsRecording(false);
+        setIsTranscribing(true);
+        const request = ++parseRequestRef.current;
+        try {
+          const result = await transcribeVoice(await voiceBlobPayload(new Blob(chunks, { type: recorder.mimeType || "audio/webm" })));
+          if (!mountedRef.current || request !== parseRequestRef.current) return;
+          if (!result.success || !result.text) throw new Error(result.error || "لم يتم التعرف على كلام");
+          setTextInput(result.text);
+          await analyzeText(result.text);
+        } catch (err) {
+          if (mountedRef.current && request === parseRequestRef.current) toast({ title: language === "ar" ? "تعذّر تحويل الصوت" : "Transcription failed", description: (err as Error).message, variant: "destructive" });
+        } finally { if (mountedRef.current) setIsTranscribing(false); }
+      };
+      recorder.onerror = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (mountedRef.current) { setIsRecording(false); toast({ title: language === "ar" ? "فشل التسجيل، حاول مجدداً" : "Recording failed; try again", variant: "destructive" }); }
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setTextInput("");
+      setIsRecording(true);
+    } catch {
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+      toast({ title: language === "ar" ? "تعذّر التسجيل، تحقّق من إذن الميكروفون" : "Check microphone permission", variant: "destructive" });
+    } finally { recordingBusyRef.current = false; }
   }
 
   function handleParseText() {
-    if (!textInput.trim()) return;
-    parseMutation.mutate({ data: { text: textInput, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency } });
+    if (textInput.trim() && !isRecording && !isTranscribing && !parseMutation.isPending) void analyzeText(textInput.trim());
   }
 
-  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const norm = normalizeEntityName;
 
   function findSimilarClients(name: string): { id: number; name: string }[] {
     if (!clients || !name) return [];
@@ -375,7 +430,7 @@ export default function NewTransaction() {
 
   function savePendingTransaction() {
     const p = pendingTxRef.current;
-    if (!p) return;
+    if (!p || saveInFlightRef.current) return;
     if (!p.accountId) {
       toast({
         title: language === "ar" ? "لازم تحدد الحساب" : "Account required",
@@ -402,8 +457,10 @@ export default function NewTransaction() {
         return;
       }
     }
+    saveInFlightRef.current = true;
     createMutation.mutate({
       data: {
+        includedInOpeningBalance: p.includedInOpeningBalance, destinationIncludedInOpeningBalance: p.destinationIncludedInOpeningBalance,
         type: p.type,
         amount: p.amount,
         currency: p.currency,
@@ -441,7 +498,8 @@ export default function NewTransaction() {
       if (aiId != null) { p.clientId = aiId; }
       else if (!name) { p.clientId = null; }
       else {
-        const exact = clients?.find((c) => norm(c.name) === norm(name));
+        const exactMatches = clients?.filter((c) => norm(c.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) { p.clientId = exact.id; }
         else {
           const similar = findSimilarClients(name);
@@ -457,7 +515,8 @@ export default function NewTransaction() {
       if (aiId != null) { p.tripId = aiId; }
       else if (!name) { p.tripId = null; }
       else {
-        const exact = trips?.find((t) => norm(t.name) === norm(name));
+        const exactMatches = trips?.filter((t) => norm(t.name) === norm(name)) ?? [];
+        const exact = exactMatches.length === 1 ? exactMatches[0] : undefined;
         if (exact) { p.tripId = exact.id; }
         else {
           const similar = findSimilarTrips(name);
@@ -472,13 +531,18 @@ export default function NewTransaction() {
 
   function handleConfirm() {
     if (!parsed) return;
+    if (!Number.isFinite(parsed.amount) || !parsed.amount || parsed.amount <= 0) {
+      toast({ title: language === "ar" ? "أدخل مبلغاً صحيحاً أكبر من الصفر" : "Enter a valid positive amount", variant: "destructive" });
+      return;
+    }
     pendingTxRef.current = {
+      includedInOpeningBalance: manualForm.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: manualForm.destinationIncludedInOpeningBalance === "true",
       type: parsed.type || "expense",
       amount: parsed.amount || 0,
-      currency: parsed.currency || "AED",
+      currency: parsed.currency || settings.primaryCurrency,
       description: parsed.description ?? null,
-      status: "pending",
-      date: parsed.date || new Date().toISOString().split("T")[0],
+      status: parsed.status === "settled" ? "settled" : "pending",
+      date: parsed.date || localISODate(),
       clientId: undefined,
       tripId: undefined,
       accountId: manualForm.accountId ? parseInt(manualForm.accountId) : null,
@@ -523,56 +587,37 @@ export default function NewTransaction() {
     advanceResolutionChain();
   }
 
-  function handleManualSubmit(e: React.FormEvent) {
+  async function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const amt = parseFloat(manualForm.amount);
-    if (!manualForm.amount || isNaN(amt) || amt <= 0) {
-      toast({ title: language === "ar" ? "مبلغ غير صحيح" : "Invalid amount", description: language === "ar" ? "أدخل مبلغاً أكبر من الصفر" : "Enter an amount greater than zero", variant: "destructive" });
-      return;
-    }
-    if (!manualForm.accountId) {
-      toast({
-        title: language === "ar" ? "لازم تحدد الحساب" : "Account required",
-        description: language === "ar" ? "اختر من أي حساب أو بطاقة طلعت/دخلت المصاري" : "Choose which account/card this transaction went through",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (manualForm.type === "transfer") {
-      if (!manualForm.toAccountId) {
-        toast({
-          title: language === "ar" ? "لازم تحدد الحساب الوجهة" : "Destination account required",
-          description: language === "ar" ? "اختر الحساب اللي دخلت فيه المصاري" : "Choose the account the money went into",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (manualForm.toAccountId === manualForm.accountId) {
-        toast({
-          title: language === "ar" ? "الحسابان متطابقان" : "Same account chosen twice",
-          description: language === "ar" ? "لازم يكون الحساب المصدر والوجهة مختلفين" : "Source and destination accounts must differ",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-    createMutation.mutate({
-      data: {
-        type: manualForm.type,
-        amount: amt,
-        currency: manualForm.currency,
-        clientId: manualForm.type === "transfer" ? null : (manualForm.clientId ? parseInt(manualForm.clientId) : null),
-        tripId: manualForm.type === "transfer" ? null : (manualForm.tripId ? parseInt(manualForm.tripId) : null),
-        accountId: parseInt(manualForm.accountId),
-        toAccountId: manualForm.type === "transfer" ? parseInt(manualForm.toAccountId) : null,
-        description: manualForm.description || null,
-        status: manualForm.status,
-        date: manualForm.date,
-      },
-    });
+    if (saveInFlightRef.current || !draft.ready || !userId) return;
+    const payload = {
+      includedInOpeningBalance: manualForm.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: manualForm.destinationIncludedInOpeningBalance === "true",
+      type: manualForm.type, amount: normalizeAmountInput(manualForm.amount), currency: manualForm.currency,
+      clientId: manualForm.type === "transfer" ? null : (manualForm.clientId ? Number(manualForm.clientId) : null),
+      tripId: manualForm.type === "transfer" ? null : (manualForm.tripId ? Number(manualForm.tripId) : null),
+      accountId: Number(manualForm.accountId), toAccountId: manualForm.type === "transfer" ? Number(manualForm.toAccountId) : null,
+      description: manualForm.description || null, status: manualForm.status, date: manualForm.date,
+    };
+    const error = transactionError(payload) ?? (!settings.currencies.includes(payload.currency) ? "invalid_currency" : null);
+    if (error) { toast({ title: manualErrorMessage(error, language === "ar"), variant: "destructive" }); return; }
+    saveInFlightRef.current = true;
+    setSavingLocal(true);
+    try {
+      await webLedger.enqueue(userId, payload, draft.id);
+      const next = { ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "", date: localISODate() };
+      const nextDraft = { id: webLedger.uuid(), values: next };
+      await webLedger.saveDraft(userId, nextDraft.id, next).catch(() => {});
+      draft.restore(nextDraft);
+      toast({ title: language === "ar" ? "حُفظت المعاملة على الجهاز" : "Saved on this device", description: language === "ar" ? "ستظهر بحسابك بعد المزامنة؛ يمكنك متابعة الإدخال" : "It will appear in your account after syncing. You can keep entering transactions." });
+      if (saveAnotherRef.current) requestAnimationFrame(() => amountInputRef.current?.focus());
+      else setLocation("/transactions");
+    } catch {
+      toast({ title: language === "ar" ? "تعذر الحفظ المحلي؛ بياناتك ما زالت بالنموذج" : "Local save failed; your form is still here", variant: "destructive" });
+    } finally { saveInFlightRef.current = false; setSavingLocal(false); saveAnotherRef.current = false; }
   }
 
-  const isLoading = createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createAccountMutation.isPending;
+  const [savingLocal, setSavingLocal] = useState(false);
+  const isLoading = savingLocal || createMutation.isPending || createClientMutation.isPending || createTripMutation.isPending || createAccountMutation.isPending;
   const ChevronBack = language === "ar" ? ChevronRight : ChevronLeft;
 
   return (
@@ -591,6 +636,8 @@ export default function NewTransaction() {
         </div>
       </div>
 
+      <OfflineQueuePanel owner={userId} ar={language === "ar"} onRecover={(recovered) => { draft.restore(recovered); setStep("input"); }} />
+      {draft.error && <p role="alert" className="text-red-600">{language === "ar" ? "تعذر حفظ المسودة محلياً؛ أبقِ الصفحة مفتوحة" : "Draft storage unavailable; keep this page open"}</p>}
       {/* ── Client Resolution Modal ── */}
       {clientResolution.kind !== "idle" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -777,45 +824,56 @@ export default function NewTransaction() {
       {step === "input" ? (
         <div className="space-y-5">
           {/* Voice toggle button */}
-          <div className="flex flex-col items-center py-8 bg-card border border-border rounded-2xl shadow-sm">
-            <p className="text-sm text-muted-foreground mb-2 text-center px-4">
-              {t("voiceHint")}
-            </p>
-            <p className="text-xs text-muted-foreground/70 mb-5 text-center px-4">
-              {t("voiceExample")}
-            </p>
+          <section className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 sm:p-5 space-y-3" aria-label={language === "ar" ? "إضافة معاملة بالصوت" : "Add a transaction by voice"}>
             <button
+              type="button"
               onClick={toggleVoiceRecording}
-              disabled={parseMutation.isPending}
+              disabled={(parseMutation.isPending || isTranscribing)}
+              aria-pressed={isRecording}
               className={cn(
-                "w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 select-none",
+                "w-full min-h-32 rounded-2xl flex items-center justify-center gap-4 px-4 py-5 text-white shadow-lg transition-colors select-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:opacity-70",
                 isRecording
-                  ? "bg-red-500 scale-105 animate-recording"
-                  : parseMutation.isPending
-                  ? "bg-muted cursor-not-allowed"
+                  ? "bg-red-600 hover:bg-red-700"
                   : "bg-primary hover:bg-primary/90 active:scale-95"
               )}
               data-testid="btn-voice-record"
             >
-              {parseMutation.isPending ? (
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white/20">
+              {(parseMutation.isPending || isTranscribing) ? (
                 <Loader2 className="w-9 h-9 text-white animate-spin" />
               ) : isRecording ? (
                 <MicOff className="w-9 h-9 text-white" />
               ) : (
                 <Mic className="w-9 h-9 text-white" />
               )}
+              </span>
+              <span className="text-start space-y-1">
+                <span className="block text-xl sm:text-2xl font-bold">{(parseMutation.isPending || isTranscribing)
+                  ? (language === "ar" ? "جاري فهم معاملتك…" : "Understanding your transaction…")
+                  : isRecording
+                  ? (language === "ar" ? "إيقاف التسجيل وتحليل المعاملة" : "Stop recording and analyze")
+                  : (language === "ar" ? "سجّل معاملتك بصوتك" : "Record your transaction")}</span>
+                <span className="block text-sm opacity-90">{isRecording
+                  ? (language === "ar" ? "اضغط لما تخلّص الحكي" : "Tap when you finish speaking")
+                  : (language === "ar" ? "اضغط واحكي، وبيلي بيرتّب التفاصيل" : "Tap and speak. Billy fills in the details.")}</span>
+              </span>
             </button>
+            <p className="text-sm text-muted-foreground text-center">{t("voiceExample")}</p>
+            <p className="text-xs text-muted-foreground text-center">{language === "ar" ? "التسجيل والتحليل بيحتاجوا إنترنت · بتراجع المعاملة قبل حفظها" : "Internet required · Review your transaction before saving"}</p>
+            {textInput && <p className="rounded-xl bg-card p-3 text-sm break-words" aria-live="polite">{textInput}</p>}
             {isRecording && (
               <p className="text-red-500 text-sm mt-4 font-semibold animate-pulse">
                 {t("recording")}
               </p>
             )}
-            {parseMutation.isPending && (
+            {(parseMutation.isPending || isTranscribing) && (
               <p className="text-muted-foreground text-sm mt-4">{t("analyzing")}</p>
             )}
-          </div>
+          </section>
 
           {/* Text input */}
+          <details className="rounded-xl border border-border p-3">
+            <summary className="cursor-pointer text-sm font-medium">{language === "ar" ? "أو اكتب المعاملة بجملة" : "Or describe your transaction in text"}</summary>
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">{t("orTypeDirectly")}</p>
             <div className="flex gap-2">
@@ -830,14 +888,15 @@ export default function NewTransaction() {
               />
               <button
                 onClick={handleParseText}
-                disabled={parseMutation.isPending || !textInput.trim()}
+                disabled={parseMutation.isPending || isTranscribing || isRecording || !textInput.trim()}
                 className="bg-primary text-primary-foreground px-4 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 whitespace-nowrap"
                 data-testid="btn-parse-text"
               >
-                {parseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("analyzeBtn")}
+                {(parseMutation.isPending || isTranscribing) ? <Loader2 className="w-4 h-4 animate-spin" /> : t("analyzeBtn")}
               </button>
             </div>
           </div>
+          </details>
 
           {/* Divider */}
           <div className="flex items-center gap-3">
@@ -847,14 +906,30 @@ export default function NewTransaction() {
           </div>
 
           {/* Manual form */}
-          <form onSubmit={handleManualSubmit} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+          <form onSubmit={handleManualSubmit} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); saveAnotherRef.current = true; event.currentTarget.requestSubmit(); } }} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+            <fieldset disabled={savingLocal || !draft.ready} className="contents">
+            <div>
+              <label htmlFor="new-transaction-field-1" className="text-xs font-medium text-muted-foreground mb-1 block">{t("amountLabel")}</label>
+              <input id="new-transaction-field-1"
+                type="text"
+                inputMode="decimal"
+                ref={amountInputRef}
+                value={manualForm.amount}
+                onChange={(e) => setManualForm({ ...manualForm, amount: e.target.value })}
+                placeholder="0.00"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
+                data-testid="input-amount"
+                required
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("typeLabel")}</label>
-                <select
+                <label htmlFor="new-transaction-field-2" className="text-xs font-medium text-muted-foreground mb-1 block">{t("typeLabel")}</label>
+                <select id="new-transaction-field-2"
                   value={manualForm.type}
                   onChange={(e) => {
                     const newType = e.target.value;
+                    if (newType === "receivable") { setLocation("/receivables"); return; }
                     setManualForm((f) => ({
                       ...f,
                       type: newType,
@@ -869,14 +944,13 @@ export default function NewTransaction() {
                 >
                   <option value="income">{t("typeIncome")}</option>
                   <option value="expense">{t("typeExpense")}</option>
-                  <option value="payment">{t("typePayment")}</option>
-                  <option value="receipt">{t("typeReceipt")}</option>
                   <option value="transfer">{t("typeTransfer")}</option>
+                  <option value="receivable">{t("receivables")}</option>
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("currencyLabel")}</label>
-                <select
+                <label htmlFor="new-transaction-field-3" className="text-xs font-medium text-muted-foreground mb-1 block">{t("currencyLabel")}</label>
+                <select id="new-transaction-field-3"
                   value={manualForm.currency}
                   onChange={(e) => setManualForm({ ...manualForm, currency: e.target.value })}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -887,18 +961,6 @@ export default function NewTransaction() {
                   ))}
                 </select>
               </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("amountLabel")}</label>
-              <input
-                type="number"
-                value={manualForm.amount}
-                onChange={(e) => setManualForm({ ...manualForm, amount: e.target.value })}
-                placeholder="0.00"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
-                data-testid="input-amount"
-                required
-              />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
@@ -917,7 +979,7 @@ export default function NewTransaction() {
                   <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                   {accounts?.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                      {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                     </option>
                   ))}
                 </select>
@@ -960,7 +1022,7 @@ export default function NewTransaction() {
                     <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                     {accounts?.filter((a) => String(a.id) !== manualForm.accountId).map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                        {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                       </option>
                     ))}
                   </select>
@@ -992,8 +1054,8 @@ export default function NewTransaction() {
               <div className="grid grid-cols-2 gap-3">
                 {showClients && (
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
-                    <select
+                    <label htmlFor="new-transaction-field-4" className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
+                    <select id="new-transaction-field-4"
                       value={manualForm.clientId}
                       onChange={(e) => setManualForm({ ...manualForm, clientId: e.target.value })}
                       className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1008,8 +1070,8 @@ export default function NewTransaction() {
                 )}
                 {showTrips && (
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
-                    <select
+                    <label htmlFor="new-transaction-field-5" className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
+                    <select id="new-transaction-field-5"
                       value={manualForm.tripId}
                       onChange={(e) => setManualForm({ ...manualForm, tripId: e.target.value })}
                       className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1025,8 +1087,8 @@ export default function NewTransaction() {
               </div>
             )}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("dateLabel")}</label>
-              <input
+              <label htmlFor="new-transaction-field-6" className="text-xs font-medium text-muted-foreground mb-1 block">{t("dateLabel")}</label>
+              <input id="new-transaction-field-6"
                 type="date"
                 value={manualForm.date}
                 onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
@@ -1035,8 +1097,8 @@ export default function NewTransaction() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("descriptionLabel")}</label>
-              <input
+              <label htmlFor="new-transaction-field-7" className="text-xs font-medium text-muted-foreground mb-1 block">{t("descriptionLabel")}</label>
+              <input id="new-transaction-field-7"
                 type="text"
                 value={manualForm.description}
                 onChange={(e) => setManualForm({ ...manualForm, description: e.target.value })}
@@ -1046,8 +1108,8 @@ export default function NewTransaction() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
-              <select
+              <label htmlFor="new-transaction-field-8" className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
+              <select id="new-transaction-field-8"
                 value={manualForm.status}
                 onChange={(e) => setManualForm({ ...manualForm, status: e.target.value })}
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1057,15 +1119,23 @@ export default function NewTransaction() {
                 <option value="settled">{t("statusSettled")}</option>
               </select>
             </div>
+            <OpeningBalanceOptions accounts={accounts} accountId={manualForm.accountId} toAccountId={manualForm.toAccountId} type={manualForm.type} date={manualForm.date} source={manualForm.includedInOpeningBalance} destination={manualForm.destinationIncludedInOpeningBalance} onSource={v=>setManualForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setManualForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !draft.ready}
+              onClick={() => { saveAnotherRef.current = false; }}
               className="w-full bg-primary text-primary-foreground py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
               data-testid="btn-submit-manual"
             >
               {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
               {t("newTransaction")}
             </button>
+            <button type="submit" disabled={isLoading || !draft.ready} onClick={() => { saveAnotherRef.current = true; }} className="w-full border border-primary text-primary py-3 rounded-xl font-semibold">
+              {language === "ar" ? "حفظ وإضافة أخرى · Ctrl+Enter" : "Save & add another · Ctrl+Enter"}
+            </button>
+            <button type="button" disabled={isLoading} onClick={() => draft.reset({ ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "", date: localISODate() })} className="w-full text-sm text-muted-foreground py-2">{language === "ar" ? "مسودة جديدة (مسح الحقول)" : "New draft (clear fields)"}</button>
+            <p className="text-xs text-muted-foreground">{language === "ar" ? "تُحفظ المسودة تلقائياً على هذا الجهاز" : "Draft saved automatically on this device"}</p>
+            </fieldset>
           </form>
         </div>
       ) : (
@@ -1086,42 +1156,41 @@ export default function NewTransaction() {
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <label htmlFor="new-transaction-field-9" className="text-xs font-medium text-muted-foreground mb-1 block">
                   {language === "ar" ? "نوع العملية" : "Type"}
                 </label>
-                <select
+                <select id="new-transaction-field-9"
                   value={parsed?.type ?? "expense"}
-                  onChange={(e) => setParsed((p) => (p ? { ...p, type: e.target.value } : p))}
+                  onChange={(e) => { if(e.target.value === "receivable") { setLocation("/receivables"); return; } setParsed((p) => (p ? { ...p, type: e.target.value } : p)); }}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
                   data-testid="select-type-confirm"
                 >
                   <option value="income">{t("typeIncome")}</option>
                   <option value="expense">{t("typeExpense")}</option>
-                  <option value="payment">{t("typePayment")}</option>
-                  <option value="receipt">{t("typeReceipt")}</option>
                   <option value="transfer">{t("typeTransfer")}</option>
+                  <option value="receivable">{t("receivables")}</option>
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  <label htmlFor="new-transaction-field-10" className="text-xs font-medium text-muted-foreground mb-1 block">
                     {language === "ar" ? "المبلغ" : "Amount"}
                   </label>
-                  <input
+                  <input id="new-transaction-field-10"
                     type="number"
                     value={parsed?.amount ?? ""}
-                    onChange={(e) => setParsed((p) => (p ? { ...p, amount: e.target.value === "" ? null : parseFloat(e.target.value) } : p))}
+                    onChange={(e) => setParsed((p) => (p ? { ...p, amount: e.target.value === "" ? null : normalizeAmountInput(e.target.value) } : p))}
                     placeholder="0.00"
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm font-semibold text-primary bg-background"
                     data-testid="input-amount-confirm"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  <label htmlFor="new-transaction-field-11" className="text-xs font-medium text-muted-foreground mb-1 block">
                     {language === "ar" ? "العملة" : "Currency"}
                   </label>
-                  <select
+                  <select id="new-transaction-field-11"
                     value={parsed?.currency ?? settings.primaryCurrency}
                     onChange={(e) => setParsed((p) => (p ? { ...p, currency: e.target.value } : p))}
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
@@ -1138,8 +1207,8 @@ export default function NewTransaction() {
                 <div className="grid grid-cols-2 gap-3">
                   {showClients && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
-                      <select
+                      <label htmlFor="new-transaction-field-12" className="text-xs font-medium text-muted-foreground mb-1 block">{t("clientLabel")}</label>
+                      <select id="new-transaction-field-12"
                         value={parsed?.clientId != null ? String(parsed.clientId) : ""}
                         onChange={(e) => {
                           const id = e.target.value ? Number(e.target.value) : null;
@@ -1163,8 +1232,8 @@ export default function NewTransaction() {
                   )}
                   {showTrips && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
-                      <select
+                      <label htmlFor="new-transaction-field-13" className="text-xs font-medium text-muted-foreground mb-1 block">{t("tripLabel")}</label>
+                      <select id="new-transaction-field-13"
                         value={parsed?.tripId != null ? String(parsed.tripId) : ""}
                         onChange={(e) => {
                           const id = e.target.value ? Number(e.target.value) : null;
@@ -1190,10 +1259,10 @@ export default function NewTransaction() {
               )}
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <label htmlFor="new-transaction-field-14" className="text-xs font-medium text-muted-foreground mb-1 block">
                   {language === "ar" ? "الوصف" : "Description"}
                 </label>
-                <input
+                <input id="new-transaction-field-14"
                   type="text"
                   value={parsed?.description ?? ""}
                   onChange={(e) => setParsed((p) => (p ? { ...p, description: e.target.value } : p))}
@@ -1204,12 +1273,20 @@ export default function NewTransaction() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <label htmlFor="new-transaction-field-15" className="text-xs font-medium text-muted-foreground mb-1 block">{t("statusLabel")}</label>
+                <select id="new-transaction-field-15" value={parsed?.status ?? "pending"} onChange={(e) => setParsed((p) => p ? { ...p, status: e.target.value as "pending" | "settled" } : p)}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" data-testid="select-status-confirm">
+                  <option value="pending">{t("statusPending")}</option>
+                  <option value="settled">{t("statusSettled")}</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="new-transaction-field-16" className="text-xs font-medium text-muted-foreground mb-1 block">
                   {language === "ar" ? "التاريخ" : "Date"}
                 </label>
-                <input
+                <input id="new-transaction-field-16"
                   type="date"
-                  value={parsed?.date ?? new Date().toISOString().split("T")[0]}
+                  value={parsed?.date ?? localISODate()}
                   onChange={(e) => setParsed((p) => (p ? { ...p, date: e.target.value } : p))}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
                   data-testid="input-date-confirm"
@@ -1277,7 +1354,7 @@ export default function NewTransaction() {
                 <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                 {accounts?.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                    {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                   </option>
                 ))}
               </select>
@@ -1321,7 +1398,7 @@ export default function NewTransaction() {
                   <option value="">{language === "ar" ? "اختر حساب..." : "Select account..."}</option>
                   {accounts?.filter((a) => String(a.id) !== manualForm.accountId).map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} ({a.currentBalance.toFixed(2)} {a.currency})
+                      {a.name} ({formatNumber(a.currentBalance, 2)} {a.currency})
                     </option>
                   ))}
                 </select>
@@ -1350,6 +1427,7 @@ export default function NewTransaction() {
             </div>
           )}
 
+<OpeningBalanceOptions accounts={accounts} accountId={manualForm.accountId} toAccountId={manualForm.toAccountId} type={parsed?.type || manualForm.type} date={parsed?.date || manualForm.date} source={manualForm.includedInOpeningBalance} destination={manualForm.destinationIncludedInOpeningBalance} onSource={v=>setManualForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setManualForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => {
@@ -1363,6 +1441,7 @@ export default function NewTransaction() {
               <XCircle className="w-4 h-4" />
               {t("cancel")}
             </button>
+
             <button
               onClick={() => {
                 if (!manualForm.accountId) {

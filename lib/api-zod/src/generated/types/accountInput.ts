@@ -15,6 +15,17 @@ export interface AccountInput {
   color?: string;
   /** Starting balance when the account was added, defaults to 0 */
   initialBalance?: number;
+  /**
+     * Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
+     * Optional total credit limit in the account currency; credit accounts only
+     * @minimum 0
+     * @nullable
+     */
+  creditLimit?: number | null;
   /** @nullable */
   notes?: string | null;
 }

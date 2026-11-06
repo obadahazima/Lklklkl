@@ -1,4 +1,4 @@
-import { useGetTripPnl } from "@workspace/api-client-react";
+import { getGetTripPnlQueryKey, useGetTripPnl } from "@workspace/api-client-react";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -50,7 +50,7 @@ export default function TripDetailScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const { data, isLoading } = useGetTripPnl(tripId, { query: { enabled: !!tripId } });
+  const { data, isLoading } = useGetTripPnl(tripId, { query: { queryKey: getGetTripPnlQueryKey(tripId), enabled: Number.isInteger(tripId) && tripId > 0 } });
 
   if (isLoading) {
     return (

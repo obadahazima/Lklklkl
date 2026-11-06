@@ -31,7 +31,7 @@ export const ListTransactionsQueryParams = zod.object({
 export const ListTransactionsResponseItem = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -42,9 +42,18 @@ export const ListTransactionsResponseItem = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "includedInOpeningBalance": zod.boolean().optional().describe('Already reflected in source\/account opening balance; retain reporting but skip this cash effect'),
+  "destinationIncludedInOpeningBalance": zod.boolean().optional().describe('Transfer destination independently already reflects this amount'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 export const ListTransactionsResponse = zod.array(ListTransactionsResponseItem)
 
@@ -52,7 +61,12 @@ export const ListTransactionsResponse = zod.array(ListTransactionsResponseItem)
 /**
  * @summary Create a transaction
  */
+export const createTransactionBodyClientRequestIdRegExp = new RegExp('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+
+
 export const CreateTransactionBody = zod.object({
+  "collectionOnly": zod.boolean().optional().describe('Require an outstanding receivable instead of recording unmatched income'),
+  "clientRequestId": zod.string().regex(createTransactionBodyClientRequestIdRegExp).optional().describe('Stable client-generated UUID used to deduplicate retries'),
   "date": zod.string(),
   "type": zod.string(),
   "amount": zod.number(),
@@ -61,6 +75,10 @@ export const CreateTransactionBody = zod.object({
   "tripId": zod.number().nullish(),
   "accountId": zod.number().describe('Required — which cash\/debit\/credit account this transaction moved through. For type=transfer, this is the source account.'),
   "toAccountId": zod.number().nullish().describe('Required when type=transfer — the destination account. Must differ from accountId.'),
+  "includedInOpeningBalance": zod.boolean().optional().describe('Already reflected in source\/account opening balance; retain reporting but skip this cash effect'),
+  "destinationIncludedInOpeningBalance": zod.boolean().optional().describe('Transfer destination independently already reflects this amount'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string()
 })
@@ -73,7 +91,7 @@ export const GetTransactionParams = zod.object({
 export const GetTransactionResponse = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -84,9 +102,18 @@ export const GetTransactionResponse = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "includedInOpeningBalance": zod.boolean().optional().describe('Already reflected in source\/account opening balance; retain reporting but skip this cash effect'),
+  "destinationIncludedInOpeningBalance": zod.boolean().optional().describe('Transfer destination independently already reflects this amount'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 
 
@@ -103,6 +130,10 @@ export const UpdateTransactionBody = zod.object({
   "tripId": zod.number().nullish(),
   "accountId": zod.number().nullish(),
   "toAccountId": zod.number().nullish(),
+  "includedInOpeningBalance": zod.boolean().optional().describe('Already reflected in source\/account opening balance; retain reporting but skip this cash effect'),
+  "destinationIncludedInOpeningBalance": zod.boolean().optional().describe('Transfer destination independently already reflects this amount'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().optional()
 })
@@ -110,7 +141,7 @@ export const UpdateTransactionBody = zod.object({
 export const UpdateTransactionResponse = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -121,9 +152,18 @@ export const UpdateTransactionResponse = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "includedInOpeningBalance": zod.boolean().optional().describe('Already reflected in source\/account opening balance; retain reporting but skip this cash effect'),
+  "destinationIncludedInOpeningBalance": zod.boolean().optional().describe('Transfer destination independently already reflects this amount'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 
 
@@ -207,7 +247,7 @@ export const GetClientStatementResponse = zod.object({
   "transactions": zod.array(zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -218,9 +258,18 @@ export const GetClientStatementResponse = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "includedInOpeningBalance": zod.boolean().optional().describe('Already reflected in source\/account opening balance; retain reporting but skip this cash effect'),
+  "destinationIncludedInOpeningBalance": zod.boolean().optional().describe('Transfer destination independently already reflects this amount'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })),
   "balances": zod.array(zod.object({
   "currency": zod.string(),
@@ -324,18 +373,29 @@ export const GetTripPnlResponse = zod.object({
 /**
  * @summary List all accounts with computed current balance
  */
+export const listAccountsResponseCreditLimitMin = 0;
+
+
+
 export const ListAccountsResponseItem = zod.object({
   "id": zod.number(),
+  "position": zod.number().optional().describe('Saved account order; smaller positions appear first'),
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
+  "creditLimit": zod.number().min(listAccountsResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListAccountsResponse = zod.array(ListAccountsResponseItem)
+
+
+export const createAccountBodyCreditLimitMin = 0;
+
 
 
 export const CreateAccountBody = zod.object({
@@ -344,6 +404,8 @@ export const CreateAccountBody = zod.object({
   "currency": zod.string(),
   "color": zod.string().optional().describe('Hex color (e.g. #3B82F6), defaults to a neutral blue if omitted'),
   "initialBalance": zod.number().optional().describe('Starting balance when the account was added, defaults to 0'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
+  "creditLimit": zod.number().min(createAccountBodyCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish()
 })
 
@@ -352,14 +414,21 @@ export const GetAccountParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const getAccountResponseCreditLimitMin = 0;
+
+
+
 export const GetAccountResponse = zod.object({
   "id": zod.number(),
+  "position": zod.number().optional().describe('Saved account order; smaller positions appear first'),
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
+  "creditLimit": zod.number().min(getAccountResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
 })
@@ -369,23 +438,36 @@ export const UpdateAccountParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateAccountBodyCreditLimitMin = 0;
+
+
+
 export const UpdateAccountBody = zod.object({
   "name": zod.string().optional(),
   "type": zod.string().optional(),
   "currency": zod.string().optional(),
   "color": zod.string().optional(),
   "initialBalance": zod.number().optional(),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
+  "creditLimit": zod.number().min(updateAccountBodyCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish()
 })
 
+export const updateAccountResponseCreditLimitMin = 0;
+
+
+
 export const UpdateAccountResponse = zod.object({
   "id": zod.number(),
+  "position": zod.number().optional().describe('Saved account order; smaller positions appear first'),
   "name": zod.string(),
   "type": zod.string().describe('cash | debit | credit'),
   "currency": zod.string(),
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
+  "creditLimit": zod.number().min(updateAccountResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
 })
@@ -399,15 +481,21 @@ export const DeleteAccountParams = zod.object({
 /**
  * @summary Parse voice/text input and extract structured transaction data
  */
+export const parseVoiceInputBodyTextMax = 10000;
+
+
+
 export const ParseVoiceInputBody = zod.object({
-  "text": zod.string(),
+  "text": zod.string().min(1).max(parseVoiceInputBodyTextMax),
   "currencies": zod.array(zod.string()).nullish().describe('User\'s active currency list, used to prefer a matching currency over the raw detected one'),
-  "primaryCurrency": zod.string().nullish().describe('User\'s preferred default currency, used as a fallback when no currency is detected\/matched')
+  "primaryCurrency": zod.string().nullish().describe('User\'s preferred default currency, used as a fallback when no currency is detected\/matched'),
+  "referenceDate": zod.string().optional().describe('Caller local calendar date in YYYY-MM-DD for relative spoken dates')
 })
 
 export const ParseVoiceInputResponse = zod.object({
   "success": zod.boolean(),
   "type": zod.string().nullish(),
+  "status": zod.union([zod.literal('pending'),zod.literal('settled'),zod.literal(null)]).nullish(),
   "amount": zod.number().nullish(),
   "currency": zod.string().nullish(),
   "clientName": zod.string().nullish(),
@@ -429,8 +517,13 @@ export const ParseVoiceInputResponse = zod.object({
 /**
  * @summary Transcribe recorded audio to text using AI
  */
+export const transcribeVoiceBodyAudioBase64Min = 4;
+export const transcribeVoiceBodyAudioBase64Max = 18000000;
+
+
+
 export const TranscribeVoiceBody = zod.object({
-  "audioBase64": zod.string().describe('Base64-encoded audio data'),
+  "audioBase64": zod.string().min(transcribeVoiceBodyAudioBase64Min).max(transcribeVoiceBodyAudioBase64Max).describe('Base64-encoded audio data'),
   "mimeType": zod.string().describe('Audio mime type (e.g. audio\/m4a, audio\/mp4, audio\/wav)')
 })
 
@@ -485,7 +578,7 @@ export const GetDashboardSummaryResponse = zod.object({
 export const GetRecentTransactionsResponseItem = zod.object({
   "id": zod.number(),
   "date": zod.string(),
-  "type": zod.string().describe('income | expense | payment | receipt | transfer'),
+  "type": zod.string().describe('income | expense | transfer | receivable (legacy payment\/receipt accepted)'),
   "amount": zod.number(),
   "currency": zod.string().describe('AED | USD | SYP'),
   "clientId": zod.number().nullish(),
@@ -496,9 +589,18 @@ export const GetRecentTransactionsResponseItem = zod.object({
   "accountName": zod.string().nullish(),
   "toAccountId": zod.number().nullish().describe('Destination account for type=transfer only'),
   "toAccountName": zod.string().nullish(),
+  "includedInOpeningBalance": zod.boolean().optional().describe('Already reflected in source\/account opening balance; retain reporting but skip this cash effect'),
+  "destinationIncludedInOpeningBalance": zod.boolean().optional().describe('Transfer destination independently already reflects this amount'),
+  "debtKind": zod.string().nullish().describe('sale | opening | loan | loan_now; receivable only'),
+  "dueDate": zod.string().nullish(),
   "description": zod.string().nullish(),
   "status": zod.string().describe('pending | settled'),
-  "createdAt": zod.string()
+  "collectionSummary": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "allocations": zod.array(zod.object({
+  "debtId": zod.number(),
+  "amount": zod.number()
+})).optional()
 })
 export const GetRecentTransactionsResponse = zod.array(GetRecentTransactionsResponseItem)
 

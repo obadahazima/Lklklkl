@@ -1,3 +1,4 @@
+import { validateDebtLinks } from "../lib/debt-math.js";
 import { Router } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -6,9 +7,9 @@ import {
   clientsTable,
   tripsTable,
   accountsTable,
-  transactionsTable,
+  transactionsTable, transactionReceiptsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { SHEET_NAMES, TX_COLUMNS, CLIENT_COLUMNS, TRIP_COLUMNS, ACCOUNT_COLUMNS } from "../lib/backup-columns.js";
 
@@ -41,6 +42,8 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
     // duplicated everything on every restore). Scoped to this user's own rows only, and wrapped
     // in one transaction so a failure partway through can't leave the account half-wiped.
     const restored = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('billy.ledger.user'), hashtext(${uid}))`);
+      await tx.delete(transactionReceiptsTable).where(eq(transactionReceiptsTable.userId,uid));
       await tx.delete(transactionsTable).where(eq(transactionsTable.userId, uid));
       await tx.delete(clientsTable).where(eq(clientsTable.userId, uid));
       await tx.delete(tripsTable).where(eq(tripsTable.userId, uid));
@@ -88,7 +91,10 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
           name,
           type: String(row[ACCOUNT_COLUMNS.type] ?? "cash"),
           currency,
+          position: Number.isSafeInteger(Number(row[ACCOUNT_COLUMNS.position])) && row[ACCOUNT_COLUMNS.position] !== "" && row[ACCOUNT_COLUMNS.position] != null ? Number(row[ACCOUNT_COLUMNS.position]) : 2147483647,
+          openingBalanceDate: row[ACCOUNT_COLUMNS.openingBalanceDate] ? String(row[ACCOUNT_COLUMNS.openingBalanceDate]) : null,
           initialBalance: String(Number(row[ACCOUNT_COLUMNS.initialBalance] ?? 0)),
+          creditLimit: row[ACCOUNT_COLUMNS.creditLimit] === "" || row[ACCOUNT_COLUMNS.creditLimit] == null ? null : String(Number(row[ACCOUNT_COLUMNS.creditLimit])), color: String(row[ACCOUNT_COLUMNS.color] || "#3B82F6"),
           notes: row[ACCOUNT_COLUMNS.notes] ? String(row[ACCOUNT_COLUMNS.notes]) : null,
         }).returning({ id: accountsTable.id });
         if (row[ACCOUNT_COLUMNS.id] != null && inserted) {
@@ -97,6 +103,8 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
       }
 
       let txCount = 0;
+      const transactionIds = new Map<number,number>();
+      const pendingAllocations: {id:number; allocations:{debtId:number;amount:number}[]}[] = [];
       for (const row of txRows) {
         const date = String(row[TX_COLUMNS.date] ?? "").trim();
         const type = String(row[TX_COLUMNS.type] ?? "").trim();
@@ -108,7 +116,7 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
         const oldTripId = row[TX_COLUMNS.tripId] ? Number(row[TX_COLUMNS.tripId]) : null;
         const oldAccountId = row[TX_COLUMNS.accountId] ? Number(row[TX_COLUMNS.accountId]) : null;
 
-        await tx.insert(transactionsTable).values({
+        const [saved] = await tx.insert(transactionsTable).values({
           userId: uid,
           date,
           type,
@@ -119,10 +127,24 @@ router.post("/restore", requireAuth, upload.single("file"), async (req, res): Pr
           accountId: oldAccountId ? (oldAccountIdToNew.get(oldAccountId) ?? null) : null,
           description: row[TX_COLUMNS.description] ? String(row[TX_COLUMNS.description]) : null,
           status: String(row[TX_COLUMNS.status] ?? "pending"),
-        });
+          includedInOpeningBalance: row[TX_COLUMNS.includedInOpeningBalance] === "نعم", destinationIncludedInOpeningBalance: row[TX_COLUMNS.destinationIncludedInOpeningBalance] === "نعم",
+          debtKind: row[TX_COLUMNS.debtKind] ? String(row[TX_COLUMNS.debtKind]) : null,
+          dueDate: row[TX_COLUMNS.dueDate] ? String(row[TX_COLUMNS.dueDate]) : null,
+          toAccountId: row[TX_COLUMNS.toAccountId] ? oldAccountIdToNew.get(Number(row[TX_COLUMNS.toAccountId])) ?? null : null,
+        }).returning();
+        transactionIds.set(Number(row[TX_COLUMNS.id]),saved.id);
+        const allocations = JSON.parse(String(row[TX_COLUMNS.allocations] || "[]"));
+        if (!Array.isArray(allocations) || allocations.some(a=>!Number.isInteger(a.debtId)||!Number.isFinite(a.amount)||a.amount<=0)) throw new Error("Invalid collection allocation");
+        pendingAllocations.push({id:saved.id,allocations});
         txCount++;
       }
 
+      for (const item of pendingAllocations) {
+        const allocations = item.allocations.map(a=> { const debtId=transactionIds.get(a.debtId); if(!debtId) throw new Error("Missing receivable in backup"); return {debtId,amount:a.amount}; });
+        await tx.update(transactionsTable).set({allocations}).where(and(eq(transactionsTable.id,item.id),eq(transactionsTable.userId,uid)));
+      }
+      const restoredRows=await tx.select().from(transactionsTable).where(eq(transactionsTable.userId,uid));
+      if(!validateDebtLinks(restoredRows))throw new Error("Invalid debt allocation links in backup");
       return {
         clients: oldClientIdToNew.size,
         trips: oldTripIdToNew.size,

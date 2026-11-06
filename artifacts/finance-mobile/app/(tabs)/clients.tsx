@@ -139,7 +139,7 @@ export default function ClientsScreen() {
           text: t("delete"),
           style: "destructive",
           onPress: async () => {
-            await deleteClient({ id });
+            await deleteClient({ id: Number(id) });
             refetch();
           },
         },

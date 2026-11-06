@@ -1,3 +1,5 @@
+import { saveAccountOrder } from "../lib/account-order.js";
+import { validISODate } from "../lib/voice-input.js";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { accountsTable, transactionsTable } from "@workspace/db";
@@ -11,6 +13,13 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { getEffectiveRates, type AllRates } from "../utils/exchange-rates.js";
+
+import { validAccountAmount, creditOpeningBalance } from "../lib/account-credit.js";
+
+function validAmounts(body: { initialBalance?: number; creditLimit?: number | null }) {
+  return (body.initialBalance === undefined || validAccountAmount(body.initialBalance)) &&
+    (body.creditLimit == null || (validAccountAmount(body.creditLimit) && body.creditLimit >= 0));
+}
 
 const router = Router();
 
@@ -53,6 +62,7 @@ async function computeBalance(
   initialBalance: number,
   accountCurrency: string,
   rates: AllRates,
+  openingBalanceDate: string | null = null,
 ): Promise<number> {
   const [outgoing, incomingTransfers] = await Promise.all([
     db
@@ -65,12 +75,14 @@ async function computeBalance(
       .where(and(eq(transactionsTable.toAccountId, accountId), eq(transactionsTable.userId, userId), eq(transactionsTable.type, "transfer"))),
   ]);
   const delta = outgoing.reduce((sum, t) => {
+    if (t.includedInOpeningBalance || (openingBalanceDate && t.date < openingBalanceDate)) return sum;
+    if (t.type === "receivable" && t.debtKind !== "loan_now") return sum;
     const amt = convertAmount(Number(t.amount), t.currency, accountCurrency, rates);
     if (t.type === "transfer") return sum - amt; // money left this account, regardless of income/expense bucket
     return sum + (t.type === "income" || t.type === "receipt" ? amt : -amt);
   }, 0);
   const incomingDelta = incomingTransfers.reduce(
-    (sum, t) => sum + convertAmount(Number(t.amount), t.currency, accountCurrency, rates),
+    (sum, t) => sum + ((t.destinationIncludedInOpeningBalance || (openingBalanceDate && t.date < openingBalanceDate)) ? 0 : convertAmount(Number(t.amount), t.currency, accountCurrency, rates)),
     0,
   );
   return Math.round((initialBalance + delta + incomingDelta) * 100) / 100;
@@ -83,14 +95,15 @@ router.get("/accounts", async (req, res): Promise<void> => {
         .select()
         .from(accountsTable)
         .where(eq(accountsTable.userId, req.userId))
-        .orderBy(accountsTable.name),
+        .orderBy(accountsTable.position, accountsTable.name, accountsTable.id),
       getEffectiveRates(req.userId),
     ]);
     const withBalances = await Promise.all(
       accounts.map(async (a) => ({
         ...a,
         initialBalance: Number(a.initialBalance),
-        currentBalance: await computeBalance(req.userId, a.id, Number(a.initialBalance), a.currency, rates),
+        creditLimit: a.creditLimit == null ? null : Number(a.creditLimit),
+        currentBalance: await computeBalance(req.userId, a.id, Number(a.initialBalance), a.currency, rates, a.openingBalanceDate),
         createdAt: a.createdAt.toISOString(),
       })),
     );
@@ -101,25 +114,36 @@ router.get("/accounts", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/accounts/reorder",async(req,res):Promise<void>=>{
+ const ids:unknown=req.body?.accountIds;
+ if(!Array.isArray(ids)||ids.length>5000||ids.some(id=>!Number.isSafeInteger(id)||id<=0)){res.status(400).json({error:"Invalid account order"});return;}
+ try{if(!await saveAccountOrder(req.userId,ids)){res.status(409).json({error:"تغيّرت قائمة الحسابات؛ حدّثها ثم أعد ترتيبها"});return;}res.json({accountIds:ids});}
+ catch(err){req.log.error({err},"Failed to reorder accounts");res.status(500).json({error:"تعذر حفظ ترتيب الحسابات"});}
+});
+
 router.post("/accounts", async (req, res): Promise<void> => {
   const parsed = CreateAccountBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (parsed.data.openingBalanceDate && !validISODate(parsed.data.openingBalanceDate)) { res.status(400).json({error:"Invalid opening balance date"}); return; }
+  if (!validAmounts(parsed.data)) { res.status(400).json({ error: "Invalid account amount or credit limit" }); return; }
   try {
     const [account] = await db
       .insert(accountsTable)
       .values({
         ...parsed.data,
         color: parsed.data.color ?? "#3B82F6",
-        initialBalance: String(parsed.data.initialBalance ?? 0),
+        initialBalance: String(creditOpeningBalance(parsed.data.type, parsed.data.initialBalance ?? 0)),
+        creditLimit: parsed.data.type === "credit" && parsed.data.creditLimit != null ? String(parsed.data.creditLimit) : null,
         userId: req.userId,
       })
       .returning();
     res.status(201).json({
       ...account,
       initialBalance: Number(account.initialBalance),
+      creditLimit: account.creditLimit == null ? null : Number(account.creditLimit),
       currentBalance: Number(account.initialBalance),
       createdAt: account.createdAt.toISOString(),
     });
@@ -148,7 +172,8 @@ router.get("/accounts/:id", async (req, res): Promise<void> => {
     res.json({
       ...account,
       initialBalance: Number(account.initialBalance),
-      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates),
+      creditLimit: account.creditLimit == null ? null : Number(account.creditLimit),
+      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates, account.openingBalanceDate),
       createdAt: account.createdAt.toISOString(),
     });
   } catch (err) {
@@ -168,11 +193,18 @@ router.patch("/accounts/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: bodyParsed.error.message });
     return;
   }
+  if (bodyParsed.data.openingBalanceDate && !validISODate(bodyParsed.data.openingBalanceDate)) { res.status(400).json({error:"Invalid opening balance date"}); return; }
+  if (!validAmounts(bodyParsed.data)) { res.status(400).json({ error: "Invalid account amount or credit limit" }); return; }
   try {
+    const [existing] = await db.select().from(accountsTable).where(and(eq(accountsTable.id, paramsParsed.data.id), eq(accountsTable.userId, req.userId)));
+    if (!existing) { res.status(404).json({ error: "Account not found" }); return; }
+    const effectiveType = bodyParsed.data.type ?? existing.type;
     const updateData: Record<string, unknown> = { ...bodyParsed.data };
     if (bodyParsed.data.initialBalance !== undefined) {
-      updateData.initialBalance = String(bodyParsed.data.initialBalance);
+      updateData.initialBalance = String(creditOpeningBalance(effectiveType, bodyParsed.data.initialBalance));
     }
+    if (effectiveType !== "credit") updateData.creditLimit = null;
+    else if (bodyParsed.data.creditLimit !== undefined) updateData.creditLimit = bodyParsed.data.creditLimit === null ? null : String(bodyParsed.data.creditLimit);
     const [account] = await db
       .update(accountsTable)
       .set(updateData)
@@ -186,7 +218,8 @@ router.patch("/accounts/:id", async (req, res): Promise<void> => {
     res.json({
       ...account,
       initialBalance: Number(account.initialBalance),
-      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates),
+      creditLimit: account.creditLimit == null ? null : Number(account.creditLimit),
+      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates, account.openingBalanceDate),
       createdAt: account.createdAt.toISOString(),
     });
   } catch (err) {

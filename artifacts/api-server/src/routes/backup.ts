@@ -29,6 +29,8 @@ router.get("/backup", requireAuth, async (req, res): Promise<void> => {
     const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
 
     const txRows = transactions.map((t) => ({
+      [TX_COLUMNS.includedInOpeningBalance]: t.includedInOpeningBalance ? "نعم" : "لا", [TX_COLUMNS.destinationIncludedInOpeningBalance]: t.destinationIncludedInOpeningBalance ? "نعم" : "لا",
+      [TX_COLUMNS.debtKind]: t.debtKind ?? "", [TX_COLUMNS.dueDate]: t.dueDate ?? "", [TX_COLUMNS.allocations]: JSON.stringify(t.allocations ?? []), [TX_COLUMNS.toAccountId]: t.toAccountId ?? "",
       [TX_COLUMNS.id]: t.id,
       [TX_COLUMNS.date]: t.date,
       [TX_COLUMNS.type]: t.type,
@@ -63,6 +65,9 @@ router.get("/backup", requireAuth, async (req, res): Promise<void> => {
     }));
 
     const accountRows = accounts.map((a) => ({
+      [ACCOUNT_COLUMNS.position]: a.position,
+      [ACCOUNT_COLUMNS.openingBalanceDate]: a.openingBalanceDate ?? "",
+      [ACCOUNT_COLUMNS.creditLimit]: a.creditLimit ?? "", [ACCOUNT_COLUMNS.color]: a.color,
       [ACCOUNT_COLUMNS.id]: a.id,
       [ACCOUNT_COLUMNS.name]: a.name,
       [ACCOUNT_COLUMNS.type]: a.type,

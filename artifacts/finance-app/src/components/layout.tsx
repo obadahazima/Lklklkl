@@ -1,3 +1,5 @@
+import { webLedger } from "@/lib/offline-ledger";
+import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
@@ -6,14 +8,14 @@ import {
   Route,
   Wallet,
   MessageCircle,
-  Plus,
+  Mic,
   Menu,
   X,
   Settings,
   LogOut,
   HelpCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/contexts/settings-context";
 import { tr } from "@/lib/i18n";
@@ -21,7 +23,7 @@ import { useClerk, useUser } from "@clerk/react";
 import { HelpModal } from "@/components/help-modal";
 import { FloatingAssistant } from "@/components/floating-assistant";
 
-const HELP_SEEN_KEY = "hasSeenAppHelp";
+
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -31,18 +33,37 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { language, showClients, showTrips } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
   const { signOut } = useClerk();
+  const { toast } = useToast();
   const { user } = useUser();
 
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
-    try {
-      if (!localStorage.getItem(HELP_SEEN_KEY)) {
-        setHelpOpen(true);
-        localStorage.setItem(HELP_SEEN_KEY, "1");
-      }
-    } catch {
-      // localStorage unavailable — skip auto-help silently
-    }
+    const media = window.matchMedia("(max-width: 1023px)");
+    const resize = () => setIsMobile(media.matches);
+    const network = () => setOnline(navigator.onLine);
+    media.addEventListener("change", resize);
+    window.addEventListener("online", network); window.addEventListener("offline", network);
+    return () => { media.removeEventListener("change", resize); window.removeEventListener("online", network); window.removeEventListener("offline", network); };
   }, []);
+  useEffect(() => { setSidebarOpen(false); if (mainRef.current) mainRef.current.scrollTop = 0; }, [location]);
+  useEffect(() => {
+    if (!sidebarOpen || !isMobile) return;
+    const links = () => Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)') ?? []).filter(el => el.getClientRects().length > 0);
+    links()[0]?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setSidebarOpen(false); }
+      if (event.key !== "Tab") return;
+      const items = links(), first = items[0], last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => { document.removeEventListener("keydown", keydown); menuButtonRef.current?.focus(); };
+  }, [sidebarOpen, isMobile]);
 
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -51,6 +72,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/transactions", icon: ArrowLeftRight, labelKey: "transactions" as const },
     ...(showClients ? [{ href: "/clients", icon: Users, labelKey: "clients" as const }] : []),
     ...(showTrips ? [{ href: "/trips", icon: Route, labelKey: "trips" as const }] : []),
+    { href: "/receivables", icon: Users, labelKey: "receivables" as const },
     { href: "/accounts", icon: Wallet, labelKey: "accounts" as const },
     { href: "/chat", icon: MessageCircle, labelKey: "chat" as const },
     { href: "/settings", icon: Settings, labelKey: "settings" as const },
@@ -59,7 +81,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const dir = language === "ar" ? "rtl" : "ltr";
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden" dir={dir}>
+    <div className="flex h-dvh bg-background overflow-hidden" dir={dir}>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:z-[100] focus:top-2 focus:start-2 focus:bg-card focus:p-3 focus:rounded-lg">{language === "ar" ? "تخطّي إلى المحتوى" : "Skip to content"}</a>
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -68,6 +91,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <aside
+        ref={sidebarRef}
+        id="app-navigation"
+        aria-label={language === "ar" ? "القائمة الرئيسية" : "Main navigation"}
+        role={isMobile ? "dialog" : undefined}
+        aria-modal={isMobile && sidebarOpen ? true : undefined}
+        aria-hidden={isMobile && !sidebarOpen}
+        inert={isMobile && !sidebarOpen}
         className={cn(
           "fixed top-0 h-full w-64 bg-sidebar z-50 flex flex-col transition-transform duration-300 lg:relative lg:translate-x-0",
           dir === "rtl" ? "right-0" : "left-0",
@@ -92,7 +122,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setHelpOpen(true)}
+              onClick={() => { setSidebarOpen(false); setHelpOpen(true); }}
               className="text-sidebar-foreground/60 hover:text-white p-1.5 rounded-lg hover:bg-sidebar-accent/40"
               title={language === "ar" ? "مساعدة" : "Help"}
               data-testid="btn-help"
@@ -100,7 +130,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <HelpCircle className="w-5 h-5" />
             </button>
             <button
-              className="lg:hidden text-sidebar-foreground/60 hover:text-white p-1"
+              aria-label={language === "ar" ? "إغلاق القائمة" : "Close menu"}
+              className="lg:hidden text-sidebar-foreground/60 hover:text-white p-2"
               onClick={() => setSidebarOpen(false)}
             >
               <X className="w-5 h-5" />
@@ -114,8 +145,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               className="w-full flex items-center gap-2 bg-sidebar-primary hover:bg-sidebar-primary/90 text-sidebar-primary-foreground rounded-xl px-4 py-3 text-sm font-semibold transition-colors"
               data-testid="btn-new-transaction"
             >
-              <Plus className="w-4 h-4" />
-              {t("newTransaction")}
+              <Mic className="w-5 h-5" />
+              {language === "ar" ? "سجّل معاملتك بصوتك" : "Record a transaction"}
             </button>
           </Link>
         </div>
@@ -124,7 +155,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {navItems.map(({ href, icon: Icon, labelKey }) => {
             const isActive = href === "/" ? location === "/" : location.startsWith(href);
             return (
-              <Link key={href} href={href} onClick={() => setSidebarOpen(false)}>
+              <Link key={href} href={href} aria-current={isActive ? "page" : undefined} onClick={() => setSidebarOpen(false)}>
                 <div
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer",
@@ -171,7 +202,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           )}
           <button
-            onClick={() => signOut({ redirectUrl: basePath || "/" })}
+            onClick={async () => { try { await webLedger.activate(null); await signOut({ redirectUrl: basePath || "/" }); } catch { toast({ title: language === "ar" ? "تعذر تسجيل الخروج، حاول مجدداً" : "Sign out failed; try again", variant: "destructive" }); } }}
             className="w-full flex items-center gap-2 text-sidebar-foreground/60 hover:text-white hover:bg-sidebar-accent/40 rounded-xl px-3 py-2 text-sm transition-colors"
           >
             <LogOut className="w-4 h-4 shrink-0" />
@@ -183,6 +214,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-card border-b border-border shrink-0">
           <button
+            ref={menuButtonRef}
+            aria-label={language === "ar" ? "فتح القائمة" : "Open menu"}
+            aria-expanded={sidebarOpen}
+            aria-controls="app-navigation"
             onClick={() => setSidebarOpen(true)}
             className="p-2 rounded-lg hover:bg-muted"
             data-testid="btn-menu"
@@ -190,14 +225,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <img src={`${basePath}/logo-mark-white.svg`} alt="Logo" className="w-6 h-6" />
+            <img src={`${basePath}/logo-symbol-128.png`} alt="" className="w-7 h-7" />
             <h1 className="font-bold text-foreground">
-              {language === "ar" ? "حسابات" : "Hisabat"}
+              Billy Bills AI
             </h1>
           </div>
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setHelpOpen(true)}
+              onClick={() => { setSidebarOpen(false); setHelpOpen(true); }}
               className="p-2 rounded-lg hover:bg-muted text-muted-foreground"
               title={language === "ar" ? "مساعدة" : "Help"}
               data-testid="btn-help-mobile"
@@ -205,37 +240,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <HelpCircle className="w-5 h-5" />
             </button>
             <Link href="/transactions/new">
-              <button className="p-2 rounded-lg bg-primary text-primary-foreground" data-testid="btn-quick-add">
-                <Plus className="w-4 h-4" />
+              <button aria-label={language === "ar" ? "سجّل معاملتك بصوتك" : "Record a transaction"} className="p-2 rounded-lg bg-primary text-primary-foreground" data-testid="btn-quick-add">
+                <Mic className="w-5 h-5" />
               </button>
             </Link>
           </div>
         </header>
 
-        <nav className="lg:hidden flex items-center justify-around bg-card border-b border-border py-1.5 px-1 shrink-0">
-          {navItems.map(({ href, icon: Icon, labelKey }) => {
-            const isActive = href === "/" ? location === "/" : location.startsWith(href);
-            return (
-              <Link key={href} href={href}>
-                <div
-                  className={cn(
-                    "flex flex-col items-center gap-0.5 px-1.5 py-1 rounded-lg transition-colors",
-                    isActive ? "text-primary" : "text-muted-foreground"
-                  )}
-                >
-                  <Icon className="w-4.5 h-4.5" style={{ width: "1.1rem", height: "1.1rem" }} />
-                  <span className="text-[9px] font-medium">{t(labelKey)}</span>
-                </div>
-              </Link>
-            );
+        <nav aria-label={language === "ar" ? "التنقل السريع" : "Quick navigation"} className="lg:hidden grid grid-cols-4 bg-card border-b border-border shrink-0 p-1 gap-1">
+          {navItems.filter(item => ["/", "/transactions", "/accounts"].includes(item.href)).map(({ href, icon: Icon, labelKey }) => {
+            const active = href === "/" ? location === "/" : location.startsWith(href);
+            return <Link key={href} href={href} aria-current={active ? "page" : undefined} className={cn("flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-xs font-semibold", active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted")}><Icon className="w-5 h-5" /><span>{t(labelKey)}</span></Link>;
           })}
+          <button onClick={() => setSidebarOpen(true)} aria-expanded={sidebarOpen} aria-controls="app-navigation" className={cn("flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-xs font-semibold", !["/", "/transactions", "/accounts"].some(href => href === "/" ? location === "/" : location.startsWith(href)) ? "bg-primary/10 text-primary" : "text-muted-foreground")}><Menu className="w-5 h-5" />{language === "ar" ? "المزيد" : "More"}</button>
         </nav>
+        {!online && <div role="status" className="bg-amber-50 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 px-4 py-3 text-sm border-b border-amber-200 dark:border-amber-900">{language === "ar" ? "أنت بدون إنترنت. سجّل يدوياً، والمزامنة بتكمل لما يرجع الاتصال." : "You’re offline. Enter transactions manually; syncing resumes when connected."} <Link href="/offline" className="underline font-semibold">{language === "ar" ? "فتح الإدخال الأوفلاين" : "Open offline entry"}</Link></div>}
 
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main ref={mainRef} id="main-content" className="flex-1 overflow-y-auto">{children}</main>
       </div>
 
       <HelpModal open={helpOpen} onOpenChange={setHelpOpen} language={language} />
-      <FloatingAssistant />
+      {!sidebarOpen && !helpOpen && <FloatingAssistant />}
     </div>
   );
 }

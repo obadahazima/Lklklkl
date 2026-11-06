@@ -1,3 +1,4 @@
+import { QueryFeedback } from "@/components/query-feedback";
 import { useGetTripPnl, getGetTripPnlQueryKey } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
 import { formatAmount, currencyClass, cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ export default function TripDetail() {
   const { exchangeRateMode, manualRates, primaryCurrency, language } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
-  const { data, isLoading } = useGetTripPnl(id, {
+  const { data, isLoading, isError, error, refetch } = useGetTripPnl(id, {
     query: { enabled: !!id, queryKey: getGetTripPnlQueryKey(id) },
   });
 
@@ -34,7 +35,8 @@ export default function TripDetail() {
     );
   }
 
-  if (!data) return <div className="p-4 text-center text-muted-foreground">{t("tripNotFound")}</div>;
+  if (isError && (error as { status?: number })?.status !== 404) return <div className="p-4 max-w-2xl mx-auto"><QueryFeedback ar={language === "ar"} retry={refetch} /><button onClick={() => setLocation("/trips")} className="text-primary underline p-3">{language === "ar" ? "العودة للقائمة" : "Back to list"}</button></div>;
+  if (!data) return <div className="p-8 text-center space-y-4"><p>{language === "ar" ? "لم يتم العثور على هذا السجل" : "This record could not be found"}</p><button onClick={() => setLocation("/trips")} className="rounded-xl bg-primary text-primary-foreground px-4 py-3">{language === "ar" ? "العودة للقائمة" : "Back to list"}</button></div>;
 
   const { trip, breakdown } = data;
   const rawTxs = (data as unknown as { transactions?: { date: string; type: string; description?: string | null; amount: number; currency: string }[] }).transactions ?? [];

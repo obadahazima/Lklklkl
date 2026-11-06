@@ -1,3 +1,4 @@
+import { QueryFeedback } from "@/components/query-feedback";
 import { useState } from "react";
 import { useListTrips, useCreateTrip, useDeleteTrip, getListTripsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,7 +19,7 @@ export default function Trips() {
   const { language } = settings;
   const t = (k: Parameters<typeof tr>[1]) => tr(language, k);
 
-  const { data: trips, isLoading } = useListTrips();
+  const { data: trips, isLoading, isError, refetch } = useListTrips();
 
   const createMutation = useCreateTrip({
     mutation: {
@@ -46,7 +47,7 @@ export default function Trips() {
       <div className="flex items-center justify-between pt-2">
         <div>
           <h1 className="text-2xl font-bold">{t("trips")}</h1>
-          <p className="text-muted-foreground text-sm">{trips?.length ?? 0} {t("tripCount")}</p>
+          <p className="text-muted-foreground text-sm">{trips?.length ?? "—"} {t("tripCount")}</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
@@ -62,7 +63,7 @@ export default function Trips() {
         <div className="bg-card border-2 border-primary/20 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-sm">{t("addTripTitle")}</h2>
-            <button onClick={() => setShowAdd(false)} className="text-muted-foreground hover:text-foreground">
+            <button aria-label={language === "ar" ? "إغلاق النموذج" : "Close form"} onClick={() => setShowAdd(false)} className="text-muted-foreground hover:text-foreground">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -97,8 +98,9 @@ export default function Trips() {
         </div>
       )}
 
+      {isError && trips && <QueryFeedback ar={language === "ar"} retry={refetch} cached />}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-        {isLoading ? (
+        {isError && !trips ? <QueryFeedback ar={language === "ar"} retry={refetch} /> : isLoading ? (
           <div className="divide-y divide-border">
             {[1, 2, 3].map((i) => <div key={i} className="p-4 animate-pulse"><div className="h-4 bg-muted rounded w-1/2" /></div>)}
           </div>
@@ -106,6 +108,7 @@ export default function Trips() {
           <div className="p-10 text-center">
             <Route className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-muted-foreground">{t("noTrips")}</p>
+            <button onClick={() => setShowAdd(true)} className="mt-4 rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold">{language === "ar" ? "إضافة أول رحلة" : "Add your first trip"}</button>
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -138,8 +141,8 @@ export default function Trips() {
                   </Link>
                   <button
                     onClick={() => window.confirm(t("deleteTripConfirm")) && deleteMutation.mutate({ id: trip.id })}
-                    className="text-muted-foreground hover:text-destructive p-1"
-                    data-testid={`btn-delete-trip-${trip.id}`}
+                    className="text-muted-foreground hover:text-destructive p-2"
+                    aria-label={language === "ar" ? "حذف" : "Delete"} disabled={deleteMutation.isPending} data-testid={`btn-delete-trip-${trip.id}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

@@ -1,7 +1,8 @@
+import { debtBalances } from "../lib/debt-math.js";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, transactionsTable, tripsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import {
   CreateClientBody,
   UpdateClientBody,
@@ -122,9 +123,13 @@ router.delete("/clients/:id", async (req, res): Promise<void> => {
     return;
   }
   try {
-    await db
-      .delete(clientsTable)
-      .where(and(eq(clientsTable.id, parsed.data.id), eq(clientsTable.userId, req.userId)));
+    await db.transaction(async tx=> {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('billy.ledger.user'), hashtext(${req.userId}))`);
+      const rows=await tx.select().from(transactionsTable).where(and(eq(transactionsTable.clientId,parsed.data.id),eq(transactionsTable.userId,req.userId)));
+      if(rows.some(t=>t.type === "receivable" || t.allocations?.length)) {res.status(409).json({error:"للشخص ذمم أو تحصيلات مرتبطة؛ احتفظ بسجله لحفظ التاريخ المالي"});return;}
+      await tx.delete(clientsTable).where(and(eq(clientsTable.id,parsed.data.id),eq(clientsTable.userId,req.userId)));
+    });
+    if(res.headersSent)return;
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete client");
@@ -172,9 +177,9 @@ router.get("/clients/:id/statement", async (req, res): Promise<void> => {
         const received = currTxs
           .filter((t) => t.type === "income" || t.type === "receipt")
           .reduce((s, t) => s + Number(t.amount), 0);
-        return { currency, paid, received, openBalance: received - paid };
+        return { currency, paid, received, openBalance: debtBalances(txs).filter(d=>d.currency === currency).reduce((s,d)=>s+d.remaining,0) };
       })
-      .filter((b) => b.paid !== 0 || b.received !== 0);
+      .filter((b) => b.paid !== 0 || b.received !== 0 || b.openBalance !== 0);
 
     const totalBalanceAED = Math.round(
       balances.reduce((sum, b) => sum + toAed(b.openBalance, b.currency, rates), 0) * 100,

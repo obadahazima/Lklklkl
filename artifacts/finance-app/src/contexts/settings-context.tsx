@@ -36,7 +36,7 @@ const KNOWN_WRONG_RATES: Record<string, { maxCorrect: number; correct: number }>
 };
 
 function correctRates(rates: Record<string, number>): Record<string, number> {
-  const fixed = { ...rates, AED: 1 };
+  const fixed: Record<string, number> = { ...rates, AED: 1 };
   for (const [code, { maxCorrect, correct }] of Object.entries(KNOWN_WRONG_RATES)) {
     if (fixed[code] !== undefined && fixed[code] > maxCorrect) {
       fixed[code] = correct;
@@ -61,7 +61,7 @@ function parseSettings(raw: Partial<AppSettings>): AppSettings {
   };
 }
 
-function loadLocalSettings(): AppSettings {
+export function loadLocalSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
