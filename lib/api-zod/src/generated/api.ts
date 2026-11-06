@@ -385,7 +385,7 @@ export const ListAccountsResponseItem = zod.object({
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
-  "openingBalanceDate": zod.string().nullish().describe('Local calendar date represented by the opening balance; transactions are never excluded automatically'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
   "creditLimit": zod.number().min(listAccountsResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
@@ -403,7 +403,7 @@ export const CreateAccountBody = zod.object({
   "currency": zod.string(),
   "color": zod.string().optional().describe('Hex color (e.g. #3B82F6), defaults to a neutral blue if omitted'),
   "initialBalance": zod.number().optional().describe('Starting balance when the account was added, defaults to 0'),
-  "openingBalanceDate": zod.string().nullish().describe('Local calendar date represented by the opening balance; transactions are never excluded automatically'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
   "creditLimit": zod.number().min(createAccountBodyCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish()
 })
@@ -425,7 +425,7 @@ export const GetAccountResponse = zod.object({
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
-  "openingBalanceDate": zod.string().nullish().describe('Local calendar date represented by the opening balance; transactions are never excluded automatically'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
   "creditLimit": zod.number().min(getAccountResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
@@ -446,7 +446,7 @@ export const UpdateAccountBody = zod.object({
   "currency": zod.string().optional(),
   "color": zod.string().optional(),
   "initialBalance": zod.number().optional(),
-  "openingBalanceDate": zod.string().nullish().describe('Local calendar date represented by the opening balance; transactions are never excluded automatically'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
   "creditLimit": zod.number().min(updateAccountBodyCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish()
 })
@@ -463,7 +463,7 @@ export const UpdateAccountResponse = zod.object({
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
-  "openingBalanceDate": zod.string().nullish().describe('Local calendar date represented by the opening balance; transactions are never excluded automatically'),
+  "openingBalanceDate": zod.string().nullish().describe('Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance'),
   "creditLimit": zod.number().min(updateAccountResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()

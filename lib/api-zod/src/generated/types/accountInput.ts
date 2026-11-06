@@ -16,7 +16,7 @@ export interface AccountInput {
   /** Starting balance when the account was added, defaults to 0 */
   initialBalance?: number;
   /**
-     * Local calendar date represented by the opening balance; transactions are never excluded automatically
+     * Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance
      * @nullable
      */
   openingBalanceDate?: string | null;

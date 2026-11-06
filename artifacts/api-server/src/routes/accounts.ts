@@ -61,6 +61,7 @@ async function computeBalance(
   initialBalance: number,
   accountCurrency: string,
   rates: AllRates,
+  openingBalanceDate: string | null = null,
 ): Promise<number> {
   const [outgoing, incomingTransfers] = await Promise.all([
     db
@@ -73,14 +74,14 @@ async function computeBalance(
       .where(and(eq(transactionsTable.toAccountId, accountId), eq(transactionsTable.userId, userId), eq(transactionsTable.type, "transfer"))),
   ]);
   const delta = outgoing.reduce((sum, t) => {
-    if (t.includedInOpeningBalance) return sum;
+    if (t.includedInOpeningBalance || (openingBalanceDate && t.date < openingBalanceDate)) return sum;
     if (t.type === "receivable" && t.debtKind !== "loan_now") return sum;
     const amt = convertAmount(Number(t.amount), t.currency, accountCurrency, rates);
     if (t.type === "transfer") return sum - amt; // money left this account, regardless of income/expense bucket
     return sum + (t.type === "income" || t.type === "receipt" ? amt : -amt);
   }, 0);
   const incomingDelta = incomingTransfers.reduce(
-    (sum, t) => sum + (t.destinationIncludedInOpeningBalance ? 0 : convertAmount(Number(t.amount), t.currency, accountCurrency, rates)),
+    (sum, t) => sum + ((t.destinationIncludedInOpeningBalance || (openingBalanceDate && t.date < openingBalanceDate)) ? 0 : convertAmount(Number(t.amount), t.currency, accountCurrency, rates)),
     0,
   );
   return Math.round((initialBalance + delta + incomingDelta) * 100) / 100;
@@ -101,7 +102,7 @@ router.get("/accounts", async (req, res): Promise<void> => {
         ...a,
         initialBalance: Number(a.initialBalance),
         creditLimit: a.creditLimit == null ? null : Number(a.creditLimit),
-        currentBalance: await computeBalance(req.userId, a.id, Number(a.initialBalance), a.currency, rates),
+        currentBalance: await computeBalance(req.userId, a.id, Number(a.initialBalance), a.currency, rates, a.openingBalanceDate),
         createdAt: a.createdAt.toISOString(),
       })),
     );
@@ -164,7 +165,7 @@ router.get("/accounts/:id", async (req, res): Promise<void> => {
       ...account,
       initialBalance: Number(account.initialBalance),
       creditLimit: account.creditLimit == null ? null : Number(account.creditLimit),
-      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates),
+      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates, account.openingBalanceDate),
       createdAt: account.createdAt.toISOString(),
     });
   } catch (err) {
@@ -210,7 +211,7 @@ router.patch("/accounts/:id", async (req, res): Promise<void> => {
       ...account,
       initialBalance: Number(account.initialBalance),
       creditLimit: account.creditLimit == null ? null : Number(account.creditLimit),
-      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates),
+      currentBalance: await computeBalance(req.userId, account.id, Number(account.initialBalance), account.currency, rates, account.openingBalanceDate),
       createdAt: account.createdAt.toISOString(),
     });
   } catch (err) {

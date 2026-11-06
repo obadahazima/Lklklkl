@@ -204,8 +204,8 @@ function buildFinancialContext(
   });
 
   const accountSummaries = accounts.map((account) => {
-    const outgoing = txs.filter((t) => t.accountId === account.id && !t.includedInOpeningBalance);
-    const incomingTransfers = txs.filter((t) => t.toAccountId === account.id && t.type === "transfer" && !t.destinationIncludedInOpeningBalance);
+    const outgoing = txs.filter((t) => t.accountId === account.id && !t.includedInOpeningBalance && !(account.openingBalanceDate && t.date < account.openingBalanceDate));
+    const incomingTransfers = txs.filter((t) => t.toAccountId === account.id && t.type === "transfer" && !t.destinationIncludedInOpeningBalance && !(account.openingBalanceDate && t.date < account.openingBalanceDate));
     // Every transaction carries its own currency, which may differ from this account's currency
     // (e.g. paying "100 USD" out of an AED account) — convert each amount into the account's
     // own currency before folding it into the balance, otherwise mismatched-currency
@@ -821,7 +821,7 @@ async function executeTool(
       .from(accountsTable)
       .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, userId)));
     if (!account) return { error: "الحساب غير موجود" };
-    if (account.openingBalanceDate && String(args.date) <= account.openingBalanceDate && typeof args.includedInOpeningBalance !== "boolean") return {error:"المعاملة بتاريخ الرصيد الافتتاحي أو قبله. اسأل المستخدم هل كانت محسوبة ضمن الرصيد ثم أرسل الإجابة صراحةً"};
+    if (account.openingBalanceDate && String(args.date) === account.openingBalanceDate && typeof args.includedInOpeningBalance !== "boolean") return {error:"المعاملة بنفس يوم الرصيد الافتتاحي. اسأل المستخدم هل كانت محسوبة ضمن الرصيد ثم أرسل الإجابة صراحةً"};
 
     const toAccountId = num(args.toAccountId) ?? null;
     if (args.type === "transfer") {

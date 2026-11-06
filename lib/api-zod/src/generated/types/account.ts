@@ -18,7 +18,7 @@ export interface Account {
   /** initialBalance + income/receipt through this account - expense/payment through this account */
   currentBalance: number;
   /**
-     * Local calendar date represented by the opening balance; transactions are never excluded automatically
+     * Local opening balance date; transactions strictly before it are automatically included and skipped in this account cash balance
      * @nullable
      */
   openingBalanceDate?: string | null;
