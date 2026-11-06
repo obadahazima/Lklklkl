@@ -789,6 +789,10 @@ components:
         currentBalance:
           type: number
           description: "initialBalance + income/receipt through this account - expense/payment through this account"
+        creditLimit:
+          type: ["number", "null"]
+          minimum: 0
+          description: "Optional total credit limit in the account currency; credit accounts only"
         notes:
           type: ["string", "null"]
         createdAt:
@@ -811,6 +815,10 @@ components:
         initialBalance:
           type: number
           description: "Starting balance when the account was added, defaults to 0"
+        creditLimit:
+          type: ["number", "null"]
+          minimum: 0
+          description: "Optional total credit limit in the account currency; credit accounts only"
         notes:
           type: ["string", "null"]
 
@@ -827,6 +835,10 @@ components:
           type: string
         initialBalance:
           type: number
+        creditLimit:
+          type: ["number", "null"]
+          minimum: 0
+          description: "Optional total credit limit in the account currency; credit accounts only"
         notes:
           type: ["string", "null"]
 

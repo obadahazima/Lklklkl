@@ -13,6 +13,7 @@ function load(path,overrides={}){
  const exports={};vm.runInNewContext(ts.transpileModule(read(path),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports,require:id=>id in overrides?overrides[id]:requireWeb(id),window:{matchMedia:()=>({matches:true})},navigator:{onLine:true},console,URLSearchParams});return exports;
 }
 const utils=load('lib/api-client-react/src/voice-utils.ts');
+const credit=load('lib/api-client-react/src/account-credit.ts',{'./voice-utils':utils});
 const manual=load('lib/api-client-react/src/manual-entry.ts');
 function handler(path,name,deps){const source=read(path),ast=ts.createSourceFile(path,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let found;function visit(n){if(ts.isFunctionDeclaration(n)&&n.name?.text===name)found=n.getText(ast);ts.forEachChild(n,visit);}visit(ast);assert.ok(found);const ctx=vm.createContext(deps);vm.runInContext(ts.transpileModule(found+`\nglobalThis.handler=${name};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,ctx);return ctx.handler;}
 test('editing real transactions preserves account data and validates Arabic amounts, dates and transfers',()=>{
@@ -26,7 +27,7 @@ test('editing real transactions preserves account data and validates Arabic amou
 });
 test('opening balance entry accepts signed Arabic decimals and never silently turns malformed input into zero',()=>{
  const state={initialBalance:'-١٬٥٠٠٫٥٠'};let saved,errors=0;
- const deps={name:'Cash',type:'cash',currency:'AED',color:'#216047',primaryCurrency:'AED',editingId:null,language:'ar',normalizeAmountInput:utils.normalizeAmountInput,toast:()=>errors++,createMutation:{isPending:false,mutate:input=>saved=input.data},updateMutation:{isPending:false}};
+ const deps={...credit,creditLimit:'',name:'Cash',type:'cash',currency:'AED',color:'#216047',primaryCurrency:'AED',editingId:null,language:'ar',normalizeAmountInput:utils.normalizeAmountInput,toast:()=>errors++,createMutation:{isPending:false,mutate:input=>saved=input.data},updateMutation:{isPending:false}};
  Object.defineProperty(deps,'initialBalance',{get:()=>state.initialBalance});
  const save=handler('artifacts/finance-app/src/pages/accounts.tsx','handleSave',deps);
  save();assert.equal(saved.initialBalance,-1500.5);
@@ -60,4 +61,13 @@ test('light and dark themes keep normal foreground, muted text and primary butto
   for(const m of body.matchAll(/--([\w-]+):\s*([\d.]+) ([\d.]+)% ([\d.]+)%;/g))vars[m[1]]=hsl(...m.slice(2).map(Number));
   for(const [fg,bg]of [['foreground','background'],['muted-foreground','background'],['muted-foreground','card'],['primary-foreground','primary']])assert.ok(contrast(vars[fg],vars[bg])>=4.5,`${selector} ${fg}/${bg}: ${contrast(vars[fg],vars[bg])}`);
  }
+});
+test('real account save accepts either credit sign and sends the optional limit separately',()=>{
+ const state={initialBalance:'500',creditLimit:'٢٠٠٠'};let saved,errors=0;
+ const deps={...credit,name:'Visa',type:'credit',currency:'AED',color:'#216047',primaryCurrency:'AED',editingId:null,language:'ar',toast:()=>errors++,createMutation:{isPending:false,mutate:input=>saved=input.data},updateMutation:{isPending:false}};
+ for(const key of ['initialBalance','creditLimit'])Object.defineProperty(deps,key,{get:()=>state[key]});
+ const save=handler('artifacts/finance-app/src/pages/accounts.tsx','handleSave',deps);
+ for(const input of ['500','-500','-٥٠٠']){state.initialBalance=input;save();assert.equal(saved.initialBalance,-500);assert.equal(saved.creditLimit,2000);}
+ state.creditLimit='';save();assert.equal(saved.creditLimit,null);
+ state.creditLimit='-20';saved=null;save();assert.equal(saved,null);assert.equal(errors,1);
 });

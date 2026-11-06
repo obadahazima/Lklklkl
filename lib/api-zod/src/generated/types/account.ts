@@ -17,6 +17,12 @@ export interface Account {
   initialBalance: number;
   /** initialBalance + income/receipt through this account - expense/payment through this account */
   currentBalance: number;
+  /**
+     * Optional total credit limit in the account currency; credit accounts only
+     * @minimum 0
+     * @nullable
+     */
+  creditLimit?: number | null;
   /** @nullable */
   notes?: string | null;
   createdAt: string;

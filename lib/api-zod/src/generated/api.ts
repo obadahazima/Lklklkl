@@ -328,6 +328,10 @@ export const GetTripPnlResponse = zod.object({
 /**
  * @summary List all accounts with computed current balance
  */
+export const listAccountsResponseCreditLimitMin = 0;
+
+
+
 export const ListAccountsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -336,10 +340,15 @@ export const ListAccountsResponseItem = zod.object({
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
+  "creditLimit": zod.number().min(listAccountsResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListAccountsResponse = zod.array(ListAccountsResponseItem)
+
+
+export const createAccountBodyCreditLimitMin = 0;
+
 
 
 export const CreateAccountBody = zod.object({
@@ -348,6 +357,7 @@ export const CreateAccountBody = zod.object({
   "currency": zod.string(),
   "color": zod.string().optional().describe('Hex color (e.g. #3B82F6), defaults to a neutral blue if omitted'),
   "initialBalance": zod.number().optional().describe('Starting balance when the account was added, defaults to 0'),
+  "creditLimit": zod.number().min(createAccountBodyCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish()
 })
 
@@ -355,6 +365,10 @@ export const CreateAccountBody = zod.object({
 export const GetAccountParams = zod.object({
   "id": zod.coerce.number()
 })
+
+export const getAccountResponseCreditLimitMin = 0;
+
+
 
 export const GetAccountResponse = zod.object({
   "id": zod.number(),
@@ -364,6 +378,7 @@ export const GetAccountResponse = zod.object({
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
+  "creditLimit": zod.number().min(getAccountResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
 })
@@ -373,14 +388,23 @@ export const UpdateAccountParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateAccountBodyCreditLimitMin = 0;
+
+
+
 export const UpdateAccountBody = zod.object({
   "name": zod.string().optional(),
   "type": zod.string().optional(),
   "currency": zod.string().optional(),
   "color": zod.string().optional(),
   "initialBalance": zod.number().optional(),
+  "creditLimit": zod.number().min(updateAccountBodyCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish()
 })
+
+export const updateAccountResponseCreditLimitMin = 0;
+
+
 
 export const UpdateAccountResponse = zod.object({
   "id": zod.number(),
@@ -390,6 +414,7 @@ export const UpdateAccountResponse = zod.object({
   "color": zod.string().describe('Hex color (e.g. #3B82F6) used to identify this account visually in lists and the dashboard'),
   "initialBalance": zod.number(),
   "currentBalance": zod.number().describe('initialBalance + income\/receipt through this account - expense\/payment through this account'),
+  "creditLimit": zod.number().min(updateAccountResponseCreditLimitMin).nullish().describe('Optional total credit limit in the account currency; credit accounts only'),
   "notes": zod.string().nullish(),
   "createdAt": zod.string()
 })

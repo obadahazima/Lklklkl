@@ -1,5 +1,5 @@
 import {
-  useListAccounts,
+  useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
   useCreateAccount,
   useDeleteAccount,
 } from "@workspace/api-client-react";
@@ -15,6 +15,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -50,6 +51,7 @@ export default function AccountsScreen() {
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState(settings.primaryCurrency || "AED");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [creditLimit, setCreditLimit] = useState("");
   const [color, setColor] = useState(ACCOUNT_COLORS[0]);
 
   const { data: accounts, isLoading, refetch } = useListAccounts();
@@ -81,10 +83,15 @@ export default function AccountsScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const handleCreate = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || creating) return;
+    const balance = openingAccountBalance(type, initialBalance);
+    const limit = type === "credit" ? optionalCreditLimit(creditLimit) : null;
+    if (!Number.isFinite(balance) || (limit !== null && !Number.isFinite(limit))) {
+      Alert.alert(isAr ? "راجع المبلغ" : "Check amount", isAr ? "أدخل رقماً صحيحاً بمنزلتين عشريتين كحد أقصى؛ الليميت اختياري وموجب." : "Enter a valid amount with at most two decimals; the optional limit must be non-negative."); return;
+    }
     try {
       await createAccount({
-        data: { name: name.trim(), type, currency, color, initialBalance: parseFloat(initialBalance) || 0 } as AccountInput,
+        data: { name: name.trim(), type, currency, color, initialBalance: balance, creditLimit: limit } as AccountInput,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowModal(false);
@@ -92,6 +99,7 @@ export default function AccountsScreen() {
       setType("cash");
       setColor(ACCOUNT_COLORS[0]);
       setInitialBalance("0");
+      setCreditLimit("");
       refetch();
     } catch {
       Alert.alert(isAr ? "خطأ" : "Error", isAr ? "فشل إضافة الحساب" : "Failed to add account");
@@ -153,6 +161,7 @@ export default function AccountsScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.accountName, { color: colors.foreground, textAlign: isAr ? "right" : "left" }]}>{item.name}</Text>
                   <Text style={[styles.accountType, { color: colors.mutedForeground, textAlign: isAr ? "right" : "left" }]}>{typeLabel(item.type)}</Text>
+                  {item.type === "credit" && item.creditLimit != null && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{isAr ? "الليميت: " : "Limit: "}{item.creditLimit.toFixed(2)} · {isAr ? "المتاح: " : "Available: "}{creditAvailability(item.currentBalance, item.creditLimit).toFixed(2)} {item.currency}{item.currentBalance + item.creditLimit < 0 ? (isAr ? " — تجاوز الحد" : " — Over limit") : ""}</Text>}
                 </View>
                 <Text style={[styles.accountBalance, { color: item.currentBalance >= 0 ? "#16a34a" : "#dc2626" }]}>
                   {item.currentBalance.toFixed(2)} {item.currency}
@@ -173,7 +182,7 @@ export default function AccountsScreen() {
       <Modal visible={showModal} animationType="slide" transparent presentationStyle="overFullScreen">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
-            <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: "90%" }} contentContainerStyle={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: colors.foreground }]}>{isAr ? "حساب جديد" : "New Account"}</Text>
                 <Pressable onPress={() => setShowModal(false)}>
@@ -225,11 +234,11 @@ export default function AccountsScreen() {
               />
 
               <Text style={[styles.fieldLabel, { color: colors.foreground, textAlign: isAr ? "right" : "left" }]}>
-                {isAr ? "الرصيد الابتدائي (اختياري)" : "Initial balance (optional)"}
+                {type === "credit" ? (isAr ? "المديونية الافتتاحية (اختياري)" : "Opening debt (optional)") : (isAr ? "الرصيد الابتدائي (اختياري)" : "Initial balance (optional)")}
               </Text>
               <TextInput
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background }]}
-                value={initialBalance}
+                value={type === "credit" ? initialBalance.replace(/^\s*[-−]\s*/, "") : initialBalance}
                 onChangeText={setInitialBalance}
                 keyboardType="decimal-pad"
                 placeholder="0"
@@ -237,6 +246,12 @@ export default function AccountsScreen() {
                 textAlign={isAr ? "right" : "left"}
               />
 
+              {type === "credit" && <>
+                <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, textAlign: isAr ? "right" : "left" }}>{isAr ? "نضيف السالب تلقائياً لأنها مديونية. كتابة السالب مقبولة، وتُحسب الإشارة مرة واحدة." : "Debt is automatically negative. Typing a minus is accepted and applied once."}</Text>
+                {Number.isFinite(openingAccountBalance(type, initialBalance)) && <Text style={{ color: colors.foreground }}>{isAr ? "سيُحفظ: " : "Will save: "}{openingAccountBalance(type, initialBalance).toFixed(2)} {currency}</Text>}
+                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{isAr ? "الحد الائتماني / ليميت السحب (اختياري)" : "Credit limit (optional)"}</Text>
+                <TextInput accessibilityLabel={isAr ? "الحد الائتماني" : "Credit limit"} style={[styles.input, { borderColor: colors.border, color: colors.foreground }]} value={creditLimit} onChangeText={setCreditLimit} keyboardType="decimal-pad" placeholder="2000" placeholderTextColor={colors.mutedForeground} />
+              </>}
               <Text style={[styles.fieldLabel, { color: colors.foreground, textAlign: isAr ? "right" : "left" }]}>
                 {isAr ? "لون الحساب" : "Account color"}
               </Text>
@@ -261,7 +276,7 @@ export default function AccountsScreen() {
               >
                 {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{isAr ? "إضافة" : "Add"}</Text>}
               </Pressable>
-            </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </View>
       </Modal>

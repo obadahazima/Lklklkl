@@ -1,7 +1,7 @@
 import { QueryFeedback } from "@/components/query-feedback";
 import { useState } from "react";
 import {
-  useListAccounts, normalizeAmountInput,
+  useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
   useCreateAccount,
   useUpdateAccount,
   useDeleteAccount,
@@ -32,6 +32,7 @@ export default function Accounts() {
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState("");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [creditLimit, setCreditLimit] = useState("");
   const [color, setColor] = useState(ACCOUNT_COLORS[0]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -50,6 +51,7 @@ export default function Accounts() {
     setType("cash");
     setCurrency(primaryCurrency || "AED");
     setInitialBalance("0");
+    setCreditLimit("");
     setColor(ACCOUNT_COLORS[0]);
   };
 
@@ -88,24 +90,25 @@ export default function Accounts() {
     setType(account.type);
     setCurrency(account.currency);
     setInitialBalance(String(account.initialBalance));
+    setCreditLimit(account.creditLimit == null ? "" : String(account.creditLimit));
     setColor(account.color || ACCOUNT_COLORS[0]);
     setShowForm(true);
   }
 
   function handleSave() {
     if (!name.trim() || createMutation.isPending || updateMutation.isPending) return;
-    const raw = initialBalance.trim();
-    const magnitude = normalizeAmountInput(raw.startsWith("-") ? raw.slice(1) : raw || "0");
-    const balance = raw.startsWith("-") ? -magnitude : magnitude;
+    const balance = openingAccountBalance(type, initialBalance);
+    const limit = type === "credit" ? optionalCreditLimit(creditLimit) : null;
+    if (limit !== null && !Number.isFinite(limit)) { toast({ title: language === "ar" ? "أدخل ليميت موجباً بمنزلتين عشريتين كحد أقصى، أو اتركه فارغاً" : "Enter a valid non-negative credit limit or leave it blank", variant: "destructive" }); return; }
     if (!Number.isFinite(balance) || Math.abs(balance) >= 1e13) { toast({ title: language === "ar" ? "راجع الرصيد الافتتاحي؛ أدخل رقماً صحيحاً بمنزلتين عشريتين كحد أقصى" : "Enter a valid opening balance with at most two decimal places", variant: "destructive" }); return; }
     if (editingId) {
       updateMutation.mutate({
         id: editingId,
-        data: { name: name.trim(), type, currency, color, initialBalance: balance },
+        data: { name: name.trim(), type, currency, color, initialBalance: balance, creditLimit: limit },
       });
     } else {
       createMutation.mutate({
-        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: balance },
+        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: balance, creditLimit: limit },
       });
     }
   }
@@ -194,16 +197,29 @@ export default function Accounts() {
             </div>
             <div>
               <label htmlFor="accounts-field-1" className="text-xs font-medium text-muted-foreground mb-1 block">
-                {language === "ar" ? "الرصيد الابتدائي (اختياري)" : "Initial balance (optional)"}
+                {type === "credit" ? (language === "ar" ? "المديونية الافتتاحية (اختياري)" : "Opening debt (optional)") : (language === "ar" ? "الرصيد الابتدائي (اختياري)" : "Initial balance (optional)")}
               </label>
+              <div className="flex items-center gap-2" dir="ltr">
+              {type === "credit" && <span className="text-xl font-bold text-destructive" aria-hidden="true">−</span>}
               <input id="accounts-field-1"
                 type="text" inputMode="decimal"
-                value={initialBalance}
+                value={type === "credit" ? initialBalance.replace(/^\s*[-−]\s*/, "") : initialBalance}
                 onChange={(e) => setInitialBalance(e.target.value)}
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background"
+                aria-describedby={type === "credit" ? "credit-opening-hint" : undefined}
                 data-testid="input-account-initial-balance"
               />
+              </div>
+              {type === "credit" && <p id="credit-opening-hint" role="status" className="text-xs text-muted-foreground mt-2">
+                {language === "ar" ? "نضيف السالب تلقائياً لأنها مديونية. كتابة المبلغ بسالب مقبولة أيضاً، والإشارة تُحسب مرة واحدة." : "Debt is saved as negative automatically. You can also type a minus; it is applied only once."}
+                {Number.isFinite(openingAccountBalance(type, initialBalance)) && <strong className="block mt-1">{language === "ar" ? "سيُحفظ: " : "Will save: "}<bdi dir="ltr">{openingAccountBalance(type, initialBalance).toFixed(2)} {currency || primaryCurrency}</bdi></strong>}
+              </p>}
             </div>
+            {type === "credit" && <div>
+              <label htmlFor="account-credit-limit" className="text-xs font-medium text-muted-foreground mb-1 block">{language === "ar" ? "الحد الائتماني / ليميت السحب (اختياري)" : "Credit limit (optional)"}</label>
+              <input id="account-credit-limit" type="text" inputMode="decimal" value={creditLimit} onChange={e => setCreditLimit(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" placeholder={language === "ar" ? "مثلاً: 2000" : "e.g. 2000"} />
+              <p className="text-xs text-muted-foreground mt-1">{language === "ar" ? "الحد الكلي للبطاقة بنفس عملة الحساب، وليس رصيداً إضافياً." : "Total card limit in the account currency; it does not add to your balance."}</p>
+            </div>}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 {language === "ar" ? "لون الحساب" : "Account color"}
@@ -252,7 +268,7 @@ export default function Accounts() {
           accounts?.map((account) => {
             const Icon = TYPE_ICON[account.type] ?? Wallet;
             return (
-              <div key={account.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center justify-between" data-testid={`account-card-${account.id}`}>
+              <div key={account.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center justify-between" data-testid={`account-card-${account.id}`}>
                 <div className="flex items-center gap-3">
                   <div
                     className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
@@ -276,6 +292,11 @@ export default function Accounts() {
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
+                {account.type === "credit" && account.creditLimit != null && <div className="w-full border-t border-border pt-3 text-xs flex flex-wrap gap-3">
+                  <span>{language === "ar" ? "الليميت: " : "Limit: "}{account.creditLimit.toFixed(2)} {account.currency}</span>
+                  <span>{language === "ar" ? "المتاح: " : "Available: "}{creditAvailability(account.currentBalance, account.creditLimit).toFixed(2)} {account.currency}</span>
+                  {account.currentBalance + account.creditLimit < 0 && <span className="text-destructive font-semibold">{language === "ar" ? "تجاوزت الحد بمقدار " : "Over limit by "}{(-(account.currentBalance + account.creditLimit)).toFixed(2)} {account.currency}</span>}
+                </div>}
               </div>
             );
           })

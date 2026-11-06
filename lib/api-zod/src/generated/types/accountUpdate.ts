@@ -12,6 +12,12 @@ export interface AccountUpdate {
   currency?: string;
   color?: string;
   initialBalance?: number;
+  /**
+     * Optional total credit limit in the account currency; credit accounts only
+     * @minimum 0
+     * @nullable
+     */
+  creditLimit?: number | null;
   /** @nullable */
   notes?: string | null;
 }
