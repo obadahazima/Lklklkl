@@ -1,5 +1,5 @@
 import {
-  useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
+  localISODate, useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
   useCreateAccount,
   useDeleteAccount,
 } from "@workspace/api-client-react";
@@ -51,6 +51,7 @@ export default function AccountsScreen() {
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState(settings.primaryCurrency || "AED");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [openingBalanceDate,setOpeningBalanceDate]=useState(localISODate());
   const [creditLimit, setCreditLimit] = useState("");
   const [color, setColor] = useState(ACCOUNT_COLORS[0]);
 
@@ -91,7 +92,7 @@ export default function AccountsScreen() {
     }
     try {
       await createAccount({
-        data: { name: name.trim(), type, currency, color, initialBalance: balance, creditLimit: limit } as AccountInput,
+        data: { name: name.trim(), type, currency, color, initialBalance: balance, openingBalanceDate: openingBalanceDate || null, creditLimit: limit } as AccountInput,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowModal(false);
@@ -99,6 +100,7 @@ export default function AccountsScreen() {
       setType("cash");
       setColor(ACCOUNT_COLORS[0]);
       setInitialBalance("0");
+      setOpeningBalanceDate(localISODate());
       setCreditLimit("");
       refetch();
     } catch {
@@ -246,6 +248,7 @@ export default function AccountsScreen() {
                 textAlign={isAr ? "right" : "left"}
               />
 
+              <Text style={{color:colors.foreground}}>{isAr?"الرصيد بتاريخ YYYY-MM-DD":"Balance as of YYYY-MM-DD"}</Text><TextInput value={openingBalanceDate} onChangeText={setOpeningBalanceDate} style={[styles.input,{color:colors.foreground,borderColor:colors.border}]} accessibilityLabel={isAr?"الرصيد بتاريخ":"Balance as of"}/>
               {type === "credit" && <>
                 <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, textAlign: isAr ? "right" : "left" }}>{isAr ? "نضيف السالب تلقائياً لأنها مديونية. كتابة السالب مقبولة، وتُحسب الإشارة مرة واحدة." : "Debt is automatically negative. Typing a minus is accepted and applied once."}</Text>
                 {Number.isFinite(openingAccountBalance(type, initialBalance)) && <Text style={{ color: colors.foreground }}>{isAr ? "سيُحفظ: " : "Will save: "}{openingAccountBalance(type, initialBalance).toFixed(2)} {currency}</Text>}

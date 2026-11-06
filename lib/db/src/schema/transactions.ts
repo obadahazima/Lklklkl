@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, numeric, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
@@ -20,6 +20,8 @@ export const transactionsTable = pgTable("transactions", {
   // Only set when type === "transfer": the destination account. `accountId` above is then the
   // source account money left FROM. Null for every other transaction type.
   toAccountId: integer("to_account_id").references(() => accountsTable.id, { onDelete: "set null" }),
+  includedInOpeningBalance: boolean("included_in_opening_balance").notNull().default(false),
+  destinationIncludedInOpeningBalance: boolean("destination_included_in_opening_balance").notNull().default(false),
   debtKind: text("debt_kind"),
   dueDate: text("due_date"),
   allocations: jsonb("allocations").$type<{ debtId: number; amount: number }[]>(),

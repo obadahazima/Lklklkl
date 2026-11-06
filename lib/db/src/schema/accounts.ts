@@ -14,6 +14,7 @@ export const accountsTable = pgTable("accounts", {
   // insert that omits it still render consistently instead of falling back to undefined.
   color: text("color").notNull().default("#3B82F6"),
   initialBalance: numeric("initial_balance", { precision: 15, scale: 2 }).notNull().default("0"),
+  openingBalanceDate: text("opening_balance_date"),
   creditLimit: numeric("credit_limit", { precision: 15, scale: 2 }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

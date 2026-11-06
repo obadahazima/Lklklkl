@@ -140,6 +140,7 @@ type TxRow = {
   tripId: number | null;
   accountId: number | null;
   toAccountId: number | null;
+  includedInOpeningBalance?: boolean; destinationIncludedInOpeningBalance?: boolean;
   debtKind?: string | null;
   allocations?: Allocation[] | null;
   description: string | null;
@@ -148,7 +149,7 @@ type TxRow = {
 
 type ClientRow = { id: number; name: string; phone: string | null };
 type TripRow   = { id: number; name: string; status: string; isShared: boolean };
-type AccountRow = { id: number; name: string; type: string; currency: string; initialBalance: string };
+type AccountRow = { openingBalanceDate?: string | null; id: number; name: string; type: string; currency: string; initialBalance: string };
 
 function convertToCurrency(amount: number, from: string, to: string, rates: AllRates): number {
   if (from === to) return amount;
@@ -203,8 +204,8 @@ function buildFinancialContext(
   });
 
   const accountSummaries = accounts.map((account) => {
-    const outgoing = txs.filter((t) => t.accountId === account.id);
-    const incomingTransfers = txs.filter((t) => t.toAccountId === account.id && t.type === "transfer");
+    const outgoing = txs.filter((t) => t.accountId === account.id && !t.includedInOpeningBalance);
+    const incomingTransfers = txs.filter((t) => t.toAccountId === account.id && t.type === "transfer" && !t.destinationIncludedInOpeningBalance);
     // Every transaction carries its own currency, which may differ from this account's currency
     // (e.g. paying "100 USD" out of an AED account) — convert each amount into the account's
     // own currency before folding it into the balance, otherwise mismatched-currency
@@ -538,6 +539,8 @@ const createTransactionDeclaration: FunctionDeclaration = {
     type: SchemaType.OBJECT,
     properties: {
       type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "transfer"], description: "نوع المعاملة" },
+      includedInOpeningBalance: { type: SchemaType.BOOLEAN, description: "هل أكد المستخدم أن المبلغ محسوب ضمن رصيد المصدر الافتتاحي؟ لا تفترض الإجابة" },
+      destinationIncludedInOpeningBalance: { type: SchemaType.BOOLEAN, description: "للتحويل: هل أكد أنه محسوب برصيد الوجهة الافتتاحي؟" },
       amount: { type: SchemaType.NUMBER, description: "المبلغ (رقم موجب)" },
       currency: { type: SchemaType.STRING, description: "كود العملة ISO مثل AED أو USD أو SYP" },
       date: { type: SchemaType.STRING, description: "تاريخ المعاملة بصيغة YYYY-MM-DD. إذا لم يُذكر تاريخ استخدم تاريخ اليوم." },
@@ -561,6 +564,8 @@ const updateTransactionDeclaration: FunctionDeclaration = {
     properties: {
       id: { type: SchemaType.NUMBER, description: "معرّف المعاملة (id) المطلوب تعديلها" },
       type: { type: SchemaType.STRING, format: "enum", enum: ["income", "expense", "transfer"] },
+      includedInOpeningBalance: { type: SchemaType.BOOLEAN, description: "هل أكد المستخدم أن المبلغ محسوب ضمن رصيد المصدر الافتتاحي؟ لا تفترض الإجابة" },
+      destinationIncludedInOpeningBalance: { type: SchemaType.BOOLEAN, description: "للتحويل: هل أكد أنه محسوب برصيد الوجهة الافتتاحي؟" },
       amount: { type: SchemaType.NUMBER },
       currency: { type: SchemaType.STRING },
       date: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
@@ -816,6 +821,7 @@ async function executeTool(
       .from(accountsTable)
       .where(and(eq(accountsTable.id, accountId), eq(accountsTable.userId, userId)));
     if (!account) return { error: "الحساب غير موجود" };
+    if (account.openingBalanceDate && String(args.date) <= account.openingBalanceDate && typeof args.includedInOpeningBalance !== "boolean") return {error:"المعاملة بتاريخ الرصيد الافتتاحي أو قبله. اسأل المستخدم هل كانت محسوبة ضمن الرصيد ثم أرسل الإجابة صراحةً"};
 
     const toAccountId = num(args.toAccountId) ?? null;
     if (args.type === "transfer") {
@@ -836,6 +842,7 @@ async function executeTool(
       const [tx] = await ledger
       .insert(transactionsTable)
       .values({
+        includedInOpeningBalance: args.includedInOpeningBalance === true, destinationIncludedInOpeningBalance: args.type === "transfer" && args.destinationIncludedInOpeningBalance === true,
         allocations,
         userId,
         type: String(args.type),
@@ -868,6 +875,8 @@ async function executeTool(
     if (existing.type === "receivable" || existing.allocations?.length || existing.clientId) return {error:"عدّل أو احذف المعاملة من سجل المعاملات للحفاظ على ربط الذمم"};
 
     const updateData: Record<string, unknown> = {};
+    if(typeof args.includedInOpeningBalance === "boolean") updateData.includedInOpeningBalance=args.includedInOpeningBalance;
+    if(typeof args.destinationIncludedInOpeningBalance === "boolean") updateData.destinationIncludedInOpeningBalance=args.destinationIncludedInOpeningBalance;
     if (typeof args.type === "string") updateData.type = args.type;
     const amount = num(args.amount);
     if (amount !== undefined) {

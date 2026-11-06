@@ -72,7 +72,7 @@ export class OfflineLedger {
       if (!item || item.state !== "blocked" || ![400, 404, 422].includes(item.status ?? 0)) throw new Error("This transaction needs reconciliation before it can be edited");
       if (record.draft && Object.values(record.draft.values).some(Boolean) && record.draft.values.amount) throw new Error("Finish or clear the current draft first");
       const p = item.payload;
-      draft = { id: this.uuid(), values: { type: p.type, amount: String(p.amount), currency: p.currency, date: p.date, status: p.status, accountId: String(p.accountId), toAccountId: p.toAccountId == null ? "" : String(p.toAccountId), clientId: p.clientId == null ? "" : String(p.clientId), tripId: p.tripId == null ? "" : String(p.tripId), description: p.description ?? "" } };
+      draft = { id: this.uuid(), values: { includedInOpeningBalance: p.includedInOpeningBalance ? "true" : "", destinationIncludedInOpeningBalance: p.destinationIncludedInOpeningBalance ? "true" : "", type: p.type, amount: String(p.amount), currency: p.currency, date: p.date, status: p.status, accountId: String(p.accountId), toAccountId: p.toAccountId == null ? "" : String(p.toAccountId), clientId: p.clientId == null ? "" : String(p.clientId), tripId: p.tripId == null ? "" : String(p.tripId), description: p.description ?? "" } };
       return { ...record, draft, outbox: record.outbox.filter((entry) => entry.id !== id) };
     });
     this.notify();

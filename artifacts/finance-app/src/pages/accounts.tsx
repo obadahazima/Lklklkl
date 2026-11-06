@@ -1,7 +1,7 @@
 import { QueryFeedback } from "@/components/query-feedback";
 import { useState } from "react";
 import {
-  useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
+  localISODate, useListAccounts, openingAccountBalance, optionalCreditLimit, creditAvailability,
   useCreateAccount,
   useUpdateAccount,
   useDeleteAccount,
@@ -32,6 +32,7 @@ export default function Accounts() {
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState("");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [openingBalanceDate, setOpeningBalanceDate] = useState(localISODate());
   const [creditLimit, setCreditLimit] = useState("");
   const [color, setColor] = useState(ACCOUNT_COLORS[0]);
   const { toast } = useToast();
@@ -51,6 +52,7 @@ export default function Accounts() {
     setType("cash");
     setCurrency(primaryCurrency || "AED");
     setInitialBalance("0");
+    setOpeningBalanceDate(localISODate());
     setCreditLimit("");
     setColor(ACCOUNT_COLORS[0]);
   };
@@ -90,6 +92,7 @@ export default function Accounts() {
     setType(account.type);
     setCurrency(account.currency);
     setInitialBalance(String(account.initialBalance));
+    setOpeningBalanceDate(account.openingBalanceDate || "");
     setCreditLimit(account.creditLimit == null ? "" : String(account.creditLimit));
     setColor(account.color || ACCOUNT_COLORS[0]);
     setShowForm(true);
@@ -104,11 +107,11 @@ export default function Accounts() {
     if (editingId) {
       updateMutation.mutate({
         id: editingId,
-        data: { name: name.trim(), type, currency, color, initialBalance: balance, creditLimit: limit },
+        data: { name: name.trim(), type, currency, color, initialBalance: balance, openingBalanceDate: openingBalanceDate || null, creditLimit: limit },
       });
     } else {
       createMutation.mutate({
-        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: balance, creditLimit: limit },
+        data: { name: name.trim(), type, currency: currency || primaryCurrency || "AED", color, initialBalance: balance, openingBalanceDate: openingBalanceDate || null, creditLimit: limit },
       });
     }
   }
@@ -215,6 +218,7 @@ export default function Accounts() {
                 {Number.isFinite(openingAccountBalance(type, initialBalance)) && <strong className="block mt-1">{language === "ar" ? "سيُحفظ: " : "Will save: "}<bdi dir="ltr">{openingAccountBalance(type, initialBalance).toFixed(2)} {currency || primaryCurrency}</bdi></strong>}
               </p>}
             </div>
+            <label className="block text-sm">{language === "ar" ? "الرصيد بتاريخ" : "Balance as of"}<input type="date" value={openingBalanceDate} onChange={e=>setOpeningBalanceDate(e.target.value)} className="mt-1 w-full border border-border rounded-lg px-3 py-2 bg-background"/><span className="block text-xs text-muted-foreground mt-1">{language === "ar" ? "تاريخ الرصيد الذي أدخلته. المعاملات القديمة لن تُستثنى إلا إذا أكدت أنها محسوبة فيه." : "Date represented by this balance. Older transactions are excluded only when you explicitly mark them as included."}</span></label>
             {type === "credit" && <div>
               <label htmlFor="account-credit-limit" className="text-xs font-medium text-muted-foreground mb-1 block">{language === "ar" ? "الحد الائتماني / ليميت السحب (اختياري)" : "Credit limit (optional)"}</label>
               <input id="account-credit-limit" type="text" inputMode="decimal" value={creditLimit} onChange={e => setCreditLimit(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" placeholder={language === "ar" ? "مثلاً: 2000" : "e.g. 2000"} />

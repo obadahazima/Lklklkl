@@ -1,3 +1,4 @@
+import { OpeningBalanceOptions } from "@/components/opening-balance-options";
 import { QueryFeedback } from "@/components/query-feedback";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from "@clerk/react";
@@ -10,7 +11,7 @@ import {
   useUpdateTransaction,
   useListClients,
   useListTrips,
-  getListTransactionsQueryKey,
+  getListAccountsQueryKey, getListTransactionsQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetRecentTransactionsQueryKey,
   getListClientsQueryKey,
@@ -64,6 +65,7 @@ export default function Transactions() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetRecentTransactionsQueryKey() });
         toast({ title: t("deletedSuccess"), description: t("deletedDesc") });
@@ -75,6 +77,7 @@ export default function Transactions() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetRecentTransactionsQueryKey() });
         toast({ title: t("updatedSuccess"), description: t("updatedDesc") });
@@ -192,7 +195,7 @@ export default function Transactions() {
                           )}
                         </div>
                         <button
-                          disabled={tx.type === "receivable" || !!tx.allocations?.length || (["income","receipt"].includes(tx.type) && !!tx.clientId)} title={language === "ar" ? "لتصحيح التحصيل المرتبط احذفه وأعد تسجيله" : "To correct a linked collection, delete and record it again"} onClick={() => setEditingTx(tx)}
+                          disabled={tx.type === "receivable"} title={language === "ar" ? "لتصحيح التحصيل المرتبط احذفه وأعد تسجيله" : "To correct a linked collection, delete and record it again"} onClick={() => setEditingTx(tx)}
                           aria-label={language === "ar" ? "تعديل المعاملة" : "Edit transaction"} className="text-muted-foreground hover:text-primary transition-colors p-2"
                           data-testid={`btn-edit-tx-${tx.id}`}
                         >
@@ -282,6 +285,7 @@ function EditTransactionModal({
     accountId: tx.accountId == null ? "" : String(tx.accountId),
     toAccountId: tx.toAccountId == null ? "" : String(tx.toAccountId),
     type: tx.type === "payment" ? "expense" : tx.type === "receipt" ? "income" : tx.type,
+    includedInOpeningBalance: tx.includedInOpeningBalance ? "true" : "", destinationIncludedInOpeningBalance: tx.destinationIncludedInOpeningBalance ? "true" : "",
     amount: String(tx.amount),
     currency: tx.currency,
     status: tx.status,
@@ -294,6 +298,7 @@ function EditTransactionModal({
   function handleSubmit() {
     if (isSaving) return;
     const patch = {
+      includedInOpeningBalance: form.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: form.destinationIncludedInOpeningBalance === "true",
       type: form.type, amount: normalizeAmountInput(form.amount), currency: form.currency,
       status: form.status, date: form.date, description: form.description.trim() || null,
       accountId: Number(form.accountId), toAccountId: form.type === "transfer" ? Number(form.toAccountId) : null,
@@ -332,6 +337,7 @@ function EditTransactionModal({
             <label className="block text-sm">{language === "ar" ? "الحساب المصدر" : "Source account"}<select value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))} className="mt-1 w-full rounded-lg border border-border bg-background p-3"><option value="">{language === "ar" ? "اختر حساباً" : "Choose an account"}</option>{!accounts?.some(a => String(a.id) === form.accountId) && tx.accountId != null && <option value={String(tx.accountId)}>{tx.accountName || (language === "ar" ? "الحساب الحالي" : "Current account")}</option>}{accounts?.map(a => <option key={a.id} value={a.id}>{a.name} · {a.currency}</option>)}</select></label>
             {form.type === "transfer" && <label className="block text-sm">{language === "ar" ? "الحساب الوجهة" : "Destination account"}<select value={form.toAccountId} onChange={e => setForm(f => ({ ...f, toAccountId: e.target.value }))} className="mt-1 w-full rounded-lg border border-border bg-background p-3"><option value="">{language === "ar" ? "اختر حساباً مختلفاً" : "Choose a different account"}</option>{!accounts?.some(a => String(a.id) === form.toAccountId) && tx.toAccountId != null && <option value={String(tx.toAccountId)}>{tx.toAccountName || (language === "ar" ? "الوجهة الحالية" : "Current destination")}</option>}{accounts?.filter(a => String(a.id) !== form.accountId).map(a => <option key={a.id} value={a.id}>{a.name} · {a.currency}</option>)}</select></label>}
           </div>
+          <OpeningBalanceOptions accounts={accounts} accountId={form.accountId} toAccountId={form.toAccountId} type={form.type} date={form.date} source={form.includedInOpeningBalance} destination={form.destinationIncludedInOpeningBalance} onSource={v=>setForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="edit-amount" className="text-xs text-muted-foreground mb-1 block">{t("amountLabel")}</label>

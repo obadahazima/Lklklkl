@@ -27,7 +27,7 @@ test('editing real transactions preserves account data and validates Arabic amou
 });
 test('opening balance entry accepts signed Arabic decimals and never silently turns malformed input into zero',()=>{
  const state={initialBalance:'-١٬٥٠٠٫٥٠'};let saved,errors=0;
- const deps={...credit,creditLimit:'',name:'Cash',type:'cash',currency:'AED',color:'#216047',primaryCurrency:'AED',editingId:null,language:'ar',normalizeAmountInput:utils.normalizeAmountInput,toast:()=>errors++,createMutation:{isPending:false,mutate:input=>saved=input.data},updateMutation:{isPending:false}};
+ const deps={...credit,creditLimit:'',openingBalanceDate:'2026-11-06',name:'Cash',type:'cash',currency:'AED',color:'#216047',primaryCurrency:'AED',editingId:null,language:'ar',normalizeAmountInput:utils.normalizeAmountInput,toast:()=>errors++,createMutation:{isPending:false,mutate:input=>saved=input.data},updateMutation:{isPending:false}};
  Object.defineProperty(deps,'initialBalance',{get:()=>state.initialBalance});
  const save=handler('artifacts/finance-app/src/pages/accounts.tsx','handleSave',deps);
  save();assert.equal(saved.initialBalance,-1500.5);
@@ -43,6 +43,7 @@ const common={
  '@/lib/i18n':i18n,
  '@/lib/utils':{cn:(...xs)=>xs.filter(x=>typeof x==='string').join(' ')},
  '@/components/query-feedback':{QueryFeedback:queryFeedback},
+ '@/components/opening-balance-options':{OpeningBalanceOptions:()=>null},
 };
 for(const [page,entity] of [['accounts','Accounts'],['clients','Clients'],['trips','Trips']]){
  test(`${page} renders a retryable failure instead of a false empty financial list`,()=>{
@@ -64,7 +65,7 @@ test('light and dark themes keep normal foreground, muted text and primary butto
 });
 test('real account save accepts either credit sign and sends the optional limit separately',()=>{
  const state={initialBalance:'500',creditLimit:'٢٠٠٠'};let saved,errors=0;
- const deps={...credit,name:'Visa',type:'credit',currency:'AED',color:'#216047',primaryCurrency:'AED',editingId:null,language:'ar',toast:()=>errors++,createMutation:{isPending:false,mutate:input=>saved=input.data},updateMutation:{isPending:false}};
+ const deps={...credit,openingBalanceDate:'2026-11-06',name:'Visa',type:'credit',currency:'AED',color:'#216047',primaryCurrency:'AED',editingId:null,language:'ar',toast:()=>errors++,createMutation:{isPending:false,mutate:input=>saved=input.data},updateMutation:{isPending:false}};
  for(const key of ['initialBalance','creditLimit'])Object.defineProperty(deps,key,{get:()=>state[key]});
  const save=handler('artifacts/finance-app/src/pages/accounts.tsx','handleSave',deps);
  for(const input of ['500','-500','-٥٠٠']){state.initialBalance=input;save();assert.equal(saved.initialBalance,-500);assert.equal(saved.creditLimit,2000);}
@@ -78,3 +79,4 @@ test('receivables page renders remaining 150 after a FIFO collection and keeps c
  const Component=load('artifacts/finance-app/src/pages/receivables.tsx',{...common,'@clerk/react':{useAuth:()=>({userId:'a'})},'@workspace/api-client-react':api,'@/lib/offline-ledger':{webLedger:{}},'@/components/offline-ledger':{OfflineQueuePanel:()=>null}}).default;
  const html=renderToStaticMarkup(React.createElement(Component));assert.match(html,/الذمم/);assert.match(html,/إجمالي الذمم المتبقية: 150.00/);assert.match(html,/محصّلة بالكامل/);assert.match(html,/محصّلة جزئياً/);assert.match(html,/تسجيل تحصيل/);assert.match(html,/تسجيل الذمة لا يزيد رصيد الحساب/);
 });
+test('opening-balance review shows separate source and destination choices with snapshot dates',()=>{const {OpeningBalanceOptions}=load('artifacts/finance-app/src/components/opening-balance-options.tsx');const html=renderToStaticMarkup(React.createElement(OpeningBalanceOptions,{accounts:[{id:1,name:'البنك',openingBalanceDate:'2026-11-06'},{id:2,name:'الكاش',openingBalanceDate:'2026-11-05'}],accountId:'1',toAccountId:'2',type:'transfer',date:'2026-11-04',source:'true',destination:'',onSource(){},onDestination(){},ar:true}));assert.equal((html.match(/type="checkbox"/g)??[]).length,2);assert.equal((html.match(/checked=""/g)??[]).length,1);assert.match(html,/معاملة قديمة/);assert.match(html,/البنك/);assert.match(html,/الكاش/);assert.match(html,/ستبقى بالتقارير بتاريخها/);});

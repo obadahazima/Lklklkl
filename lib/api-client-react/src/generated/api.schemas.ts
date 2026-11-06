@@ -41,6 +41,10 @@ export interface Transaction {
   toAccountId?: number | null;
   /** @nullable */
   toAccountName?: string | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
   /**
      * sale | opening | loan | loan_now; receivable only
      * @nullable
@@ -81,6 +85,10 @@ export interface TransactionInput {
      * @nullable
      */
   toAccountId?: number | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
   /**
      * sale | opening | loan | loan_now; receivable only
      * @nullable
@@ -106,6 +114,10 @@ export interface TransactionUpdate {
   accountId?: number | null;
   /** @nullable */
   toAccountId?: number | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
   /**
      * sale | opening | loan | loan_now; receivable only
      * @nullable
@@ -217,6 +229,11 @@ export interface Account {
   /** initialBalance + income/receipt through this account - expense/payment through this account */
   currentBalance: number;
   /**
+     * Local calendar date represented by the opening balance; transactions are never excluded automatically
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
      * Optional total credit limit in the account currency; credit accounts only
      * @minimum 0
      * @nullable
@@ -237,6 +254,11 @@ export interface AccountInput {
   /** Starting balance when the account was added, defaults to 0 */
   initialBalance?: number;
   /**
+     * Local calendar date represented by the opening balance; transactions are never excluded automatically
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
      * Optional total credit limit in the account currency; credit accounts only
      * @minimum 0
      * @nullable
@@ -252,6 +274,11 @@ export interface AccountUpdate {
   currency?: string;
   color?: string;
   initialBalance?: number;
+  /**
+     * Local calendar date represented by the opening balance; transactions are never excluded automatically
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
   /**
      * Optional total credit limit in the account currency; credit accounts only
      * @minimum 0

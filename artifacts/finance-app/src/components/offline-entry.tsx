@@ -1,3 +1,4 @@
+import { OpeningBalanceOptions } from "./opening-balance-options";
 import { TERMS_VERSION } from "./consent-gate";
 import { useEffect, useRef, useState } from "react";
 import { localISODate, normalizeAmountInput, transactionError, manualErrorMessage, useManualDraft, useOfflineLedger, type ManualDraft } from "@workspace/api-client-react";
@@ -24,13 +25,13 @@ function OfflineManualForm({ owner }: { owner: string }) {
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (busy.current || !draft.ready) return;
-    const payload = { debtKind: form.type === "receivable" ? form.debtKind || "sale" : null, dueDate: form.type === "receivable" ? form.dueDate || null : null, type: form.type, amount: normalizeAmountInput(form.amount), currency: form.currency, date: form.date, status: form.status, accountId: form.type === "receivable" && form.debtKind !== "loan_now" ? 0 : Number(form.accountId), toAccountId: form.type === "transfer" ? Number(form.toAccountId) : null, clientId: form.type === "transfer" ? null : form.clientId ? Number(form.clientId) : null, tripId: form.type === "transfer" ? null : form.tripId ? Number(form.tripId) : null, description: form.description || null };
+    const payload = { includedInOpeningBalance: form.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: form.destinationIncludedInOpeningBalance === "true", debtKind: form.type === "receivable" ? form.debtKind || "sale" : null, dueDate: form.type === "receivable" ? form.dueDate || null : null, type: form.type, amount: normalizeAmountInput(form.amount), currency: form.currency, date: form.date, status: form.status, accountId: form.type === "receivable" && form.debtKind !== "loan_now" ? 0 : Number(form.accountId), toAccountId: form.type === "transfer" ? Number(form.toAccountId) : null, clientId: form.type === "transfer" ? null : form.clientId ? Number(form.clientId) : null, tripId: form.type === "transfer" ? null : form.tripId ? Number(form.tripId) : null, description: form.description || null };
     const error = transactionError(payload);
     if (error) { setMessage(manualErrorMessage(error, true)); return; }
     busy.current = true; setSaving(true);
     try {
       await webLedger.enqueue(owner, payload, draft.id);
-      const next = { ...form, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", date: localISODate() };
+      const next = { ...form, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "", date: localISODate() };
       const nextDraft = { id: webLedger.uuid(), values: next };
       await webLedger.saveDraft(owner, nextDraft.id, next).catch(() => {});
       draft.restore(nextDraft);
@@ -57,6 +58,7 @@ function OfflineManualForm({ owner }: { owner: string }) {
         <label className="block">الرحلة<select className={fieldClass} value={form.tripId} onChange={(event) => update("tripId",event.target.value)}><option value="">بدون رحلة</option>{record.references.trips?.map((trip) => <option key={trip.id} value={trip.id}>{trip.name}</option>)}</select></label>
       </>}
       <label className="block">التاريخ<input type="date" className={fieldClass} value={form.date} onChange={(event) => update("date",event.target.value)} required /></label>
+      <OpeningBalanceOptions accounts={accounts} accountId={form.accountId} toAccountId={form.toAccountId} type={form.type} date={form.date} source={form.includedInOpeningBalance} destination={form.destinationIncludedInOpeningBalance} onSource={v=>update("includedInOpeningBalance",v)} onDestination={v=>update("destinationIncludedInOpeningBalance",v)}/>
       <label className="block">الحالة<select className={fieldClass} value={form.status} onChange={(event) => update("status",event.target.value)}><option value="pending">معلقة</option><option value="settled">مسددة</option></select></label>
       <label className="block">الوصف<input className={fieldClass} value={form.description} onChange={(event) => update("description",event.target.value)} /></label>
       <button disabled={saving || !draft.ready || (!accounts.length && (form.type !== "receivable" || form.debtKind === "loan_now"))} className="w-full p-3 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">حفظ وإضافة أخرى</button>

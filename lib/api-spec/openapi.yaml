@@ -564,6 +564,12 @@ components:
           description: "Destination account for type=transfer only"
         toAccountName:
           type: ["string", "null"]
+        includedInOpeningBalance:
+          type: boolean
+          description: "Already reflected in source/account opening balance; retain reporting but skip this cash effect"
+        destinationIncludedInOpeningBalance:
+          type: boolean
+          description: "Transfer destination independently already reflects this amount"
         debtKind:
           type: ["string", "null"]
           description: "sale | opening | loan | loan_now; receivable only"
@@ -619,6 +625,12 @@ components:
         toAccountId:
           type: ["integer", "null"]
           description: "Required when type=transfer — the destination account. Must differ from accountId."
+        includedInOpeningBalance:
+          type: boolean
+          description: "Already reflected in source/account opening balance; retain reporting but skip this cash effect"
+        destinationIncludedInOpeningBalance:
+          type: boolean
+          description: "Transfer destination independently already reflects this amount"
         debtKind:
           type: ["string", "null"]
           description: "sale | opening | loan | loan_now; receivable only"
@@ -648,6 +660,12 @@ components:
           type: ["integer", "null"]
         toAccountId:
           type: ["integer", "null"]
+        includedInOpeningBalance:
+          type: boolean
+          description: "Already reflected in source/account opening balance; retain reporting but skip this cash effect"
+        destinationIncludedInOpeningBalance:
+          type: boolean
+          description: "Transfer destination independently already reflects this amount"
         debtKind:
           type: ["string", "null"]
           description: "sale | opening | loan | loan_now; receivable only"
@@ -820,6 +838,9 @@ components:
         currentBalance:
           type: number
           description: "initialBalance + income/receipt through this account - expense/payment through this account"
+        openingBalanceDate:
+          type: ["string", "null"]
+          description: "Local calendar date represented by the opening balance; transactions are never excluded automatically"
         creditLimit:
           type: ["number", "null"]
           minimum: 0
@@ -846,6 +867,9 @@ components:
         initialBalance:
           type: number
           description: "Starting balance when the account was added, defaults to 0"
+        openingBalanceDate:
+          type: ["string", "null"]
+          description: "Local calendar date represented by the opening balance; transactions are never excluded automatically"
         creditLimit:
           type: ["number", "null"]
           minimum: 0
@@ -866,6 +890,9 @@ components:
           type: string
         initialBalance:
           type: number
+        openingBalanceDate:
+          type: ["string", "null"]
+          description: "Local calendar date represented by the opening balance; transactions are never excluded automatically"
         creditLimit:
           type: ["number", "null"]
           minimum: 0

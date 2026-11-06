@@ -159,6 +159,7 @@ router.post("/transactions", async (req, res): Promise<void> => {
   const transferError = validateTransferFields(input.type, input.accountId, input.toAccountId);
   if (transferError) { res.status(400).json({ error: transferError }); return; }
   const values = {
+    includedInOpeningBalance: input.includedInOpeningBalance ?? false, destinationIncludedInOpeningBalance: input.type === "transfer" && (input.destinationIncludedInOpeningBalance ?? false),
     userId: req.userId, type: input.type, amount: String(input.amount), currency: input.currency,
     date: input.date, status: input.status, description: input.description?.trim() || null,
     clientId: input.type === "transfer" ? null : input.clientId ?? null,
@@ -167,13 +168,15 @@ router.post("/transactions", async (req, res): Promise<void> => {
     accountId: input.type === "receivable" && input.debtKind !== "loan_now" ? null : input.accountId, toAccountId: input.type === "transfer" ? input.toAccountId ?? null : null,
   };
   const hash = createHash("sha256").update(JSON.stringify({...values,collectionOnly:input.collectionOnly ?? false})).digest("hex");
+  const {includedInOpeningBalance: _sourceIncluded,destinationIncludedInOpeningBalance: _destIncluded,...legacyValues}=values;
+  const legacyHash=createHash("sha256").update(JSON.stringify({...legacyValues,collectionOnly:input.collectionOnly ?? false})).digest("hex");
   try {
     const result = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('billy.ledger.user'), hashtext(${req.userId}))`);
       if (input.clientRequestId) {
         // Serializes matching keys across API instances; receipt and transaction commit together.
         const [receipt] = await tx.select().from(transactionReceiptsTable).where(and(eq(transactionReceiptsTable.userId, req.userId), eq(transactionReceiptsTable.requestId, input.clientRequestId)));
-        if (receipt) return receipt.payloadHash === hash
+        if (receipt) return (receipt.payloadHash === hash || (!_sourceIncluded && !_destIncluded && receipt.payloadHash === legacyHash))
           ? { status: 200, body: receipt.response }
           : { status: 409, body: { error: "idempotency_key_conflict" } };
       }
@@ -262,7 +265,13 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
       return;
     }
 
-    if (existing.type === "receivable" || existing.allocations?.length || (canonicalType(bodyParsed.data.type ?? existing.type) === "income" && (bodyParsed.data.clientId ?? existing.clientId))) {
+    const allocationFieldsChanged = ["type","amount","currency","date","status","clientId","tripId","accountId","toAccountId"].some(key=> {
+      const value=bodyParsed.data[key as keyof typeof bodyParsed.data];
+      if(key === "amount" && value !== undefined) return Number(value) !== Number(existing.amount);
+      if(key === "type" && typeof value === "string") return canonicalType(value) !== canonicalType(existing.type);
+      return value !== undefined && String(value ?? "") !== String(existing[key as keyof typeof existing] ?? "");
+    });
+    if (allocationFieldsChanged && (existing.type === "receivable" || existing.allocations?.length || (canonicalType(bodyParsed.data.type ?? existing.type) === "income" && (bodyParsed.data.clientId ?? existing.clientId)))) {
       res.status(409).json({error:"للحفاظ على ربط الذمم، احذف التحصيل وأعد تسجيله لتصحيح المبلغ أو الحساب."}); return;
     }
     const effectiveType = bodyParsed.data.type ?? existing.type;
@@ -282,6 +291,9 @@ router.patch("/transactions/:id", async (req, res): Promise<void> => {
     }
 
     const updateData: Record<string, unknown> = {};
+    if (bodyParsed.data.includedInOpeningBalance !== undefined) updateData.includedInOpeningBalance = bodyParsed.data.includedInOpeningBalance;
+    if (bodyParsed.data.destinationIncludedInOpeningBalance !== undefined) updateData.destinationIncludedInOpeningBalance = effectiveType === "transfer" && bodyParsed.data.destinationIncludedInOpeningBalance;
+    if (effectiveType !== "transfer") updateData.destinationIncludedInOpeningBalance = false;
     if (bodyParsed.data.type !== undefined) updateData.type = bodyParsed.data.type;
     if (bodyParsed.data.amount !== undefined) updateData.amount = String(bodyParsed.data.amount);
     if (bodyParsed.data.currency !== undefined) updateData.currency = bodyParsed.data.currency;

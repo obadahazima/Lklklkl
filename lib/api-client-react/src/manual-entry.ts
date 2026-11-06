@@ -1,5 +1,6 @@
 export const TRANSACTION_TYPES = ["income", "expense", "payment", "receipt", "transfer", "receivable"] as const;
 export type ManualDraft = {
+  includedInOpeningBalance?: string; destinationIncludedInOpeningBalance?: string;
   debtKind?: string; dueDate?: string;
   type: string; amount: string; currency: string; accountId: string; toAccountId: string;
   clientId: string; tripId: string; description: string; status: string; date: string;

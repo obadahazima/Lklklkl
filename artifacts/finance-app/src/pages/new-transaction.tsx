@@ -1,3 +1,4 @@
+import { OpeningBalanceOptions } from "@/components/opening-balance-options";
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@clerk/react";
 import { webLedger } from "@/lib/offline-ledger";
@@ -68,6 +69,7 @@ type ClientResolutionState = ResolutionState;
 type TripResolutionState = ResolutionState;
 
 type PendingTx = {
+  includedInOpeningBalance?: boolean; destinationIncludedInOpeningBalance?: boolean;
   type: string; amount: number; currency: string;
   description: string | null; status: string; date: string;
   clientId: number | null | undefined;
@@ -157,6 +159,7 @@ export default function NewTransaction() {
   const saveInFlightRef = useRef(false);
 
   const [manualForm, setManualForm, draft] = useManualDraft(webLedger, userId, {
+    includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "",
     type: "expense",
     amount: "",
     currency: settings.primaryCurrency,
@@ -242,6 +245,7 @@ export default function NewTransaction() {
       const data = await parseMutation.mutateAsync({ data: { text, currencies: settings.currencies, primaryCurrency: settings.primaryCurrency, referenceDate: localISODate() } });
       if (!mountedRef.current || request !== parseRequestRef.current) return;
       if (data.success) {
+        setManualForm(f=>({...f,includedInOpeningBalance:"",destinationIncludedInOpeningBalance:""}));
         setParsed(data);
         setStep("confirm");
         setManualForm((f) => ({ ...f, ...voiceAccountSelection(data, accounts ?? []) }));
@@ -289,6 +293,7 @@ export default function NewTransaction() {
       onSettled: () => { saveInFlightRef.current = false; },
       onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetRecentTransactionsQueryKey() });
         toast({ title: t("savedSuccess"), description: result.collectionSummary || t("savedDesc") });
@@ -454,6 +459,7 @@ export default function NewTransaction() {
     saveInFlightRef.current = true;
     createMutation.mutate({
       data: {
+        includedInOpeningBalance: p.includedInOpeningBalance, destinationIncludedInOpeningBalance: p.destinationIncludedInOpeningBalance,
         type: p.type,
         amount: p.amount,
         currency: p.currency,
@@ -529,6 +535,7 @@ export default function NewTransaction() {
       return;
     }
     pendingTxRef.current = {
+      includedInOpeningBalance: manualForm.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: manualForm.destinationIncludedInOpeningBalance === "true",
       type: parsed.type || "expense",
       amount: parsed.amount || 0,
       currency: parsed.currency || settings.primaryCurrency,
@@ -583,6 +590,7 @@ export default function NewTransaction() {
     e.preventDefault();
     if (saveInFlightRef.current || !draft.ready || !userId) return;
     const payload = {
+      includedInOpeningBalance: manualForm.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: manualForm.destinationIncludedInOpeningBalance === "true",
       type: manualForm.type, amount: normalizeAmountInput(manualForm.amount), currency: manualForm.currency,
       clientId: manualForm.type === "transfer" ? null : (manualForm.clientId ? Number(manualForm.clientId) : null),
       tripId: manualForm.type === "transfer" ? null : (manualForm.tripId ? Number(manualForm.tripId) : null),
@@ -595,7 +603,7 @@ export default function NewTransaction() {
     setSavingLocal(true);
     try {
       await webLedger.enqueue(userId, payload, draft.id);
-      const next = { ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", date: localISODate() };
+      const next = { ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "", date: localISODate() };
       const nextDraft = { id: webLedger.uuid(), values: next };
       await webLedger.saveDraft(userId, nextDraft.id, next).catch(() => {});
       draft.restore(nextDraft);
@@ -1110,6 +1118,7 @@ export default function NewTransaction() {
                 <option value="settled">{t("statusSettled")}</option>
               </select>
             </div>
+            <OpeningBalanceOptions accounts={accounts} accountId={manualForm.accountId} toAccountId={manualForm.toAccountId} type={manualForm.type} date={manualForm.date} source={manualForm.includedInOpeningBalance} destination={manualForm.destinationIncludedInOpeningBalance} onSource={v=>setManualForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setManualForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
             <button
               type="submit"
               disabled={isLoading || !draft.ready}
@@ -1123,7 +1132,7 @@ export default function NewTransaction() {
             <button type="submit" disabled={isLoading || !draft.ready} onClick={() => { saveAnotherRef.current = true; }} className="w-full border border-primary text-primary py-3 rounded-xl font-semibold">
               {language === "ar" ? "حفظ وإضافة أخرى · Ctrl+Enter" : "Save & add another · Ctrl+Enter"}
             </button>
-            <button type="button" disabled={isLoading} onClick={() => draft.reset({ ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", date: localISODate() })} className="w-full text-sm text-muted-foreground py-2">{language === "ar" ? "مسودة جديدة (مسح الحقول)" : "New draft (clear fields)"}</button>
+            <button type="button" disabled={isLoading} onClick={() => draft.reset({ ...manualForm, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "", date: localISODate() })} className="w-full text-sm text-muted-foreground py-2">{language === "ar" ? "مسودة جديدة (مسح الحقول)" : "New draft (clear fields)"}</button>
             <p className="text-xs text-muted-foreground">{language === "ar" ? "تُحفظ المسودة تلقائياً على هذا الجهاز" : "Draft saved automatically on this device"}</p>
             </fieldset>
           </form>
@@ -1417,6 +1426,7 @@ export default function NewTransaction() {
             </div>
           )}
 
+<OpeningBalanceOptions accounts={accounts} accountId={manualForm.accountId} toAccountId={manualForm.toAccountId} type={parsed?.type || manualForm.type} date={parsed?.date || manualForm.date} source={manualForm.includedInOpeningBalance} destination={manualForm.destinationIncludedInOpeningBalance} onSource={v=>setManualForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setManualForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => {
@@ -1430,6 +1440,7 @@ export default function NewTransaction() {
               <XCircle className="w-4 h-4" />
               {t("cancel")}
             </button>
+
             <button
               onClick={() => {
                 if (!manualForm.accountId) {

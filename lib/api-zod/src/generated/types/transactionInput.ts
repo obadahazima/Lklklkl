@@ -29,6 +29,10 @@ export interface TransactionInput {
      * @nullable
      */
   toAccountId?: number | null;
+  /** Already reflected in source/account opening balance; retain reporting but skip this cash effect */
+  includedInOpeningBalance?: boolean;
+  /** Transfer destination independently already reflects this amount */
+  destinationIncludedInOpeningBalance?: boolean;
   /**
      * sale | opening | loan | loan_now; receivable only
      * @nullable

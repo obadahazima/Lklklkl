@@ -1,3 +1,4 @@
+import { OpeningBalanceOptions } from "@/components/OpeningBalanceOptions";
 import { useAuth } from "@clerk/expo";
 import { mobileLedger } from "@/lib/offline-ledger";
 import { OfflineQueuePanel } from "@/components/OfflineLedger";
@@ -92,6 +93,7 @@ type ResolutionState =
   | { kind: "new"; name: string };
 
 type FormState = {
+  includedInOpeningBalance?: string; destinationIncludedInOpeningBalance?: string;
   type: TxType;
   amount: string;
   currency: string;
@@ -272,6 +274,7 @@ export default function TransactionsScreen() {
   function openEdit(item: any) {
     setEditingTx(item);
     setEditForm({
+      includedInOpeningBalance: item.includedInOpeningBalance ? "true" : "", destinationIncludedInOpeningBalance: item.destinationIncludedInOpeningBalance ? "true" : "",
       type: item.type,
       amount: String(item.amount),
       currency: item.currency,
@@ -306,6 +309,7 @@ export default function TransactionsScreen() {
       await updateTx({
         id: editingTx.id,
         data: {
+          includedInOpeningBalance: editForm.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: editForm.destinationIncludedInOpeningBalance === "true",
           type: editForm.type,
           amount: amt,
           currency: editForm.currency,
@@ -321,6 +325,7 @@ export default function TransactionsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditingTx(null);
       qc.invalidateQueries({ queryKey: getListTransactionsQueryKey({}) });
+      qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
       qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       refetch();
     } catch {
@@ -471,6 +476,7 @@ export default function TransactionsScreen() {
     const nextType = (TX_TYPES as readonly string[]).includes(data.type ?? "") ? (data.type as TxType) : undefined;
     setForm((f) => ({
       ...f,
+      includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "",
       type: nextType ?? f.type,
       amount: data.amount != null ? String(data.amount) : "",
       ...voiceAccountSelection(data, accounts ?? []),
@@ -657,6 +663,7 @@ export default function TransactionsScreen() {
   const handleCreate = async (): Promise<boolean> => {
     if (saveInFlightRef.current || !draft.ready || !userId) return false;
     const payload: TransactionInput = {
+      includedInOpeningBalance: form.includedInOpeningBalance === "true", destinationIncludedInOpeningBalance: form.destinationIncludedInOpeningBalance === "true",
       type: form.type, amount: normalizeAmountInput(form.amount), currency: form.currency,
       clientId: form.type === "transfer" ? null : (form.clientId ? Number(form.clientId) : null),
       tripId: form.type === "transfer" ? null : (form.tripId ? Number(form.tripId) : null),
@@ -669,7 +676,7 @@ export default function TransactionsScreen() {
     setSavingLocal(true);
     try {
       await mobileLedger.enqueue(userId, payload, draft.id);
-      const next = { ...form, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", date: localISODate() };
+      const next = { ...form, amount: "", description: "", clientId: "", tripId: "", toAccountId: "", includedInOpeningBalance: "", destinationIncludedInOpeningBalance: "", date: localISODate() };
       const nextDraft = { id: mobileLedger.uuid(), values: next };
       await mobileLedger.saveDraft(userId, nextDraft.id, next).catch(() => {});
       draft.restore(nextDraft);
@@ -1149,6 +1156,7 @@ export default function TransactionsScreen() {
                     </Pressable>
                   </View>
 
+<OpeningBalanceOptions accounts={accounts} accountId={form.accountId} toAccountId={form.toAccountId} type={form.type} date={form.date} source={form.includedInOpeningBalance} destination={form.destinationIncludedInOpeningBalance} onSource={v=>setForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
                   {voiceEditField === "type" && (
                     <View style={styles.segRow}>
                       {TX_TYPES.map((ty) => (
@@ -1644,6 +1652,7 @@ export default function TransactionsScreen() {
                   </>
                 )}
 
+<OpeningBalanceOptions accounts={accounts} accountId={form.accountId} toAccountId={form.toAccountId} type={form.type} date={form.date} source={form.includedInOpeningBalance} destination={form.destinationIncludedInOpeningBalance} onSource={v=>setForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("statusLabel")}</Text>
                 <View style={styles.segRow}>
                   {(["pending", "settled"] as const).map((st) => (
@@ -1818,6 +1827,7 @@ export default function TransactionsScreen() {
                   </>
                 )}
 
+<OpeningBalanceOptions accounts={accounts} accountId={editForm.accountId} toAccountId={editForm.toAccountId} type={editForm.type} date={editForm.date} source={editForm.includedInOpeningBalance} destination={editForm.destinationIncludedInOpeningBalance} onSource={v=>setEditForm(f=>({...f,includedInOpeningBalance:v}))} onDestination={v=>setEditForm(f=>({...f,destinationIncludedInOpeningBalance:v}))} ar={language === "ar"}/>
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t("statusLabel")}</Text>
                 <View style={styles.segRow}>
                   {(["pending", "settled"] as const).map((st) => (

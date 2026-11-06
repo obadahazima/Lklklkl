@@ -1,4 +1,5 @@
 import { ensureDebts } from "./lib/debts";
+import { ensureOpeningBalanceDates } from "./lib/opening-balance";
 import app from "./app";
 import { ensureAccountCreditLimits } from "./lib/account-credit";
 import { ensureTransactionReceipts } from "./lib/transaction-receipts";
@@ -18,7 +19,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-void ensureTransactionReceipts().then(ensureAccountCreditLimits).then(ensureDebts).then(() => {
+void ensureTransactionReceipts().then(ensureAccountCreditLimits).then(ensureDebts).then(ensureOpeningBalanceDates).then(() => {
   app.listen(port, (err) => {
     if (err) { logger.error({ err }, "Error listening on port"); process.exit(1); }
     logger.info({ port }, "Server listening");

@@ -18,6 +18,11 @@ export interface Account {
   /** initialBalance + income/receipt through this account - expense/payment through this account */
   currentBalance: number;
   /**
+     * Local calendar date represented by the opening balance; transactions are never excluded automatically
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
      * Optional total credit limit in the account currency; credit accounts only
      * @minimum 0
      * @nullable

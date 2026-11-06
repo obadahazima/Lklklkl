@@ -13,6 +13,11 @@ export interface AccountUpdate {
   color?: string;
   initialBalance?: number;
   /**
+     * Local calendar date represented by the opening balance; transactions are never excluded automatically
+     * @nullable
+     */
+  openingBalanceDate?: string | null;
+  /**
      * Optional total credit limit in the account currency; credit accounts only
      * @minimum 0
      * @nullable

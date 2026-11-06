@@ -1,3 +1,4 @@
+import { validISODate } from "../lib/voice-input.js";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { accountsTable, transactionsTable } from "@workspace/db";
@@ -72,13 +73,14 @@ async function computeBalance(
       .where(and(eq(transactionsTable.toAccountId, accountId), eq(transactionsTable.userId, userId), eq(transactionsTable.type, "transfer"))),
   ]);
   const delta = outgoing.reduce((sum, t) => {
+    if (t.includedInOpeningBalance) return sum;
     if (t.type === "receivable" && t.debtKind !== "loan_now") return sum;
     const amt = convertAmount(Number(t.amount), t.currency, accountCurrency, rates);
     if (t.type === "transfer") return sum - amt; // money left this account, regardless of income/expense bucket
     return sum + (t.type === "income" || t.type === "receipt" ? amt : -amt);
   }, 0);
   const incomingDelta = incomingTransfers.reduce(
-    (sum, t) => sum + convertAmount(Number(t.amount), t.currency, accountCurrency, rates),
+    (sum, t) => sum + (t.destinationIncludedInOpeningBalance ? 0 : convertAmount(Number(t.amount), t.currency, accountCurrency, rates)),
     0,
   );
   return Math.round((initialBalance + delta + incomingDelta) * 100) / 100;
@@ -116,6 +118,7 @@ router.post("/accounts", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (parsed.data.openingBalanceDate && !validISODate(parsed.data.openingBalanceDate)) { res.status(400).json({error:"Invalid opening balance date"}); return; }
   if (!validAmounts(parsed.data)) { res.status(400).json({ error: "Invalid account amount or credit limit" }); return; }
   try {
     const [account] = await db
@@ -181,6 +184,7 @@ router.patch("/accounts/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: bodyParsed.error.message });
     return;
   }
+  if (bodyParsed.data.openingBalanceDate && !validISODate(bodyParsed.data.openingBalanceDate)) { res.status(400).json({error:"Invalid opening balance date"}); return; }
   if (!validAmounts(bodyParsed.data)) { res.status(400).json({ error: "Invalid account amount or credit limit" }); return; }
   try {
     const [existing] = await db.select().from(accountsTable).where(and(eq(accountsTable.id, paramsParsed.data.id), eq(accountsTable.userId, req.userId)));
